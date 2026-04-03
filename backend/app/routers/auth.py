@@ -11,6 +11,7 @@ from app.services.starrocks_client import (
 )
 from app.utils.session import create_token, decode_token
 from app.utils.session_store import session_store
+from app.utils.sql_safety import safe_name
 from app.utils.cache import clear_all_caches
 
 router = APIRouter()
@@ -80,7 +81,7 @@ def _get_user_roles(conn, username: str) -> list[str]:
     except Exception:
         # sys views may not be available; try SHOW GRANTS parsing
         try:
-            rows = execute_query(conn, f"SHOW GRANTS FOR '{username}'")
+            rows = execute_query(conn, f"SHOW GRANTS FOR '{safe_name(username)}'")
             for row in rows:
                 for val in row.values():
                     s = str(val)

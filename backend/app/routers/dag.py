@@ -11,6 +11,7 @@ from app.dependencies import get_credentials, get_db
 from app.models.schemas import DAGEdge, DAGGraph, DAGNode
 from app.services.starrocks_client import execute_query, parallel_queries
 from app.services.user_service import get_all_users
+from app.utils.sql_safety import safe_identifier
 
 router = APIRouter()
 
@@ -142,8 +143,8 @@ def get_object_hierarchy(
             # Functions: per-DB query, run in parallel
             def _make_fn_task(cat_n: str, db_n: str):
                 def fn(c):
-                    execute_query(c, f"SET CATALOG `{cat_n}`")
-                    fn_rows = execute_query(c, f"SHOW FUNCTIONS FROM `{db_n}`")
+                    execute_query(c, f"SET CATALOG `{safe_identifier(cat_n)}`")
+                    fn_rows = execute_query(c, f"SHOW FUNCTIONS FROM `{safe_identifier(db_n)}`")
                     fns = []
                     for fr in fn_rows:
                         sig = fr.get("Signature") or fr.get("signature") or ""

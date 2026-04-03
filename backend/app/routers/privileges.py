@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from app.dependencies import get_db
 from app.models.schemas import PrivilegeGrant
 from app.services.starrocks_client import execute_query
+from app.utils.sql_safety import safe_name
 
 # ── Compiled regex patterns for GRANT statement parsing ──
 _RE_GRANT_ON = re.compile(r"GRANT\s+(.+?)\s+ON\s+(.+?)\s+TO\s+", re.I)
@@ -59,7 +60,7 @@ def get_role_privileges_raw(rolename: str, conn=Depends(get_db)):
     except Exception as e:
         results["sys_grants_to_roles_error"] = str(e)
     try:
-        rows = execute_query(conn, f"SHOW GRANTS FOR ROLE '{rolename}'")
+        rows = execute_query(conn, f"SHOW GRANTS FOR ROLE '{safe_name(rolename)}'")
         results["show_grants"] = [dict(r) for r in rows]
     except Exception as e:
         results["show_grants_error"] = str(e)
@@ -435,11 +436,11 @@ def _parse_show_grants(conn, grantee: str, grantee_type: str) -> list[PrivilegeG
         if grantee_type == "USER":
             # grantee may already be quoted like 'root'@'%'
             if "@" in grantee:
-                rows = execute_query(conn, f"SHOW GRANTS FOR {grantee}")
+                rows = execute_query(conn, f"SHOW GRANTS FOR {safe_name(grantee)}")
             else:
-                rows = execute_query(conn, f"SHOW GRANTS FOR '{grantee}'")
+                rows = execute_query(conn, f"SHOW GRANTS FOR '{safe_name(grantee)}'")
         else:
-            rows = execute_query(conn, f"SHOW GRANTS FOR ROLE '{grantee}'")
+            rows = execute_query(conn, f"SHOW GRANTS FOR ROLE '{safe_name(grantee)}'")
         for row in rows:
             for val in row.values():
                 s = str(val)
