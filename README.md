@@ -25,9 +25,6 @@ A web UI for visually exploring user, role, and object permission structures acr
 ### Role Map
 ![Role Map](docs/screenshots/role-map.png)
 
-### Full Permission Graph
-![Full Permission Graph](docs/screenshots/full-permission-graph.png)
-
 ### Object Detail — Permission Matrix
 ![Permission Matrix](docs/screenshots/permission-matrix.png)
 
