@@ -24,49 +24,50 @@ function getNodeContext(node: { label: string; metadata?: Record<string, unknown
 export default function ObjectDetailPanel() {
   const { selectedNode } = useDagStore();
   const [tab, setTab] = useState<"privileges" | "details">("privileges");
-  const [grants, setGrants] = useState<PrivilegeGrant[]>([]);
-  const [detail, setDetail] = useState<TableDetail | null>(null);
-  const [loadedNodeId, setLoadedNodeId] = useState<string | null>(null);
-  const [loadingPrivs, setLoadingPrivs] = useState(false);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  interface PanelData {
+    grants: PrivilegeGrant[];
+    detail: TableDetail | null;
+    loadedNodeId: string | null;
+    loadingPrivs: boolean;
+    loadingDetail: boolean;
+  }
+  const [data, setData] = useState<PanelData>({
+    grants: [], detail: null, loadedNodeId: null, loadingPrivs: false, loadingDetail: false,
+  });
 
   const parsed = selectedNode ? getNodeContext(selectedNode) : {} as ReturnType<typeof getNodeContext>;
 
   useEffect(() => {
     if (!selectedNode) return;
     setTab("privileges");
-    setGrants([]);
-    setDetail(null);
-    setLoadedNodeId(null);
-    setLoadingPrivs(true);
+    setData({ grants: [], detail: null, loadedNodeId: null, loadingPrivs: true, loadingDetail: false });
 
     const nodeId = selectedNode.id;
-    // Role: fetch role's own grants. Others: fetch grants ON this object.
     const nodeType = selectedNode.type.toLowerCase();
     const fetcher = nodeType === "role"
       ? getRolePrivileges(selectedNode.label)
       : getObjectPrivileges(parsed.catalog, parsed.database, parsed.name || selectedNode.label);
     fetcher
-      .then((data) => { setGrants(data); setLoadedNodeId(nodeId); })
-      .catch(() => { setLoadedNodeId(nodeId); })
-      .finally(() => setLoadingPrivs(false));
+      .then((grants) => setData((prev) => ({ ...prev, grants, loadedNodeId: nodeId, loadingPrivs: false })))
+      .catch(() => setData((prev) => ({ ...prev, loadedNodeId: nodeId, loadingPrivs: false })));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: parsed derives from selectedNode
   }, [selectedNode]);
 
   useEffect(() => {
     if (tab !== "details" || !selectedNode) return;
-    if (detail) return; // already loaded
+    if (data.detail) return;
     if (!parsed.catalog || !parsed.database || !parsed.name) return;
-    setLoadingDetail(true);
+    setData((prev) => ({ ...prev, loadingDetail: true }));
     getTableDetail(parsed.catalog, parsed.database, parsed.name)
-      .then(setDetail)
-      .catch(() => {})
-      .finally(() => setLoadingDetail(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: detail/parsed derive from selectedNode, avoid refetch loop
+      .then((detail) => setData((prev) => ({ ...prev, detail, loadingDetail: false })))
+      .catch(() => setData((prev) => ({ ...prev, loadingDetail: false })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: data.detail/parsed derive from selectedNode
   }, [tab, selectedNode]);
 
   if (!selectedNode) return null;
 
+  const { grants, detail, loadedNodeId, loadingPrivs, loadingDetail } = data;
   const color = selectedNode.color || "#94a3b8";
 
   const isRole = selectedNode.type.toLowerCase() === "role";
