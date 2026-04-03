@@ -1,0 +1,467 @@
+# StarRocks Permission Manager - API Documentation
+
+**Base URL**: `http://localhost:8001`
+**Interactive Docs**: `http://localhost:8001/docs` (Swagger UI)
+
+---
+
+## Authentication
+
+All APIs require JWT Bearer token authentication (except login).
+The token contains StarRocks connection info; each request connects to StarRocks with the user's own credentials.
+
+```
+Authorization: Bearer <token>
+```
+
+---
+
+## 1. Auth API
+
+### POST `/api/auth/login`
+
+Tests the StarRocks connection and issues a JWT token.
+
+**Request Body**
+```json
+{
+  "host": "starrocks-host.internal",
+  "port": 9030,
+  "username": "admin",
+  "password": "your-password"
+}
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| host | string | Yes | - | StarRocks FE host |
+| port | integer | No | 9030 | MySQL protocol port |
+| username | string | Yes | - | StarRocks username |
+| password | string | Yes | - | Password |
+
+**Response** `200 OK`
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "username": "admin",
+  "roles": ["root", "db_admin", "public"],
+  "default_role": "root"
+}
+```
+
+**Error** `401 Unauthorized`
+```json
+{ "detail": "Failed to connect to StarRocks" }
+```
+
+---
+
+### GET `/api/auth/me`
+
+Returns the currently authenticated user's info.
+
+**Response** `200 OK`
+```json
+{
+  "username": "admin",
+  "roles": ["root", "db_admin", "public"],
+  "default_role": "root",
+  "is_user_admin": true
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| username | string | StarRocks username |
+| roles | string[] | Assigned role list |
+| default_role | string\|null | Currently active role |
+| is_user_admin | boolean | Whether user has root or user_admin role. If true, can query other users' privileges |
+
+---
+
+## 2. Objects API
+
+### GET `/api/objects/catalogs`
+
+Returns the full list of catalogs.
+
+**Response** `200 OK`
+```json
+[
+  { "name": "default_catalog", "catalog_type": "InternalCatalog" },
+  { "name": "iceberg_catalog", "catalog_type": "IcebergCatalog" },
+  { "name": "hive_catalog", "catalog_type": "HiveCatalog" }
+]
+```
+
+---
+
+### GET `/api/objects/databases`
+
+Returns the list of databases in a specific catalog.
+
+**Query Parameters**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| catalog | string | Yes | Catalog name |
+
+**Response** `200 OK`
+```json
+[
+  { "name": "analytics_db", "catalog": "default_catalog" },
+  { "name": "sales_db", "catalog": "default_catalog" }
+]
+```
+
+---
+
+### GET `/api/objects/tables`
+
+Returns objects (tables, views, MVs, functions) in a specific database.
+
+**Query Parameters**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| catalog | string | Yes | Catalog name |
+| database | string | Yes | Database name |
+
+**Response** `200 OK`
+```json
+[
+  { "name": "user_events", "object_type": "TABLE", "catalog": "default_catalog", "database": "analytics_db" },
+  { "name": "daily_summary", "object_type": "VIEW", "catalog": "default_catalog", "database": "analytics_db" },
+  { "name": "hourly_agg_mv", "object_type": "MATERIALIZED VIEW", "catalog": "default_catalog", "database": "analytics_db" },
+  { "name": "parse_ua", "object_type": "FUNCTION", "catalog": "default_catalog", "database": "analytics_db" }
+]
+```
+
+---
+
+### GET `/api/objects/table-detail`
+
+Returns detailed metadata for an object. Uses `information_schema` as the primary source for External Catalog compatibility.
+For Internal Catalogs, additional fields (key_type, distribution, partition, etc.) are provided via DDL parsing.
+
+**Query Parameters**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| catalog | string | Yes | Catalog name |
+| database | string | Yes | Database name |
+| table | string | Yes | Table/view name |
+
+**Response** `200 OK`
+```json
+{
+  "table_name": "user_events",
+  "table_type": "BASE TABLE",
+  "engine": "StarRocks",
+  "row_count": 12847293,
+  "data_size": 2576980377,
+  "create_time": "2025-03-15 09:22:41",
+  "update_time": "2026-04-01 22:00:00",
+  "comment": "User event tracking table",
+  "columns": [
+    {
+      "name": "event_id",
+      "column_type": "bigint",
+      "ordinal_position": 1,
+      "is_nullable": "NO",
+      "column_default": null,
+      "column_key": "DUP",
+      "comment": "Primary event identifier"
+    }
+  ],
+  "ddl": "CREATE TABLE ...",
+  "key_type": "DUPLICATE KEY",
+  "distribution_type": "Hash",
+  "bucket_keys": ["event_id"],
+  "bucket_count": 16,
+  "partition_method": "RANGE",
+  "partition_key": "event_date",
+  "partition_count": 365,
+  "replication_num": 3,
+  "storage_medium": "SSD",
+  "compression": "LZ4"
+}
+```
+
+| Field | Type | Common | Internal Only | Description |
+|-------|------|--------|---------------|-------------|
+| table_name | string | Yes | | Table name |
+| table_type | string | Yes | | BASE TABLE / VIEW / SYSTEM VIEW |
+| engine | string\|null | Yes | | StarRocks / Iceberg / Hive etc. |
+| row_count | int\|null | Yes | | Approximate row count |
+| data_size | int\|null | Yes | | Size in bytes |
+| create_time | string\|null | Yes | | Creation timestamp |
+| update_time | string\|null | Yes | | Last modification timestamp |
+| comment | string\|null | Yes | | Table comment |
+| columns | ColumnInfo[] | Yes | | Column list |
+| ddl | string\|null | Yes | | CREATE TABLE/VIEW DDL |
+| key_type | string\|null | | Yes | DUPLICATE/PRIMARY/AGGREGATE/UNIQUE KEY |
+| distribution_type | string\|null | | Yes | Hash / Random |
+| bucket_keys | string[]\|null | | Yes | DISTRIBUTED BY HASH columns |
+| bucket_count | int\|null | | Yes | Number of buckets |
+| partition_method | string\|null | | Yes | RANGE / LIST / EXPRESSION |
+| partition_key | string\|null | | Yes | Partition key column |
+| partition_count | int\|null | | Yes | Current partition count |
+| replication_num | int\|null | | Yes | Replication factor |
+| storage_medium | string\|null | | Yes | SSD / HDD |
+| compression | string\|null | | Yes | LZ4 / ZSTD / ZLIB / SNAPPY |
+
+---
+
+## 3. Privileges API
+
+### GET `/api/privileges/user/{username}`
+
+Returns directly granted privileges for a specific user.
+
+**Path Parameters**
+| Param | Type | Description |
+|-------|------|-------------|
+| username | string | StarRocks username |
+
+**Response** `200 OK`
+```json
+[
+  {
+    "grantee": "analyst_kim",
+    "grantee_type": "USER",
+    "object_catalog": "default_catalog",
+    "object_database": "sales_db",
+    "object_name": "orders",
+    "object_type": "TABLE",
+    "privilege_type": "SELECT",
+    "is_grantable": false,
+    "source": "direct"
+  }
+]
+```
+
+---
+
+### GET `/api/privileges/user/{username}/effective`
+
+Returns the user's effective privileges (direct + role-inherited).
+Traverses the role hierarchy (up to 16 levels) via BFS to collect all inherited privileges.
+
+**Path Parameters**
+| Param | Type | Description |
+|-------|------|-------------|
+| username | string | StarRocks username |
+
+**Response** `200 OK`
+```json
+[
+  {
+    "grantee": "analyst_kim",
+    "grantee_type": "USER",
+    "object_name": "orders",
+    "object_type": "TABLE",
+    "privilege_type": "SELECT",
+    "source": "direct"
+  },
+  {
+    "grantee": "analyst_role",
+    "grantee_type": "ROLE",
+    "object_name": "user_events",
+    "object_type": "TABLE",
+    "privilege_type": "SELECT",
+    "source": "analyst_role"
+  }
+]
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| grantee | string | Entity the privilege is granted to (username or role name) |
+| grantee_type | string | `USER` or `ROLE` |
+| object_catalog | string\|null | Target catalog |
+| object_database | string\|null | Target database |
+| object_name | string\|null | Target object name |
+| object_type | string | SYSTEM / CATALOG / DATABASE / TABLE / VIEW etc. |
+| privilege_type | string | SELECT / INSERT / ALTER / DROP / ALL etc. |
+| is_grantable | boolean | Whether the privilege can be delegated to others |
+| source | string | `"direct"` (directly granted) or role name (inheritance source) |
+
+---
+
+### GET `/api/privileges/object`
+
+Returns all privilege grants on a specific object (users + roles).
+
+**Query Parameters**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| catalog | string | No | Catalog filter |
+| database | string | No | Database filter |
+| name | string | No | Object name filter |
+
+**Response** `200 OK` - `PrivilegeGrant[]` (same schema as above)
+
+---
+
+## 4. Roles API
+
+### GET `/api/roles`
+
+Returns the full list of roles.
+
+**Response** `200 OK`
+```json
+[
+  { "name": "root", "is_builtin": true },
+  { "name": "db_admin", "is_builtin": true },
+  { "name": "user_admin", "is_builtin": true },
+  { "name": "cluster_admin", "is_builtin": true },
+  { "name": "security_admin", "is_builtin": true },
+  { "name": "public", "is_builtin": true },
+  { "name": "analyst_role", "is_builtin": false },
+  { "name": "etl_role", "is_builtin": false }
+]
+```
+
+---
+
+### GET `/api/roles/hierarchy`
+
+Returns the role inheritance structure as a DAG. Used directly by the Role Map tab.
+
+**Response** `200 OK` - `DAGGraph` (see DAG schema below)
+
+---
+
+### GET `/api/roles/{role_name}/users`
+
+Returns the list of users assigned to a specific role.
+
+**Path Parameters**
+| Param | Type | Description |
+|-------|------|-------------|
+| role_name | string | Role name |
+
+**Response** `200 OK`
+```json
+["admin", "analyst_kim", "etl_service"]
+```
+
+---
+
+## 5. DAG API
+
+Returns `{nodes, edges}` structures that can be directly fed to React Flow.
+
+### Common DAG Schema
+
+**DAGNode**
+| Field | Type | Description |
+|-------|------|-------------|
+| id | string | Unique identifier (e.g., `c_default_catalog`, `r_analyst_role`, `u_admin`) |
+| label | string | Display name |
+| type | string | `system` / `catalog` / `database` / `table` / `view` / `mv` / `function` / `user` / `role` |
+| color | string\|null | Node color (hex) |
+| node_role | string\|null | `"group"` = virtual group node (Tables, Views, etc.) |
+| metadata | object\|null | Additional metadata |
+
+**DAGEdge**
+| Field | Type | Description |
+|-------|------|-------------|
+| id | string | Unique identifier |
+| source | string | Source node ID |
+| target | string | Target node ID |
+| edge_type | string | Edge type (see table below) |
+
+**Edge Types**
+| edge_type | Color | Description |
+|-----------|-------|-------------|
+| `hierarchy` | gray dashed | Object hierarchy containment (CATALOG→DB→TABLE) |
+| `assignment` | sky blue | Role→User assignment |
+| `inheritance` | orange | Role→Role inheritance |
+| `select` | green (#22c55e) | SELECT privilege |
+| `insert` | blue (#3b82f6) | INSERT privilege |
+| `delete` | red (#ef4444) | DELETE privilege |
+| `alter` | purple (#a855f7) | ALTER privilege |
+| `usage` | gray dashed | USAGE privilege |
+
+---
+
+### GET `/api/dag/object-hierarchy`
+
+Returns the object hierarchy DAG. Structure: SYSTEM → CATALOG → DATABASE → [Type Group] → Objects.
+
+**Query Parameters**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| catalog | string | No | Filter to a specific catalog (all if omitted) |
+
+**Response** `200 OK` - `DAGGraph`
+
+---
+
+### GET `/api/dag/role-hierarchy`
+
+Returns the role hierarchy DAG. Structure: root (top) → built-in roles → custom roles → users.
+
+**Response** `200 OK` - `DAGGraph`
+
+---
+
+### GET `/api/dag/full`
+
+Returns the full permission graph. Users → Roles → Objects with privilege edges.
+
+**Query Parameters**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| catalog | string | No | Filter to a specific catalog |
+
+**Response** `200 OK` - `DAGGraph`
+
+---
+
+## 6. Health Check
+
+### GET `/api/health`
+
+Checks server status. No authentication required.
+
+**Response** `200 OK`
+```json
+{ "status": "ok" }
+```
+
+---
+
+## Error Responses
+
+All errors follow this format:
+
+```json
+{ "detail": "Error message here" }
+```
+
+| Status | Description |
+|--------|-------------|
+| 401 | Authentication failure (invalid token, expired, StarRocks connection failed) |
+| 422 | Request parameter validation failure |
+| 500 | Internal server error |
+
+---
+
+## Data Source Strategy
+
+| Data | Source | External Catalog Compatible |
+|------|--------|-----------------------------|
+| Catalog list | `SHOW CATALOGS` | Yes |
+| DB list | `SHOW DATABASES` | Yes |
+| Object list | `information_schema.tables` | Yes |
+| MV detection | `information_schema.materialized_views` | Internal Only |
+| Column info | `information_schema.columns` | Yes |
+| DDL | `SHOW CREATE TABLE` | Yes |
+| Partitions/Buckets | `information_schema.partitions_meta` + DDL parsing | Internal Only |
+| User privileges | `sys.grants_to_users` | Yes |
+| Role privileges | `sys.grants_to_roles` | Yes |
+| Role hierarchy | `sys.role_edges` | Yes |
+| Role list | `SHOW ROLES` | Yes |
+
+When unsupported views fail on External Catalogs, those fields return `null` and the frontend automatically hides the corresponding sections.
