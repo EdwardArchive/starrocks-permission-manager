@@ -80,6 +80,8 @@ docker run -d -p 8001:8001 \
 
 Open http://localhost:8001 and log in with your StarRocks credentials.
 
+> **Note:** The Docker image runs a single worker (`--workers 1`) because the in-memory session store is per-process. For multi-worker deployments, use a shared session backend (e.g., Redis) or sticky sessions.
+
 ### Development
 
 **Prerequisites:** Python 3.10+, Node.js 18+, npm 9+
@@ -226,6 +228,7 @@ npm run build
 | `test_dag.py` | 5 | Object-hierarchy, role-hierarchy, full, filters, schema |
 | `test_search.py` | 5 | Search API |
 | `test_session_store.py` | 6 | Server-side session store |
+| `test_sql_safety.py` | 8 | SQL injection protection (safe_name, safe_identifier) |
 | `test_integration.py` | 12 | Full API against real StarRocks (skipped without env vars) |
 
 ## Environment Variables

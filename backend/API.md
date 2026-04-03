@@ -7,8 +7,19 @@
 
 ## Authentication
 
-All APIs require JWT Bearer token authentication (except login).
-The token contains StarRocks connection info; each request connects to StarRocks with the user's own credentials.
+All APIs require JWT Bearer token authentication (except login and logout).
+The JWT token contains only a `session_id` and `username` — credentials are stored server-side in an in-memory session store. Each request resolves the session to obtain StarRocks credentials and opens a per-request connection.
+
+**JWT Payload Structure:**
+```json
+{
+  "session_id": "a1b2c3d4...",
+  "username": "admin",
+  "exp": 1712345678
+}
+```
+
+> **Note:** Passwords are never included in the JWT token. They are stored only in the server-side session store.
 
 ```
 Authorization: Bearer <token>
@@ -20,7 +31,7 @@ Authorization: Bearer <token>
 
 ### POST `/api/auth/login`
 
-Tests the StarRocks connection and issues a JWT token.
+Tests the StarRocks connection, creates a server-side session, and issues a JWT token.
 
 **Request Body**
 ```json
@@ -76,6 +87,24 @@ Returns the currently authenticated user's info.
 | roles | string[] | Assigned role list |
 | default_role | string\|null | Currently active role |
 | is_user_admin | boolean | Whether user has root or user_admin role. If true, can query other users' privileges |
+
+---
+
+### POST `/api/auth/logout`
+
+Invalidates the server-side session associated with the JWT token. The token becomes unusable after logout.
+
+**Headers**
+```
+Authorization: Bearer <token>
+```
+
+**Response** `200 OK`
+```json
+{ "detail": "Logged out" }
+```
+
+> **Note:** Returns 200 even if no valid token is provided (graceful logout).
 
 ---
 
