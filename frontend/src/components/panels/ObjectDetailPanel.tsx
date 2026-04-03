@@ -106,8 +106,13 @@ export default function ObjectDetailPanel() {
     return { name, type: rowType, row };
   });
 
-  // Path display
-  const pathParts = [parsed.catalog, parsed.database, parsed.name || selectedNode.label].filter(Boolean);
+  // Path display — avoid duplicating label when node IS the catalog/database itself
+  const nodeType = selectedNode.type.toLowerCase();
+  const pathParts = nodeType === "catalog"
+    ? [selectedNode.label]
+    : nodeType === "database"
+      ? [parsed.catalog, selectedNode.label].filter(Boolean)
+      : [parsed.catalog, parsed.database, parsed.name || selectedNode.label].filter(Boolean);
 
   return (
     <div>
