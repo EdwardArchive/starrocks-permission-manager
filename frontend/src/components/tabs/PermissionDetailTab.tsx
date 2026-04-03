@@ -8,7 +8,8 @@ import { getPrivColor } from "../../utils/privColors";
 import { SCOPE_ORDER, SCOPE_ICONS } from "../../utils/scopeConfig";
 import DAGView from "../dag/DAGView";
 import ExportPngBtn from "../common/ExportPngBtn";
-import type { DAGGraph, PrivilegeGrant } from "../../types";
+import { useDagStore } from "../../stores/dagStore";
+import type { DAGGraph, DAGNode, PrivilegeGrant } from "../../types";
 
 interface SelectedEntity {
   name: string;
@@ -25,6 +26,36 @@ export default function PermissionDetailTab() {
   const [grants, setGrants] = useState<PrivilegeGrant[]>([]);
   const [grantsLoading, setGrantsLoading] = useState(false);
   const [filterText, setFilterText] = useState("");
+
+  // Clicked DAG node detail panel
+  const { selectedNode } = useDagStore();
+  const [clickedNode, setClickedNode] = useState<DAGNode | null>(null);
+  const [clickedGrants, setClickedGrants] = useState<PrivilegeGrant[]>([]);
+  const [clickedLoading, setClickedLoading] = useState(false);
+
+  // Watch for DAG node clicks
+  useEffect(() => {
+    if (!selectedNode || !selected) {
+      setClickedNode(null);
+      setClickedGrants([]);
+      return;
+    }
+    const nodeType = selectedNode.type?.toLowerCase();
+    if (nodeType !== "user" && nodeType !== "role") {
+      setClickedNode(null);
+      setClickedGrants([]);
+      return;
+    }
+    setClickedNode(selectedNode);
+    setClickedLoading(true);
+    const fetcher = nodeType === "user"
+      ? getUserEffectivePrivileges(selectedNode.label)
+      : getRolePrivileges(selectedNode.label);
+    fetcher
+      .then(setClickedGrants)
+      .catch(() => setClickedGrants([]))
+      .finally(() => setClickedLoading(false));
+  }, [selectedNode, selected]);
 
   // Debounced search
   useEffect(() => {
@@ -211,7 +242,7 @@ export default function PermissionDetailTab() {
         </div>
       </div>
 
-      {/* Right: DAG view */}
+      {/* Center: DAG view */}
       <div style={{ flex: 1, position: "relative", background: "#0f172a" }}>
         {!selected ? (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#475569", fontSize: 14 }}>
@@ -232,6 +263,73 @@ export default function PermissionDetailTab() {
           </>
         )}
       </div>
+
+      {/* Right: Clicked node detail panel */}
+      {clickedNode && (
+        <div style={{ width: 320, flexShrink: 0, borderLeft: "1px solid #475569", display: "flex", flexDirection: "column", overflow: "hidden", background: "#1e293b" }}>
+          {/* Header */}
+          <div style={{ padding: 12, borderBottom: "1px solid #475569", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <InlineIcon type={clickedNode.type} size={18} />
+              <span style={{ fontSize: 14, fontWeight: 600, color: "#e2e8f0" }}>
+                <FormattedName name={clickedNode.label} />
+              </span>
+              <span style={{
+                fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 600,
+                background: clickedNode.type === "user" ? "rgba(14,165,233,0.18)" : "rgba(249,115,22,0.18)",
+                color: clickedNode.type === "user" ? "#38bdf8" : "#fb923c",
+              }}>
+                {clickedNode.type.toUpperCase()}
+              </span>
+            </div>
+            <button
+              onClick={() => setClickedNode(null)}
+              style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 18, lineHeight: 1 }}
+            >
+              &times;
+            </button>
+          </div>
+
+          {/* Grants */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+            {clickedLoading ? (
+              <p style={{ padding: 16, fontSize: 13, color: "#94a3b8", fontStyle: "italic", textAlign: "center" }}>Loading privileges...</p>
+            ) : clickedGrants.length === 0 ? (
+              <p style={{ padding: 16, fontSize: 13, color: "#64748b", textAlign: "center" }}>No grants found</p>
+            ) : (
+              groupGrantsByScope(clickedGrants, "").map(({ scope, items }) => (
+                <div key={scope} style={{ marginBottom: 10, padding: "0 12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, fontSize: 12, fontWeight: 600, color: "#94a3b8", whiteSpace: "nowrap" }}>
+                    <InlineIcon type={SCOPE_ICONS[scope] || "system"} size={14} />
+                    {scope}
+                    <span style={{ fontSize: 10, color: "#64748b" }}>({items.length})</span>
+                  </div>
+                  {items.map((obj, idx) => (
+                    <div key={`${obj.path}-${idx}`} style={{ padding: "6px 0 6px 20px", borderBottom: "1px solid rgba(71,85,105,0.15)", fontSize: 12 }}>
+                      <div style={{ fontWeight: 500, color: "#e2e8f0", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {obj.displayName}
+                      </div>
+                      {obj.context && (
+                        <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>{obj.context}</div>
+                      )}
+                      <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                        {obj.privs.map((p) => {
+                          const c = getPrivColor(p);
+                          return (
+                            <span key={p} style={{ padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 600, background: c.bg, color: c.fg, whiteSpace: "nowrap", lineHeight: 1.4 }}>
+                              {p}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
