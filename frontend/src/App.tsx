@@ -56,38 +56,41 @@ export default function App() {
     }))
   );
 
-  const [dagData, setDagData] = useState<Record<string, DAGGraph | null>>({});
-  const [loading, setLoading] = useState(false);
+  const [dagState, setDagState] = useState<{ cache: Record<string, DAGGraph | null>; loading: boolean }>({
+    cache: {}, loading: false,
+  });
 
   useEffect(() => {
     if (isLoggedIn && !user) {
       getMe().then((me) => setAuth(localStorage.getItem("sr_token")!, me)).catch(() => useAuthStore.getState().logout());
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: restore login session once
   }, []);
 
   // Load DAG data when tab or catalog changes (skip perm tab - it manages its own DAG)
   const dagKey = `${activeTab}_${activeCatalog}`;
   useEffect(() => {
     if (!isLoggedIn || activeTab === "perm") return;
-    if (dagData[dagKey]) return;
+    if (dagState.cache[dagKey]) return;
     const controller = new AbortController();
-    setLoading(true);
+    setDagState((prev) => ({ ...prev, loading: true }));
     const fetcher =
       activeTab === "obj" ? () => getObjectHierarchy(activeCatalog, controller.signal) :
       activeTab === "role" ? () => getRoleHierarchy(controller.signal) :
       () => getFullGraph(activeCatalog, controller.signal);
     fetcher()
-      .then((data) => setDagData((prev) => ({ ...prev, [dagKey]: data })))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .then((data) => setDagState((prev) => ({ cache: { ...prev.cache, [dagKey]: data }, loading: false })))
+      .catch(() => setDagState((prev) => ({ ...prev, loading: false })));
     return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only reload on tab/catalog change, dagState.cache checked inside
   }, [isLoggedIn, activeTab, activeCatalog]);
 
   if (!isLoggedIn) return <LoginForm />;
 
   const direction = activeTab === "full" ? "LR" : "TB";
 
-  const rawDag = dagData[dagKey] || null;
+  const rawDag = dagState.cache[dagKey] || null;
+  const loading = dagState.loading;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
