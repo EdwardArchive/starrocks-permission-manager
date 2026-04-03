@@ -165,15 +165,81 @@ def get_object_privileges(
     except Exception:
         pass
 
-    # Supplement: users who have access via role inheritance
-    # Build a map: role → set of privilege_types on this object
+    # Supplement: roles and users who have access via role inheritance
+    # Build a map: role → set of privilege_types on this object (direct grants only)
+    # Exclude SYSTEM-level grants (REPOSITORY, NODE, etc.) as they don't apply to specific objects
+    _SYSTEM_ONLY_PRIVS = {"REPOSITORY", "NODE", "BLACKLIST", "FILE", "OPERATE", "PLUGIN",
+                          "CREATE RESOURCE GROUP", "CREATE RESOURCE", "CREATE EXTERNAL CATALOG",
+                          "CREATE GLOBAL FUNCTION", "CREATE STORAGE VOLUME", "SECURITY"}
     role_privs: dict[str, set[str]] = {}
     for r in results:
         if r.grantee_type == "ROLE":
+            if (r.object_type or "").upper() == "SYSTEM" or r.privilege_type.upper() in _SYSTEM_ONLY_PRIVS:
+                continue
             role_privs.setdefault(r.grantee, set()).add(r.privilege_type)
 
     if role_privs:
-        # Get all users from role_edges + grants_to_users
+        # 1. Find intermediate roles that inherit from roles with privileges
+        #    e.g. platform_admin inherits db_admin → platform_admin also has access
+        try:
+            all_role_edges = execute_query(conn, "SELECT FROM_ROLE, TO_ROLE FROM sys.role_edges WHERE TO_ROLE IS NOT NULL AND TO_ROLE != ''")
+        except Exception:
+            all_role_edges = []
+
+        # Build child map: parent → [child roles]
+        children_of: dict[str, list[str]] = {}
+        for edge in all_role_edges:
+            parent = edge.get("FROM_ROLE") or ""
+            child = edge.get("TO_ROLE") or ""
+            if parent and child:
+                children_of.setdefault(parent, []).append(child)
+
+        # BFS downward from roles with privileges to find all inheriting roles
+        # Collect ALL privileges each role can access (direct + inherited from parents)
+        inherited_role_privs: dict[str, tuple[set[str], str]] = {}  # role → (privs, source_role)
+        bfs_queue: list[tuple[str, str]] = [(r, r) for r in role_privs]  # (role, origin)
+        bfs_visited: set[str] = set()
+        while bfs_queue:
+            role, origin = bfs_queue.pop(0)
+            if role in bfs_visited:
+                continue
+            bfs_visited.add(role)
+            # Determine privs this role has (direct or inherited from origin)
+            role_has_privs = role_privs.get(role) or role_privs.get(origin, set())
+            for child in children_of.get(role, []):
+                if child not in bfs_visited:
+                    if child not in inherited_role_privs:
+                        inherited_role_privs[child] = (set(role_has_privs), origin)
+                    else:
+                        # Merge privileges from multiple parent paths
+                        inherited_role_privs[child][0].update(role_has_privs)
+                    bfs_queue.append((child, origin))
+
+        # Add intermediate roles to results
+        if results:
+            # Pick a TABLE-type grant as sample for catalog/db/name context (avoid SYSTEM/VIEW/FUNCTION)
+            sample = next((r for r in results if (r.object_type or "").upper() == "TABLE"), results[0])
+            existing_roles = {r.grantee for r in results if r.grantee_type == "ROLE"}
+            for role, (privs, source) in inherited_role_privs.items():
+                if role in existing_roles:
+                    continue
+                existing_roles.add(role)
+                for priv in privs:
+                    results.append(PrivilegeGrant(
+                        grantee=role,
+                        grantee_type="ROLE",
+                        object_catalog=sample.object_catalog,
+                        object_database=sample.object_database,
+                        object_name=sample.object_name,
+                        object_type=sample.object_type,
+                        privilege_type=priv,
+                        is_grantable=False,
+                        source=source,
+                    ))
+                # Also add to role_privs so user BFS can find them
+                role_privs[role] = privs
+
+        # 2. Find users who have access via role inheritance
         from app.services.user_service import get_all_users
         all_users = get_all_users(conn)
         existing_users = {r.grantee for r in results if r.grantee_type == "USER"}
@@ -205,7 +271,7 @@ def get_object_privileges(
 
             if user_privs:
                 existing_users.add(user)
-                sample = results[0]  # Use for catalog/db/name context
+                sample = next((r for r in results if (r.object_type or "").upper() == "TABLE"), results[0])
                 for priv, source_role in user_privs.items():
                     results.append(PrivilegeGrant(
                         grantee=user,

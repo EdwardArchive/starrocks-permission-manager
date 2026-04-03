@@ -8,6 +8,8 @@ import { SCOPE_ORDER, SCOPE_ICONS } from "../../utils/scopeConfig";
 import type { PrivilegeGrant, TableDetail } from "../../types";
 
 const PRIV_TYPES = ["SELECT", "INSERT", "UPDATE", "DELETE", "ALTER", "DROP"];
+// "ALL" or "ALL PRIVILEGES" should expand to all individual privilege types
+const ALL_ALIASES = new Set(["ALL", "ALL PRIVILEGES"]);
 
 // Extract catalog/database from DAG node metadata
 function getNodeContext(node: { label: string; metadata?: Record<string, unknown> | null }) {
@@ -86,8 +88,14 @@ export default function ObjectDetailPanel() {
     );
     matching.forEach((g) => {
       const p = g.privilege_type.toUpperCase();
-      if (p in row) {
-        row[p] = g.source === "direct" ? "D" : "I";
+      const badge = g.source === "direct" ? "D" as const : "I" as const;
+      if (ALL_ALIASES.has(p)) {
+        // "ALL" expands to all privilege types
+        privColumns.forEach((col) => {
+          if (row[col] === "-" || (row[col] === "I" && badge === "D")) row[col] = badge;
+        });
+      } else if (p in row) {
+        if (row[p] === "-" || (row[p] === "I" && badge === "D")) row[p] = badge;
       }
     });
     const sample = matching[0];
