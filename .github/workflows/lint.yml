@@ -1,0 +1,89 @@
+name: Lint & Static Analysis
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+      - ".dockerignore"
+      - "frontend/icons/**"
+
+jobs:
+  backend:
+    name: Backend (Python)
+    runs-on: self-hosted
+    if: |
+      github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install ruff bandit mypy
+          pip install -r backend/requirements.txt
+
+      - name: Ruff lint
+        run: ruff check backend/app/ --output-format=github
+
+      - name: Ruff format check
+        run: ruff format backend/app/ --check --diff
+
+      - name: Bandit security scan
+        run: bandit -r backend/app/ -c pyproject.toml -f json -o bandit-report.json || true
+        continue-on-error: false
+
+      - name: Bandit report
+        if: failure()
+        run: bandit -r backend/app/ -c pyproject.toml
+
+  frontend:
+    name: Frontend (TypeScript)
+    runs-on: self-hosted
+    if: |
+      github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: cd frontend && npm ci
+
+      - name: ESLint
+        run: cd frontend && npx eslint src/ --max-warnings 0
+
+      - name: TypeScript type check
+        run: cd frontend && npx tsc --noEmit
+
+  tests:
+    name: Backend Tests
+    runs-on: self-hosted
+    needs: backend
+    if: |
+      github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pytest
+
+      - name: Run unit tests
+        run: cd backend && python -m pytest tests/ -v --ignore=tests/test_integration.py

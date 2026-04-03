@@ -3,6 +3,12 @@ name: Claude Code Review
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
+    paths-ignore:
+      - "*.md"
+      - "docs/**"
+      - "LICENSE"
+      - ".gitignore"
+      - ".dockerignore"
 
 jobs:
   claude-review:
