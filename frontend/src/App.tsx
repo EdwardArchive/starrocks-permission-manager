@@ -63,6 +63,7 @@ export default function App() {
     if (isLoggedIn && !user) {
       getMe().then((me) => setAuth(localStorage.getItem("sr_token")!, me)).catch(() => useAuthStore.getState().logout());
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: restore login session once
   }, []);
 
   // Load DAG data when tab or catalog changes (skip perm tab - it manages its own DAG)
@@ -81,6 +82,7 @@ export default function App() {
       .catch(() => {})
       .finally(() => setLoading(false));
     return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only reload on tab/catalog change, dagData/dagKey are checked inside
   }, [isLoggedIn, activeTab, activeCatalog]);
 
   if (!isLoggedIn) return <LoginForm />;

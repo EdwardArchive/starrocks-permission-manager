@@ -50,6 +50,7 @@ export default function ObjectDetailPanel() {
       .then((data) => { setGrants(data); setLoadedNodeId(nodeId); })
       .catch(() => { setLoadedNodeId(nodeId); })
       .finally(() => setLoadingPrivs(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: parsed derives from selectedNode
   }, [selectedNode]);
 
   useEffect(() => {
@@ -61,6 +62,7 @@ export default function ObjectDetailPanel() {
       .then(setDetail)
       .catch(() => {})
       .finally(() => setLoadingDetail(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: detail/parsed derive from selectedNode, avoid refetch loop
   }, [tab, selectedNode]);
 
   if (!selectedNode) return null;
