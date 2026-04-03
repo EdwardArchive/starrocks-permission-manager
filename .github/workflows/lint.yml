@@ -65,7 +65,7 @@ jobs:
       - name: Get changed frontend files
         id: changed
         run: |
-          FILES=$(git diff --name-only --diff-filter=d origin/${{ github.event.pull_request.base.ref }}...HEAD -- 'frontend/src/**/*.ts' 'frontend/src/**/*.tsx' | tr '\n' ' ')
+          FILES=$(git diff --name-only --diff-filter=d origin/${{ github.event.pull_request.base.ref }}...HEAD -- 'frontend/src/**/*.ts' 'frontend/src/**/*.tsx' | sed 's|^frontend/||' | tr '\n' ' ')
           echo "files=$FILES" >> $GITHUB_OUTPUT
           if [ -z "$FILES" ]; then echo "skip=true" >> $GITHUB_OUTPUT; else echo "skip=false" >> $GITHUB_OUTPUT; fi
 
