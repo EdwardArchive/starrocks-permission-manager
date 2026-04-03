@@ -57,4 +57,4 @@ EXPOSE 8001
 
 ENV SRPM_JWT_SECRET=change-me-in-production
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1"]
