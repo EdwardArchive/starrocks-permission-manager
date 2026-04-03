@@ -2,31 +2,40 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
-  issue_comment:
-    types: [created]
-  pull_request_review_comment:
-    types: [created]
+    types: [opened, synchronize, ready_for_review, reopened]
 
 jobs:
-  review:
-    if: |
-      (github.event_name == 'pull_request') ||
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude'))
-    runs-on: ubuntu-latest
+  claude-review:
+    runs-on: self-hosted
     permissions:
       contents: read
       pull-requests: write
       issues: write
+      actions: read
+      id-token: write
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: anthropics/claude-code-action@v1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          prompt: "/code-review"
-          trigger_phrase: "@claude"
-          claude_args: "--max-turns 10"
+          additional_permissions: |
+            actions: read
+          claude_args: >-
+            --allowedTools
+            "Bash(git diff*)"
+            "Bash(git log*)"
+            "Bash(git status*)"
+            "Bash(git show*)"
+            Read
+            Glob
+            Grep
+          prompt: |
+            /code-review
