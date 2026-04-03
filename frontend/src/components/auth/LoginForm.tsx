@@ -148,7 +148,7 @@ export default function LoginForm() {
         </div>
         <h1 style={styles.h1}>StarRocks Permission Manager</h1>
         <p style={styles.subtitle}>
-          StarRocks 클러스터에 연결하여 권한을 시각적으로 관리합니다
+          Connect to a StarRocks cluster to visually explore permissions
         </p>
 
         {error && <div style={styles.error}>{error}</div>}

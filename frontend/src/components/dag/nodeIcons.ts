@@ -1,6 +1,6 @@
 // =====================================================================
 // Node icons & colors - loaded from /icons/ SVG files
-// 아이콘을 변경하려면 frontend/icons/ 폴더의 SVG 파일을 교체하세요
+// To change icons, replace the SVG files in frontend/icons/
 // =====================================================================
 
 // SVG files imported as URL strings (Vite handles this)

@@ -6,15 +6,17 @@ A web UI for visually exploring user, role, and object permission structures acr
 
 ## Features
 
-- **DAG Visualization** — Three views for intuitive permission structure exploration
-  - **Object Hierarchy**: SYSTEM → CATALOG → DATABASE → Tables / Views / MVs / Functions
-  - **Role Map**: root → built-in roles → custom roles → users (hierarchy)
-  - **Full Permission Graph**: Users → Roles → Objects (color-coded by privilege type)
+- **4 Tabs** for different exploration modes
+  - **Object Hierarchy**: SYSTEM → CATALOG → DATABASE → Tables / Views / MVs / Functions (top-to-bottom DAG)
+  - **Role Map**: root → built-in roles → custom roles → users (top-to-bottom DAG)
+  - **Permission Details**: Search a user or role → view inheritance DAG + privilege list
+  - **Full Permission Graph**: Users → Roles → Objects unified view (coming soon)
 - **Object-Centric View** — Click an object to see a permission matrix (Users/Roles × Privilege types, Direct/Inherited)
-- **User-Centric View** — Click a user to see accessible objects in a tree (Catalog → DB → Table)
-- **Details Tab** — Type-specific metadata (based on INFORMATION_SCHEMA, External Catalog compatible)
+- **User-Centric View** — Click a user to see assigned roles and accessible objects tree (Catalog → DB → Table)
+- **Details Tab** — Type-specific metadata per object (INFORMATION_SCHEMA based, External Catalog compatible)
+- **Sidebar Navigation** — Searchable hierarchy browser with hide/show toggles per node
 - **Filters** — Toggle node types via checkboxes, Groups Only mode
-- **Export** — Download DAG as PNG/JPG image
+- **Export** — Download DAG as high-resolution PNG
 - **Customization** — Replace SVG icons and app logo
 
 ## Screenshots
@@ -24,6 +26,9 @@ A web UI for visually exploring user, role, and object permission structures acr
 
 ### Role Map
 ![Role Map](docs/screenshots/role-map.png)
+
+### Permission Details
+![Permission Details](docs/screenshots/permission-details.png)
 
 ### Object Detail — Permission Matrix
 ![Permission Matrix](docs/screenshots/permission-matrix.png)
@@ -55,7 +60,10 @@ A web UI for visually exploring user, role, and object permission structures acr
         ├── api/         # API clients
         ├── stores/      # Zustand state management
         └── components/
+            ├── auth/    # Login form
+            ├── layout/  # Header, Sidebar (search + hierarchy browser)
             ├── dag/     # React Flow + dagre layout
+            ├── tabs/    # Permission Details tab
             └── panels/  # Object / User / Group detail panels
 ```
 
@@ -125,6 +133,36 @@ server {
     }
 }
 ```
+
+## UI Guide
+
+### Tabs
+
+| Tab | Description | Sidebar | Detail Panel |
+|-----|-------------|---------|--------------|
+| **Object Hierarchy** | Visualizes SYSTEM → Catalog → DB → Objects as a top-down DAG. Group containers bundle tables/views/MVs/functions per database. | Hierarchy browser + search + hide/show toggles | Object privileges, table metadata |
+| **Role Map** | Shows role inheritance (root → built-in → custom → users) as a top-down DAG. | Role/user list + hide/show toggles | Role privileges, user details |
+| **Permission Details** | Search for a user or role to view their inheritance DAG and full privilege list side-by-side. | Hidden | Integrated into tab |
+| **Full Permission Graph** | Combined users → roles → objects graph with privilege-colored edges. | — | Coming soon |
+
+### Sidebar
+
+- **Search**: Debounced full-text search across objects, users, and roles. Click a result to navigate and highlight in the DAG.
+- **Hierarchy Browser**: Expandable catalog → database → type group → objects tree.
+- **Hide/Show Toggles**: Eye icon on each item to show/hide individual nodes in the DAG.
+
+### Detail Panels
+
+- **Object Panel**: Two sub-tabs — *Privileges* (permission matrix showing grantees × privilege types with Direct/Inherited indicators) and *Details* (columns, DDL, partition/distribution info).
+- **User Panel**: Assigned roles, accessible objects tree grouped by catalog → database.
+- **Group Panel**: Paginated list of child objects within a container node.
+
+### Node Interaction
+
+- **Click a node**: Highlights the full ancestor + descendant chain. Opens the detail panel.
+- **Click background**: Clears highlight.
+- **Type filter checkboxes**: Toggle visibility of node types (table, view, mv, function, user, role).
+- **Groups Only**: Shows only group container nodes, hiding individual objects.
 
 ## API Usage
 
@@ -270,6 +308,7 @@ Uses `information_schema.tables` and `columns` as the primary data source, makin
 | Version | Feature |
 |---------|---------|
 | v1.0 | Read-only permission exploration & visualization (current) |
+| v1.1 | Full Permission Graph tab |
 | v2.0 | GRANT/REVOKE UI, Bulk Operations |
 | v2.1 | Audit Log, Permission Diff |
 | v2.2 | Alert Rules, Export (CSV/PDF) |

@@ -128,7 +128,7 @@ SHOW MATERIALIZED VIEWS [FROM database];
 | DAG-ROLE-04 | Show the number of assigned users on role nodes |
 | DAG-ROLE-05 | Clicking a role displays detailed privileges for that role |
 
-#### 3.2.3 Full Permission Graph View
+#### 3.2.3 Full Permission Graph View(Will Be)
 | ID | Requirement |
 |----|------------|
 | DAG-FULL-01 | Display users → roles → objects in a single unified graph |
