@@ -77,7 +77,7 @@ export default function PermissionDetailTab() {
   useEffect(() => {
     if (!selected) return;
     const controller = new AbortController();
-    setEntity({ dag: null, dagLoading: true, grants: [], grantsLoading: true });
+    setEntity({ dag: null, dagLoading: true, grants: [], grantsLoading: true }); // eslint-disable-line react-compiler/react-compiler -- sync reset on selection change
 
     getInheritanceDag(selected.name, selected.type, controller.signal)
       .then((dag) => setEntity((prev) => ({ ...prev, dag, dagLoading: false })))
