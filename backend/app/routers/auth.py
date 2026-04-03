@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.dependencies import get_credentials, get_db
 from app.models.schemas import LoginRequest, LoginResponse, UserInfo
@@ -9,7 +9,9 @@ from app.services.starrocks_client import (
     get_connection,
     test_connection,
 )
-from app.utils.session import create_token
+from app.utils.session import create_token, decode_token
+from app.utils.session_store import session_store
+from app.utils.sql_safety import safe_name
 from app.utils.cache import clear_all_caches
 
 router = APIRouter()
@@ -22,7 +24,8 @@ def login(req: LoginRequest):
     if not test_connection(req.host, req.port, req.username, req.password):
         raise HTTPException(status_code=401, detail="Failed to connect to StarRocks")
 
-    token = create_token(req.host, req.port, req.username, req.password)
+    session_id = session_store.create(req.host, req.port, req.username, req.password)
+    token = create_token(session_id, req.username)
 
     # Clear all server-side caches on new login (connection may differ)
     clear_all_caches()
@@ -78,7 +81,7 @@ def _get_user_roles(conn, username: str) -> list[str]:
     except Exception:
         # sys views may not be available; try SHOW GRANTS parsing
         try:
-            rows = execute_query(conn, f"SHOW GRANTS FOR '{username}'")
+            rows = execute_query(conn, f"SHOW GRANTS FOR '{safe_name(username)}'")
             for row in rows:
                 for val in row.values():
                     s = str(val)
@@ -89,6 +92,20 @@ def _get_user_roles(conn, username: str) -> list[str]:
     if not roles:
         roles.add("public")
     return sorted(roles)
+
+
+@router.post("/logout")
+def logout(authorization: str = Header(None)):
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+        try:
+            payload = decode_token(token)
+            session_id = payload.get("session_id")
+            if session_id:
+                session_store.delete(session_id)
+        except Exception:
+            pass
+    return {"detail": "Logged out"}
 
 
 def _get_default_role(conn) -> str | None:

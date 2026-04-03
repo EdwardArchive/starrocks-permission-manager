@@ -53,7 +53,7 @@ A web UI for visually exploring user, role, and object permission structures acr
 │       ├── routers/     # auth, objects, privileges, roles, dag, search
 │       ├── services/    # starrocks_client, search, user_service
 │       ├── models/      # Pydantic schemas
-│       └── utils/       # JWT session, cache
+│       └── utils/       # JWT session, session store, cache
 └── frontend/            # React 18 + Vite + TypeScript
     ├── icons/           # Customizable SVG icons (single source of truth)
     └── src/
@@ -225,6 +225,7 @@ npm run build
 | `test_roles.py` | 3 | Roles, hierarchy DAG, role users |
 | `test_dag.py` | 5 | Object-hierarchy, role-hierarchy, full, filters, schema |
 | `test_search.py` | 5 | Search API |
+| `test_session_store.py` | 6 | Server-side session store |
 | `test_integration.py` | 12 | Full API against real StarRocks (skipped without env vars) |
 
 ## Environment Variables
@@ -252,12 +253,13 @@ npm run build
 | Frontend | React 18, Vite, TypeScript, React Flow (@xyflow/react), dagre, Tailwind CSS, Zustand |
 | Deployment | Docker (multi-stage build) |
 
-## API Endpoints (17)
+## API Endpoints (18)
 
 ### Authentication
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/auth/login` | Login with StarRocks credentials → JWT |
+| POST | `/api/auth/logout` | Invalidate server-side session |
 | GET | `/api/auth/me` | Current user info + roles |
 
 ### Objects

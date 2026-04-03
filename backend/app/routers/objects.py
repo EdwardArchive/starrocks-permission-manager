@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.config import settings
 from app.dependencies import get_db
+from app.utils.sql_safety import safe_identifier
 from app.models.schemas import CatalogItem, ColumnInfo, DatabaseItem, ObjectItem, TableDetail
 from app.services.starrocks_client import execute_query, execute_single
 
@@ -96,7 +97,7 @@ def list_tables(
 
     # Functions
     try:
-        fn_rows = execute_query(conn, f"SHOW FUNCTIONS FROM `{database}`")
+        fn_rows = execute_query(conn, f"SHOW FUNCTIONS FROM `{safe_identifier(database)}`")
         for r in fn_rows:
             name = r.get("Signature") or r.get("signature") or ""
             if "(" in name:
@@ -170,7 +171,7 @@ def get_table_detail(
     # DDL (works across most catalogs)
     ddl = None
     try:
-        ddl_row = execute_single(conn, f"SHOW CREATE TABLE `{database}`.`{table}`")
+        ddl_row = execute_single(conn, f"SHOW CREATE TABLE `{safe_identifier(database)}`.`{safe_identifier(table)}`")
         if ddl_row:
             # StarRocks returns different column names depending on object type
             ddl = (

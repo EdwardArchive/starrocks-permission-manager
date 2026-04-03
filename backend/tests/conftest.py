@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from app.dependencies import get_credentials, get_db
 from app.main import app
 from app.utils.session import create_token
+from app.utils.session_store import session_store
 
 # ── Test credentials ──
 TEST_HOST = "test-sr-host"
@@ -24,7 +25,8 @@ TEST_PASS = "test_pass"
 
 
 def make_token() -> str:
-    return create_token(TEST_HOST, TEST_PORT, TEST_USER, TEST_PASS)
+    session_id = session_store.create(TEST_HOST, TEST_PORT, TEST_USER, TEST_PASS)
+    return create_token(session_id, TEST_USER)
 
 
 # ── Fake StarRocks connection ──
