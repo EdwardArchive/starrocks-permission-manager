@@ -110,10 +110,32 @@ def test_real_me(real_client, real_header):
 
 
 @skip_no_sr
-def test_real_logout(real_client, real_header):
-    resp = real_client.post("/api/auth/logout", headers=real_header)
-    assert resp.status_code == 200
-    assert resp.json()["detail"] == "Logged out"
+def test_real_logout():
+    """Logout should invalidate the session — subsequent API calls must fail.
+    Uses a raw TestClient without dependency overrides so session store is used."""
+    with TestClient(app) as client:
+        # Login to get a fresh token (goes through real session store)
+        resp = client.post(
+            "/api/auth/login",
+            json={"host": SR_HOST, "port": SR_PORT, "username": SR_USER, "password": SR_PASS},
+        )
+        assert resp.status_code == 200
+        token = resp.json()["token"]
+        header = {"Authorization": f"Bearer {token}"}
+
+        # Verify token works before logout
+        resp = client.get("/api/auth/me", headers=header)
+        assert resp.status_code == 200
+
+        # Logout — destroys server-side session
+        resp = client.post("/api/auth/logout", headers=header)
+        assert resp.status_code == 200
+        assert resp.json()["detail"] == "Logged out"
+
+        # Token should now be invalid — session destroyed
+        resp = client.get("/api/auth/me", headers=header)
+        assert resp.status_code == 401, f"Expected 401 after logout, got {resp.status_code}"
+        print("\n  Logout verified: token rejected after session invalidation")
 
 
 # ── Objects ──
