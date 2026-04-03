@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect -- setState in effects is intentional; React 18+ auto-batches these calls */
 import { useEffect, useState, useCallback } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { getInheritanceDag } from "../../api/dag";
@@ -77,7 +78,7 @@ export default function PermissionDetailTab() {
   useEffect(() => {
     if (!selected) return;
     const controller = new AbortController();
-    setEntity({ dag: null, dagLoading: true, grants: [], grantsLoading: true }); // eslint-disable-line react-compiler/react-compiler -- sync reset on selection change
+    setEntity({ dag: null, dagLoading: true, grants: [], grantsLoading: true });
 
     getInheritanceDag(selected.name, selected.type, controller.signal)
       .then((dag) => setEntity((prev) => ({ ...prev, dag, dagLoading: false })))

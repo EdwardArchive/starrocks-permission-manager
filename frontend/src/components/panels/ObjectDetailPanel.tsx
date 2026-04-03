@@ -40,7 +40,7 @@ export default function ObjectDetailPanel() {
 
   useEffect(() => {
     if (!selectedNode) return;
-    setTab("privileges"); // eslint-disable-line react-compiler/react-compiler -- sync reset on node change is intentional
+    setTab("privileges");
     setData({ grants: [], detail: null, loadedNodeId: null, loadingPrivs: true, loadingDetail: false });
 
     const nodeId = selectedNode.id;
@@ -58,7 +58,6 @@ export default function ObjectDetailPanel() {
     if (tab !== "details" || !selectedNode) return;
     if (data.detail) return;
     if (!parsed.catalog || !parsed.database || !parsed.name) return;
-    // eslint-disable-next-line react-compiler/react-compiler -- async setState is batched in React 18+
     setData((prev) => ({ ...prev, loadingDetail: true }));
     getTableDetail(parsed.catalog, parsed.database, parsed.name)
       .then((detail) => setData((prev) => ({ ...prev, detail, loadingDetail: false })))
