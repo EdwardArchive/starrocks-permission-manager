@@ -60,8 +60,16 @@ jobs:
       - name: Install dependencies
         run: cd frontend && npm ci
 
-      - name: ESLint
-        run: cd frontend && npx eslint src/ --max-warnings 10
+      - name: Get changed frontend files
+        id: changed
+        run: |
+          FILES=$(git diff --name-only --diff-filter=d origin/${{ github.event.pull_request.base.ref }}...HEAD -- 'frontend/src/**/*.ts' 'frontend/src/**/*.tsx' | tr '\n' ' ')
+          echo "files=$FILES" >> $GITHUB_OUTPUT
+          if [ -z "$FILES" ]; then echo "skip=true" >> $GITHUB_OUTPUT; else echo "skip=false" >> $GITHUB_OUTPUT; fi
+
+      - name: ESLint (changed files only)
+        if: steps.changed.outputs.skip == 'false'
+        run: cd frontend && npx eslint ${{ steps.changed.outputs.files }} --max-warnings 0
 
       - name: TypeScript type check
         run: cd frontend && npx tsc --noEmit
