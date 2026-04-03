@@ -22,6 +22,7 @@ from app.dependencies import get_credentials, get_db
 from app.main import app
 from app.services.starrocks_client import get_connection
 from app.utils.session import create_token
+from app.utils.session_store import session_store
 
 SR_HOST = os.environ.get("SR_TEST_HOST", "")
 SR_PORT = int(os.environ.get("SR_TEST_PORT", "9030"))
@@ -61,7 +62,8 @@ def real_client():
 
 @pytest.fixture()
 def real_token():
-    return create_token(SR_HOST, SR_PORT, SR_USER, SR_PASS)
+    session_id = session_store.create(SR_HOST, SR_PORT, SR_USER, SR_PASS)
+    return create_token(session_id, SR_USER)
 
 
 @pytest.fixture()

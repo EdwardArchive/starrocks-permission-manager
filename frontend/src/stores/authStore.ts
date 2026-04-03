@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { UserInfo } from "../types";
+import { logoutApi } from "../api/auth";
 
 interface AuthState {
   token: string | null;
@@ -21,6 +22,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ token, user, isLoggedIn: true });
   },
   logout: () => {
+    logoutApi().catch(() => {});
     localStorage.removeItem("sr_token");
     set({ token: null, user: null, isLoggedIn: false, connectionInfo: null });
   },

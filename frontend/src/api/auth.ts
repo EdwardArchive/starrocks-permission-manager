@@ -8,3 +8,6 @@ export const login = (data: LoginRequest) =>
   });
 
 export const getMe = () => apiFetch<UserInfo>("/auth/me");
+
+export const logoutApi = () =>
+  apiFetch<{ detail: string }>("/auth/logout", { method: "POST" });

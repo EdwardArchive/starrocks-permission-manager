@@ -25,11 +25,11 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   ├── requirements.txt       # Python dependencies
 │   ├── pytest.ini             # Test config
 │   ├── app/
-│   │   ├── main.py            # FastAPI entry, CORS, router registration
+│   │   ├── main.py            # FastAPI entry, CORS, router registration, lifespan
 │   │   ├── config.py          # pydantic-settings (env: SRPM_*)
 │   │   ├── dependencies.py    # JWT auth + DB connection DI
 │   │   ├── routers/
-│   │   │   ├── auth.py        # POST /api/auth/login, GET /api/auth/me
+│   │   │   ├── auth.py        # POST /api/auth/login|logout, GET /api/auth/me
 │   │   │   ├── objects.py     # GET /api/objects/catalogs|databases|tables|table-detail
 │   │   │   ├── privileges.py  # GET /api/privileges/user/{name}|effective|object
 │   │   │   ├── roles.py       # GET /api/roles|hierarchy|{name}/users
@@ -41,6 +41,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   │   └── schemas.py     # Pydantic request/response models
 │   │   └── utils/
 │   │       ├── session.py     # JWT encode/decode
+│   │       ├── session_store.py # In-memory server-side session store
 │   │       └── cache.py       # Central cache clearing utility
 │   ├── tests/
 │   │   ├── conftest.py        # FakeConnection mock + fixtures
@@ -51,6 +52,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   ├── test_roles.py      # 3 tests
 │   │   ├── test_dag.py        # 5 tests
 │   │   ├── test_search.py     # 5 tests
+│   │   ├── test_session_store.py # 6 tests
 │   │   └── test_integration.py # 12 tests (requires real SR + env vars)
 │   └── API.md                 # Detailed API documentation
 └── frontend/
@@ -85,7 +87,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 - **Frontend**: React 18, Vite, TypeScript, React Flow (@xyflow/react), @dagrejs/dagre, Tailwind CSS, Zustand
 
 ## Key Design Decisions
-- **Auth**: StarRocks credentials → JWT token. Per-user StarRocks connection for automatic permission control.
+- **Auth**: StarRocks credentials → server-side session + JWT token (session_id only, no passwords in token). Per-user StarRocks connection for automatic permission control.
 - **Data Source**: `information_schema` as primary (External Catalog compatible). Internal-only data supplemented via `partitions_meta` + DDL parsing. Unsupported sections gracefully skipped.
 - **DAG**: 3 views (Object Hierarchy TB, Role Hierarchy TB, Full Permission Graph LR).
 - **Icons**: `frontend/icons/` is the single source. React loads SVGs via `?raw` import. `colorizedSvg()` synchronizes with node colors.
@@ -118,7 +120,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001
 ```bash
 cd backend
 source venv/bin/activate
-python -m pytest tests/ -v                    # Unit tests (33 tests, mock)
+python -m pytest tests/ -v                    # Unit tests (45 tests, mock)
 python -m pytest tests/test_integration.py -v -s  # Integration tests (requires SR env vars)
 ```
 
@@ -135,12 +137,13 @@ python -m pytest tests/test_integration.py -v -s  # Integration tests (requires 
 
 ## API Auth Flow
 1. `POST /api/auth/login` with `{host, port, username, password}`
-2. Returns JWT token containing encrypted credentials
+2. Credentials stored in server-side session; returns JWT token containing session_id
 3. All subsequent requests: `Authorization: Bearer <token>`
-4. Backend opens per-request StarRocks connection using token credentials
+4. Backend resolves session_id → credentials, opens per-request StarRocks connection
+5. `POST /api/auth/logout` invalidates the server-side session
 
-## API Endpoints (17)
-- Auth: login, me
+## API Endpoints (18)
+- Auth: login, logout, me
 - Objects: catalogs, databases, tables, table-detail
 - Privileges: user/{name}, user/{name}/effective, object
 - Roles: list, hierarchy, {name}/users

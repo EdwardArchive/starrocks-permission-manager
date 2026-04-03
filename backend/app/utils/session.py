@@ -7,12 +7,10 @@ import jwt
 from app.config import settings
 
 
-def create_token(host: str, port: int, username: str, password: str) -> str:
+def create_token(session_id: str, username: str) -> str:
     payload = {
-        "host": host,
-        "port": port,
+        "session_id": session_id,
         "username": username,
-        "password": password,
         "exp": int(time.time()) + settings.jwt_expire_minutes * 60,
     }
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
