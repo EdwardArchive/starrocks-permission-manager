@@ -42,6 +42,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   └── utils/
 │   │       ├── session.py     # JWT encode/decode
 │   │       ├── session_store.py # In-memory server-side session store
+│   │       ├── sql_safety.py  # SQL injection protection (safe_name, safe_identifier)
 │   │       └── cache.py       # Central cache clearing utility
 │   ├── tests/
 │   │   ├── conftest.py        # FakeConnection mock + fixtures
@@ -53,6 +54,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   ├── test_dag.py        # 5 tests
 │   │   ├── test_search.py     # 5 tests
 │   │   ├── test_session_store.py # 6 tests
+│   │   ├── test_sql_safety.py # 8 tests
 │   │   └── test_integration.py # 12 tests (requires real SR + env vars)
 │   └── API.md                 # Detailed API documentation
 └── frontend/
@@ -120,7 +122,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8001
 ```bash
 cd backend
 source venv/bin/activate
-python -m pytest tests/ -v                    # Unit tests (45 tests, mock)
+python -m pytest tests/ -v                    # Unit tests (57 tests, mock)
 python -m pytest tests/test_integration.py -v -s  # Integration tests (requires SR env vars)
 ```
 
