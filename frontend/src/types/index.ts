@@ -1,4 +1,4 @@
-// ── Auth ──
+// ── Auth types ──
 export interface LoginRequest {
   host: string;
   port: number;

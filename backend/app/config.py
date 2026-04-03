@@ -2,6 +2,8 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    """Application settings loaded from SRPM_* environment variables."""
+
     app_name: str = "StarRocks Permission Manager"
     jwt_secret: str = "change-me-in-production-use-env-var"
     jwt_algorithm: str = "HS256"
