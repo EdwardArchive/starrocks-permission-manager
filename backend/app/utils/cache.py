@@ -1,4 +1,5 @@
 """Central cache clearing utility."""
+
 from __future__ import annotations
 
 

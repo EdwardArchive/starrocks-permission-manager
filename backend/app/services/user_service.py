@@ -1,4 +1,5 @@
 """Shared helpers for user/role discovery from StarRocks system tables."""
+
 from __future__ import annotations
 
 import threading
@@ -29,7 +30,9 @@ def get_all_users(conn) -> set[str]:
 
     # Primary: users from role_edges
     try:
-        rows = execute_query(conn, "SELECT DISTINCT TO_USER FROM sys.role_edges WHERE TO_USER IS NOT NULL AND TO_USER != ''")
+        rows = execute_query(
+            conn, "SELECT DISTINCT TO_USER FROM sys.role_edges WHERE TO_USER IS NOT NULL AND TO_USER != ''"
+        )
         for r in rows:
             u = r.get("TO_USER") or r.get("to_user") or ""
             if u:
@@ -39,9 +42,7 @@ def get_all_users(conn) -> set[str]:
 
     # Supplement: users from grants_to_users (role_edges may be incomplete)
     try:
-        grant_user_rows = execute_query(
-            conn, "SELECT DISTINCT GRANTEE FROM sys.grants_to_users"
-        )
+        grant_user_rows = execute_query(conn, "SELECT DISTINCT GRANTEE FROM sys.grants_to_users")
         for r in grant_user_rows:
             u = r.get("GRANTEE") or r.get("grantee") or ""
             if u:

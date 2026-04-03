@@ -5,6 +5,7 @@ StarRocks SHOW commands (SHOW GRANTS FOR, SHOW FUNCTIONS FROM, etc.)
 do not support parameterized queries. These helpers sanitize user input
 before interpolation to prevent SQL injection.
 """
+
 from __future__ import annotations
 
 import re

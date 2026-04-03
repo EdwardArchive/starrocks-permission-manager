@@ -8,6 +8,7 @@ NOTE: This store is per-process. In multi-worker deployments (e.g. gunicorn
 with multiple workers), sessions are not shared across workers. Use sticky
 sessions at the load balancer or limit to a single worker if needed.
 """
+
 from __future__ import annotations
 
 import threading

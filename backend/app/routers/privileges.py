@@ -117,8 +117,10 @@ def get_object_privileges(
         # Database-level grants (OBJECT_NAME IS NULL) apply to all tables in that DB
         clauses, params = [], []
         if catalog:
-            clauses.append("OBJECT_CATALOG = %s"); params.append(catalog)
-        clauses.append("OBJECT_DATABASE = %s"); params.append(database)
+            clauses.append("OBJECT_CATALOG = %s")
+            params.append(catalog)
+        clauses.append("OBJECT_DATABASE = %s")
+        params.append(database)
         clauses.append("OBJECT_NAME IS NULL")
         filters.append((" AND ".join(clauses), tuple(params)))
     if database and catalog:
@@ -135,7 +137,7 @@ def get_object_privileges(
                 for r in rows:
                     results.extend(_row_to_grants(r, gtype))
             except Exception:
-                pass
+                logger.debug("Failed to query %s for object privileges", table_name)
 
     # Supplement: builtin roles may not appear in sys.grants_to_roles
     # but have grants visible via SHOW GRANTS
@@ -148,12 +150,13 @@ def get_object_privileges(
                 if _grant_matches_object(g, catalog, database, name):
                     results.append(g)
         except Exception:
-            pass
+            logger.debug("Failed to get SHOW GRANTS for builtin role %s", role)
 
     # Supplement: builtin users (root) via SHOW GRANTS
     found_users = {r.grantee for r in results if r.grantee_type == "USER"}
     try:
         from app.services.user_service import get_all_users
+
         all_users = get_all_users(conn)
         for u in all_users - found_users:
             try:
@@ -162,16 +165,27 @@ def get_object_privileges(
                     if _grant_matches_object(g, catalog, database, name):
                         results.append(g)
             except Exception:
-                pass
+                logger.debug("Failed to get SHOW GRANTS for user %s", u)
     except Exception:
-        pass
+        logger.debug("Failed to get all users for privilege supplement")
 
     # Supplement: roles and users who have access via role inheritance
     # Build a map: role → set of privilege_types on this object (direct grants only)
     # Exclude SYSTEM-level grants (REPOSITORY, NODE, etc.) as they don't apply to specific objects
-    _SYSTEM_ONLY_PRIVS = {"REPOSITORY", "NODE", "BLACKLIST", "FILE", "OPERATE", "PLUGIN",
-                          "CREATE RESOURCE GROUP", "CREATE RESOURCE", "CREATE EXTERNAL CATALOG",
-                          "CREATE GLOBAL FUNCTION", "CREATE STORAGE VOLUME", "SECURITY"}
+    _SYSTEM_ONLY_PRIVS = {
+        "REPOSITORY",
+        "NODE",
+        "BLACKLIST",
+        "FILE",
+        "OPERATE",
+        "PLUGIN",
+        "CREATE RESOURCE GROUP",
+        "CREATE RESOURCE",
+        "CREATE EXTERNAL CATALOG",
+        "CREATE GLOBAL FUNCTION",
+        "CREATE STORAGE VOLUME",
+        "SECURITY",
+    }
     role_privs: dict[str, set[str]] = {}
     for r in results:
         if r.grantee_type == "ROLE":
@@ -183,7 +197,9 @@ def get_object_privileges(
         # 1. Find intermediate roles that inherit from roles with privileges
         #    e.g. platform_admin inherits db_admin → platform_admin also has access
         try:
-            all_role_edges = execute_query(conn, "SELECT FROM_ROLE, TO_ROLE FROM sys.role_edges WHERE TO_ROLE IS NOT NULL AND TO_ROLE != ''")
+            all_role_edges = execute_query(
+                conn, "SELECT FROM_ROLE, TO_ROLE FROM sys.role_edges WHERE TO_ROLE IS NOT NULL AND TO_ROLE != ''"
+            )
         except Exception:
             all_role_edges = []
 
@@ -226,22 +242,25 @@ def get_object_privileges(
                     continue
                 existing_roles.add(role)
                 for priv in privs:
-                    results.append(PrivilegeGrant(
-                        grantee=role,
-                        grantee_type="ROLE",
-                        object_catalog=sample.object_catalog,
-                        object_database=sample.object_database,
-                        object_name=sample.object_name,
-                        object_type=sample.object_type,
-                        privilege_type=priv,
-                        is_grantable=False,
-                        source=source,
-                    ))
+                    results.append(
+                        PrivilegeGrant(
+                            grantee=role,
+                            grantee_type="ROLE",
+                            object_catalog=sample.object_catalog,
+                            object_database=sample.object_database,
+                            object_name=sample.object_name,
+                            object_type=sample.object_type,
+                            privilege_type=priv,
+                            is_grantable=False,
+                            source=source,
+                        )
+                    )
                 # Also add to role_privs so user BFS can find them
                 role_privs[role] = privs
 
         # 2. Find users who have access via role inheritance
         from app.services.user_service import get_all_users
+
         all_users = get_all_users(conn)
         existing_users = {r.grantee for r in results if r.grantee_type == "USER"}
 
@@ -274,24 +293,35 @@ def get_object_privileges(
                 existing_users.add(user)
                 sample = next((r for r in results if (r.object_type or "").upper() == "TABLE"), results[0])
                 for priv, source_role in user_privs.items():
-                    results.append(PrivilegeGrant(
-                        grantee=user,
-                        grantee_type="USER",
-                        object_catalog=sample.object_catalog,
-                        object_database=sample.object_database,
-                        object_name=sample.object_name,
-                        object_type=sample.object_type,
-                        privilege_type=priv,
-                        is_grantable=False,
-                        source=source_role,
-                    ))
+                    results.append(
+                        PrivilegeGrant(
+                            grantee=user,
+                            grantee_type="USER",
+                            object_catalog=sample.object_catalog,
+                            object_database=sample.object_database,
+                            object_name=sample.object_name,
+                            object_type=sample.object_type,
+                            privilege_type=priv,
+                            is_grantable=False,
+                            source=source_role,
+                        )
+                    )
 
     # Filter out grants that don't actually apply to the queried object
     # e.g. DB-level DDL (CREATE TABLE, CREATE MV) and SYSTEM grants (REPOSITORY, NODE)
     if name:
         # Querying a specific table/view — only keep grants that affect table-level access
-        _DB_ONLY_PRIVS = {"CREATE TABLE", "CREATE VIEW", "CREATE FUNCTION", "CREATE MATERIALIZED VIEW",
-                          "CREATE PIPE", "CREATE MASKING POLICY", "CREATE ROW ACCESS POLICY", "ALTER", "DROP"}
+        _DB_ONLY_PRIVS = {
+            "CREATE TABLE",
+            "CREATE VIEW",
+            "CREATE FUNCTION",
+            "CREATE MATERIALIZED VIEW",
+            "CREATE PIPE",
+            "CREATE MASKING POLICY",
+            "CREATE ROW ACCESS POLICY",
+            "ALTER",
+            "DROP",
+        }
         filtered = []
         for r in results:
             otype = (r.object_type or "").upper()
@@ -307,7 +337,15 @@ def get_object_privileges(
     seen = set()
     unique = []
     for r in results:
-        key = (r.grantee, r.grantee_type, r.object_type, r.object_catalog or "", r.object_database or "", r.object_name or "", r.privilege_type)
+        key = (
+            r.grantee,
+            r.grantee_type,
+            r.object_type,
+            r.object_catalog or "",
+            r.object_database or "",
+            r.object_name or "",
+            r.privilege_type,
+        )
         if key not in seen:
             seen.add(key)
             unique.append(r)
@@ -358,6 +396,7 @@ def _grant_matches_object(g: PrivilegeGrant, catalog: str | None, database: str 
 
 def _row_to_grants(r: dict, grantee_type: str) -> list[PrivilegeGrant]:
     """Convert a DB row to PrivilegeGrant(s). Splits comma-separated PRIVILEGE_TYPE."""
+
     def _get(keys):
         for k in keys:
             if k in r and r[k] is not None:
@@ -400,15 +439,13 @@ def _build_object_filter(catalog, database, name):
 def _get_user_roles(conn, username: str) -> list[str]:
     roles = []
     try:
-        rows = execute_query(
-            conn, "SELECT FROM_ROLE FROM sys.role_edges WHERE TO_USER = %s", (username,)
-        )
+        rows = execute_query(conn, "SELECT FROM_ROLE FROM sys.role_edges WHERE TO_USER = %s", (username,))
         for r in rows:
             role = r.get("FROM_ROLE") or r.get("ROLE_NAME")
             if role:
                 roles.append(role)
     except Exception:
-        pass
+        logger.debug("Failed to query role_edges for user %s", username)
     return roles
 
 
@@ -425,7 +462,7 @@ def _get_parent_roles(conn, role_name: str) -> list[str]:
             if p:
                 parents.append(p)
     except Exception:
-        pass
+        logger.debug("Failed to query parent roles for role %s", role_name)
     return parents
 
 
@@ -530,13 +567,15 @@ def _parse_grant_statement(stmt: str, grantee: str, grantee_type: str) -> list[P
     for priv in privs:
         priv = priv.strip()
         if priv:
-            grants.append(PrivilegeGrant(
-                grantee=grantee,
-                grantee_type=grantee_type,
-                object_catalog=catalog,
-                object_database=database,
-                object_name=name,
-                object_type=obj_type,
-                privilege_type=priv,
-            ))
+            grants.append(
+                PrivilegeGrant(
+                    grantee=grantee,
+                    grantee_type=grantee_type,
+                    object_catalog=catalog,
+                    object_database=database,
+                    object_name=name,
+                    object_type=obj_type,
+                    privilege_type=priv,
+                )
+            )
     return grants

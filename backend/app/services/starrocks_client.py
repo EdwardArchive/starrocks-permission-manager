@@ -3,7 +3,8 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from threading import Semaphore
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import mysql.connector
 
@@ -27,9 +28,7 @@ def get_connection(host: str, port: int, username: str, password: str):
         conn.close()
 
 
-def execute_query(
-    conn, sql: str, params: tuple | None = None
-) -> list[dict[str, Any]]:
+def execute_query(conn, sql: str, params: tuple | None = None) -> list[dict[str, Any]]:
     cursor = conn.cursor(dictionary=True)
     cursor.execute(sql, params or ())
     rows = cursor.fetchall()
@@ -37,9 +36,7 @@ def execute_query(
     return rows
 
 
-def execute_single(
-    conn, sql: str, params: tuple | None = None
-) -> dict[str, Any] | None:
+def execute_single(conn, sql: str, params: tuple | None = None) -> dict[str, Any] | None:
     rows = execute_query(conn, sql, params)
     return rows[0] if rows else None
 

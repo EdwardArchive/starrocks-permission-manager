@@ -40,7 +40,7 @@ def search_users_roles(
                 seen_users.add(name)
                 results.append({"name": name, "type": "user", "catalog": "", "database": "", "path": f"user:{name}"})
     except Exception:
-        pass
+        logger.debug("Failed to search users from sys.role_edges")
 
     try:
         rows = execute_query(
@@ -54,7 +54,7 @@ def search_users_roles(
                 seen_users.add(name)
                 results.append({"name": name, "type": "user", "catalog": "", "database": "", "path": f"user:{name}"})
     except Exception:
-        pass
+        logger.debug("Failed to search users from sys.grants_to_users")
 
     try:
         rows = execute_query(conn, "SHOW ROLES")
@@ -63,7 +63,7 @@ def search_users_roles(
             if q.lower() in name.lower():
                 results.append({"name": name, "type": "role", "catalog": "", "database": "", "path": f"role:{name}"})
     except Exception:
-        pass
+        logger.debug("Failed to search roles via SHOW ROLES")
 
     seen = set()
     unique = []
@@ -107,14 +107,12 @@ def search(
                 seen_users.add(name)
                 results.append({"name": name, "type": "user", "catalog": "", "database": "", "path": f"user:{name}"})
     except Exception:
-        pass
+        logger.debug("Failed to search users from sys.role_edges in full search")
     # 0b. From grants_to_users
     try:
         rows = execute_query(
             conn,
-            "SELECT DISTINCT GRANTEE FROM sys.grants_to_users "
-            "WHERE GRANTEE LIKE %s "
-            "LIMIT %s",
+            "SELECT DISTINCT GRANTEE FROM sys.grants_to_users WHERE GRANTEE LIKE %s LIMIT %s",
             (keyword, limit),
         )
         for r in rows:
@@ -123,7 +121,7 @@ def search(
                 seen_users.add(name)
                 results.append({"name": name, "type": "user", "catalog": "", "database": "", "path": f"user:{name}"})
     except Exception:
-        pass
+        logger.debug("Failed to search users from sys.grants_to_users in full search")
     # 0c. Roles
     try:
         rows = execute_query(conn, "SHOW ROLES")
@@ -132,7 +130,7 @@ def search(
             if q.lower() in name.lower():
                 results.append({"name": name, "type": "role", "catalog": "", "database": "", "path": f"role:{name}"})
     except Exception:
-        pass
+        logger.debug("Failed to search roles via SHOW ROLES in full search")
 
     # 1. Get catalog list
     catalogs = []
@@ -164,9 +162,11 @@ def search(
                 name = r.get("TABLE_NAME") or r.get("table_name") or ""
                 ttype = (r.get("TABLE_TYPE") or r.get("table_type") or "").upper()
                 obj_type = "view" if "VIEW" in ttype else "table"
-                cat_results.append({"name": name, "type": obj_type, "catalog": cat, "database": db, "path": f"{cat}.{db}.{name}"})
+                cat_results.append(
+                    {"name": name, "type": obj_type, "catalog": cat, "database": db, "path": f"{cat}.{db}.{name}"}
+                )
         except Exception:
-            pass
+            logger.debug("Failed to search tables in catalog %s", cat)
         try:
             rows = execute_query(
                 c,
@@ -177,9 +177,11 @@ def search(
             )
             for r in rows:
                 name = r.get("SCHEMA_NAME") or r.get("schema_name") or ""
-                cat_results.append({"name": name, "type": "database", "catalog": cat, "database": "", "path": f"{cat}.{name}"})
+                cat_results.append(
+                    {"name": name, "type": "database", "catalog": cat, "database": "", "path": f"{cat}.{name}"}
+                )
         except Exception:
-            pass
+            logger.debug("Failed to search databases in catalog %s", cat)
         return cat_results
 
     # 3. Search default_catalog first on main connection (fast, no extra connection)
@@ -187,16 +189,17 @@ def search(
         try:
             results.extend(_search_catalog(conn, "default_catalog", keyword, limit))
         except Exception:
-            pass
+            logger.debug("Failed to search default_catalog")
         # Restore for subsequent sys.* queries
         try:
             execute_query(conn, "SET CATALOG `default_catalog`")
         except Exception:
-            pass
+            logger.debug("Failed to restore catalog context to default_catalog")
 
     # 4. Search remaining catalogs in parallel (skip failed ones)
     other_cats = [c for c in catalogs if c != "default_catalog" and c not in _failed_catalogs]
     if other_cats:
+
         def _make_search_fn(cat: str, kw: str, lim: int):
             def fn(c):
                 t = time.monotonic()
@@ -207,6 +210,7 @@ def search(
                     if time.monotonic() - t > 3:
                         _failed_catalogs[cat] = True
                     return []
+
             return fn
 
         tasks = [(cat, _make_search_fn(cat, keyword, limit)) for cat in other_cats]

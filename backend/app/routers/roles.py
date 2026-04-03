@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 
 from cachetools import TTLCache
@@ -7,11 +8,12 @@ from fastapi import APIRouter, Depends
 
 from app.config import settings
 from app.dependencies import get_db
-from app.models.schemas import DAGEdge, DAGGraph, DAGNode, RoleEdge, RoleItem
+from app.models.schemas import DAGEdge, DAGGraph, DAGNode, RoleItem
 from app.services.starrocks_client import execute_query
 from app.services.user_service import get_all_users
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 BUILTIN_ROLES = {"root", "db_admin", "user_admin", "cluster_admin", "security_admin", "public"}
 
@@ -58,7 +60,7 @@ def get_role_hierarchy(conn=Depends(get_db)):
             if parent and (child or user):
                 edges_data.append({"parent": parent, "child": child, "user": user})
     except Exception:
-        pass
+        logger.debug("Failed to query sys.role_edges for role hierarchy")
 
     # Collect all users from role_edges + grants_to_users
     all_users = get_all_users(conn)
@@ -94,10 +96,14 @@ def get_role_hierarchy(conn=Depends(get_db)):
     # Role→Role inheritance from role_edges
     for e in edges_data:
         if e["parent"] and e["child"]:
-            dag_edges.append(DAGEdge(
-                id=f"e{edge_idx}", source=f"r_{e['parent']}", target=f"r_{e['child']}",
-                edge_type="inheritance",
-            ))
+            dag_edges.append(
+                DAGEdge(
+                    id=f"e{edge_idx}",
+                    source=f"r_{e['parent']}",
+                    target=f"r_{e['child']}",
+                    edge_type="inheritance",
+                )
+            )
             edge_idx += 1
 
     # Role→User assignments from role_edges
@@ -106,10 +112,14 @@ def get_role_hierarchy(conn=Depends(get_db)):
         if e["user"] and e["parent"]:
             key = (e["parent"], e["user"])
             if key not in added_user_edges:
-                dag_edges.append(DAGEdge(
-                    id=f"e{edge_idx}", source=f"r_{e['parent']}", target=f"u_{e['user']}",
-                    edge_type="assignment",
-                ))
+                dag_edges.append(
+                    DAGEdge(
+                        id=f"e{edge_idx}",
+                        source=f"r_{e['parent']}",
+                        target=f"u_{e['user']}",
+                        edge_type="assignment",
+                    )
+                )
                 added_user_edges.add(key)
                 edge_idx += 1
 
@@ -118,15 +128,18 @@ def get_role_hierarchy(conn=Depends(get_db)):
         if u not in user_roles and "public" in roles:
             key = ("public", u)
             if key not in added_user_edges:
-                dag_edges.append(DAGEdge(
-                    id=f"e{edge_idx}", source="r_public", target=f"u_{u}",
-                    edge_type="assignment",
-                ))
+                dag_edges.append(
+                    DAGEdge(
+                        id=f"e{edge_idx}",
+                        source="r_public",
+                        target=f"u_{u}",
+                        edge_type="assignment",
+                    )
+                )
                 added_user_edges.add(key)
                 edge_idx += 1
 
     return DAGGraph(nodes=nodes, edges=dag_edges)
-
 
 
 @router.get("/inheritance-dag", response_model=DAGGraph)
@@ -142,8 +155,7 @@ def get_inheritance_dag(name: str = "", type: str = "user", conn=Depends(get_db)
 
     def add_node(nid: str, label: str, ntype: str, color: str, highlight: bool = False):
         if nid not in node_ids:
-            nodes.append(DAGNode(id=nid, label=label, type=ntype, color=color,
-                                 metadata={"highlight": highlight}))
+            nodes.append(DAGNode(id=nid, label=label, type=ntype, color=color, metadata={"highlight": highlight}))
             node_ids.add(nid)
 
     def add_edge(src: str, tgt: str, etype: str):
@@ -182,9 +194,13 @@ def get_inheritance_dag(name: str = "", type: str = "user", conn=Depends(get_db)
                 add_edge(f"r_{p}", f"r_{current}", "inheritance")
     else:
         # Role: show selected role + parent chain + child roles + assigned users
-        add_node(f"r_{name}", name, "role",
-                 "#ef4444" if name == "root" else "#6366f1" if name in BUILTIN_ROLES else "#f97316",
-                 highlight=True)
+        add_node(
+            f"r_{name}",
+            name,
+            "role",
+            "#ef4444" if name == "root" else "#6366f1" if name in BUILTIN_ROLES else "#f97316",
+            highlight=True,
+        )
 
         # BFS upward
         queue = [name]
@@ -203,7 +219,8 @@ def get_inheritance_dag(name: str = "", type: str = "user", conn=Depends(get_db)
         # Get child roles (roles that inherit from this role)
         try:
             rows = execute_query(
-                conn, "SELECT TO_ROLE FROM sys.role_edges WHERE FROM_ROLE = %s AND TO_ROLE IS NOT NULL AND TO_ROLE != ''",
+                conn,
+                "SELECT TO_ROLE FROM sys.role_edges WHERE FROM_ROLE = %s AND TO_ROLE IS NOT NULL AND TO_ROLE != ''",
                 (name,),
             )
             for r in rows:
@@ -213,12 +230,13 @@ def get_inheritance_dag(name: str = "", type: str = "user", conn=Depends(get_db)
                     add_node(f"r_{child}", child, "role", color)
                     add_edge(f"r_{name}", f"r_{child}", "inheritance")
         except Exception:
-            pass
+            logger.debug("Failed to query child roles for role %s", name)
 
         # Get users assigned to this role
         try:
             rows = execute_query(
-                conn, "SELECT TO_USER FROM sys.role_edges WHERE FROM_ROLE = %s AND TO_USER IS NOT NULL AND TO_USER != ''",
+                conn,
+                "SELECT TO_USER FROM sys.role_edges WHERE FROM_ROLE = %s AND TO_USER IS NOT NULL AND TO_USER != ''",
                 (name,),
             )
             for r in rows:
@@ -227,7 +245,7 @@ def get_inheritance_dag(name: str = "", type: str = "user", conn=Depends(get_db)
                     add_node(f"u_{u}", u, "user", "#0ea5e9")
                     add_edge(f"r_{name}", f"u_{u}", "assignment")
         except Exception:
-            pass
+            logger.debug("Failed to query users assigned to role %s", name)
 
     return DAGGraph(nodes=nodes, edges=edges)
 
@@ -246,5 +264,5 @@ def get_role_users(role_name: str, conn=Depends(get_db)):
             if u:
                 users.append(u)
     except Exception:
-        pass
+        logger.debug("Failed to query users for role %s", role_name)
     return users
