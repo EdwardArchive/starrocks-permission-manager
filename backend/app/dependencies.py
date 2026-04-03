@@ -14,7 +14,7 @@ def get_credentials(authorization: str = Header(...)) -> dict:
     try:
         payload = decode_token(token)
     except Exception:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise HTTPException(status_code=401, detail="Invalid or expired token") from None
 
     session_id = payload.get("session_id")
     if not session_id:

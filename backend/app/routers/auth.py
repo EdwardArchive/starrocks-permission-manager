@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, Header, HTTPException
 
 from app.dependencies import get_credentials, get_db
@@ -15,6 +17,7 @@ from app.utils.sql_safety import safe_name
 from app.utils.cache import clear_all_caches
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 BUILTIN_ROLES = {"root", "db_admin", "user_admin", "cluster_admin", "security_admin", "public"}
 
@@ -88,7 +91,7 @@ def _get_user_roles(conn, username: str) -> list[str]:
                     if s.startswith("GRANT") and "TO ROLE" not in s:
                         continue
         except Exception:
-            pass
+            logger.debug("Failed to parse SHOW GRANTS for user %s", username)
     if not roles:
         roles.add("public")
     return sorted(roles)
@@ -104,7 +107,7 @@ def logout(authorization: str = Header(None)):
             if session_id:
                 session_store.delete(session_id)
         except Exception:
-            pass
+            logger.debug("Failed to decode token during logout")
     return {"detail": "Logged out"}
 
 
@@ -114,5 +117,5 @@ def _get_default_role(conn) -> str | None:
         if row:
             return str(row[0].get("r") or row[0].get("CURRENT_ROLE()") or "")
     except Exception:
-        pass
+        logger.debug("Failed to get default role via CURRENT_ROLE()")
     return None

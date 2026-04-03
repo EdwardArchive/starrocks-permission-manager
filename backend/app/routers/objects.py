@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import threading
 
@@ -13,6 +14,7 @@ from app.models.schemas import CatalogItem, ColumnInfo, DatabaseItem, ObjectItem
 from app.services.starrocks_client import execute_query, execute_single
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # ── Compiled regex patterns ──
 _RE_HASH_DIST = re.compile(r"DISTRIBUTED BY HASH\(([^)]+)\)\s*BUCKETS\s*(\d+)", re.I)
@@ -75,13 +77,12 @@ def list_tables(
     try:
         mv_rows = execute_query(
             conn,
-            "SELECT TABLE_NAME FROM information_schema.materialized_views "
-            "WHERE TABLE_SCHEMA = %s",
+            "SELECT TABLE_NAME FROM information_schema.materialized_views WHERE TABLE_SCHEMA = %s",
             (database,),
         )
         mvs = {r.get("TABLE_NAME") or r.get("table_name") for r in mv_rows}
     except Exception:
-        pass
+        logger.debug("Failed to query materialized views for %s.%s", catalog, database)
 
     result = []
     for r in rows:
@@ -104,7 +105,7 @@ def list_tables(
                 name = name.split("(")[0]
             result.append(ObjectItem(name=name, object_type="FUNCTION", catalog=catalog, database=database))
     except Exception:
-        pass
+        logger.debug("Failed to list functions for %s.%s", catalog, database)
 
     return result
 
@@ -117,6 +118,7 @@ def get_table_detail(
     conn=Depends(get_db),
 ):
     import logging
+
     logger = logging.getLogger("objects")
 
     # Set catalog and database context
@@ -132,13 +134,16 @@ def get_table_detail(
     # Common: information_schema.tables
     tbl = {}
     try:
-        tbl = execute_single(
-            conn,
-            "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, TABLE_ROWS, DATA_LENGTH, "
-            "CREATE_TIME, UPDATE_TIME, TABLE_COMMENT "
-            "FROM information_schema.tables WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
-            (database, table),
-        ) or {}
+        tbl = (
+            execute_single(
+                conn,
+                "SELECT TABLE_NAME, TABLE_TYPE, ENGINE, TABLE_ROWS, DATA_LENGTH, "
+                "CREATE_TIME, UPDATE_TIME, TABLE_COMMENT "
+                "FROM information_schema.tables WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
+                (database, table),
+            )
+            or {}
+        )
     except Exception as e:
         logger.warning(f"information_schema.tables query failed: {e}")
 
@@ -209,8 +214,7 @@ def get_table_detail(
     try:
         pcount = execute_single(
             conn,
-            "SELECT COUNT(*) as cnt FROM information_schema.partitions_meta "
-            "WHERE DB_NAME = %s AND TABLE_NAME = %s",
+            "SELECT COUNT(*) as cnt FROM information_schema.partitions_meta WHERE DB_NAME = %s AND TABLE_NAME = %s",
             (database, table),
         )
         if pcount:

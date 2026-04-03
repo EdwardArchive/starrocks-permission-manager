@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import time
-from functools import lru_cache
+import logging
 
 from cachetools import TTLCache
 from fastapi import APIRouter, Depends, Query
@@ -14,20 +13,32 @@ from app.services.user_service import get_all_users
 from app.utils.sql_safety import safe_identifier
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # Server-side TTL cache for DAG results
 _dag_cache: TTLCache = TTLCache(maxsize=64, ttl=settings.cache_ttl_seconds)
 
 NODE_COLORS = {
-    "system": "#6b7280", "catalog": "#3b82f6", "database": "#22c55e",
-    "table": "#6366f1", "view": "#a855f7", "mv": "#f59e0b",
-    "function": "#14b8a6", "user": "#0ea5e9", "role": "#f97316",
+    "system": "#6b7280",
+    "catalog": "#3b82f6",
+    "database": "#22c55e",
+    "table": "#6366f1",
+    "view": "#a855f7",
+    "mv": "#f59e0b",
+    "function": "#14b8a6",
+    "user": "#0ea5e9",
+    "role": "#f97316",
 }
 
 PRIV_EDGE_TYPES = {
-    "SELECT": "select", "INSERT": "insert", "DELETE": "delete",
-    "ALTER": "alter", "DROP": "drop", "UPDATE": "update",
-    "USAGE": "usage", "ALL": "select",
+    "SELECT": "select",
+    "INSERT": "insert",
+    "DELETE": "delete",
+    "ALTER": "alter",
+    "DROP": "drop",
+    "UPDATE": "update",
+    "USAGE": "usage",
+    "ALL": "select",
 }
 
 
@@ -53,7 +64,9 @@ def get_object_hierarchy(
             meta["catalog"] = catalog
         if database:
             meta["database"] = database
-        nodes.append(DAGNode(id=nid, label=label, type=ntype, color=NODE_COLORS.get(ntype), metadata=meta or None, **kw))
+        nodes.append(
+            DAGNode(id=nid, label=label, type=ntype, color=NODE_COLORS.get(ntype), metadata=meta or None, **kw)
+        )
 
     def _edge(src, tgt, etype="hierarchy"):
         edges.append(DAGEdge(id=f"e{edge_idx[0]}", source=src, target=tgt, edge_type=etype))
@@ -81,6 +94,7 @@ def get_object_hierarchy(
             execute_query(conn, f"SET CATALOG `{cat}`")
             db_rows = execute_query(conn, "SHOW DATABASES")
         except Exception:
+            logger.debug("Failed to list databases for catalog %s", cat)
             continue
 
         _SKIP_DBS = {"information_schema", "_statistics_", "sys"}
@@ -105,6 +119,7 @@ def get_object_hierarchy(
             try:
                 execute_query(conn, f"SET CATALOG `{cat_name}`")
             except Exception:
+                logger.debug("Failed to set catalog %s for object loading", cat_name)
                 continue
 
             # All tables/views in one query
@@ -119,10 +134,12 @@ def get_object_hierarchy(
             # All MVs in one query
             all_mvs: set[tuple[str, str]] = set()
             try:
-                mv_rows = execute_query(conn, "SELECT TABLE_SCHEMA, TABLE_NAME FROM information_schema.materialized_views")
+                mv_rows = execute_query(
+                    conn, "SELECT TABLE_SCHEMA, TABLE_NAME FROM information_schema.materialized_views"
+                )
                 all_mvs = {(r.get("TABLE_SCHEMA") or "", r.get("TABLE_NAME") or "") for r in mv_rows}
             except Exception:
-                pass
+                logger.debug("Failed to query materialized views for catalog %s", cat_name)
 
             # Group by DB → type
             db_objects: dict[str, dict[str, list[str]]] = {}
@@ -152,13 +169,16 @@ def get_object_hierarchy(
                             sig = sig.split("(")[0]
                         fns.append(sig)
                     return fns
+
                 return fn
 
             fn_tasks = [(db_n, _make_fn_task(cat_name, db_n)) for db_n in db_names]
             fn_results = parallel_queries(credentials, fn_tasks)
             for db_name, fns in fn_results.items():
                 if fns:
-                    db_objects.setdefault(db_name, {"table": [], "view": [], "mv": [], "function": []})["function"] = fns
+                    db_objects.setdefault(db_name, {"table": [], "view": [], "mv": [], "function": []})["function"] = (
+                        fns
+                    )
 
             # Build nodes/edges
             for db_name in db_names:
@@ -176,7 +196,14 @@ def get_object_hierarchy(
                     if not items:
                         continue
                     gid = f"g_{cat_name}_{db_name}_{obj_type}"
-                    _add(gid, f"{group_label} ({len(items)})", obj_type, catalog=cat_name, database=db_name, node_role="group")
+                    _add(
+                        gid,
+                        f"{group_label} ({len(items)})",
+                        obj_type,
+                        catalog=cat_name,
+                        database=db_name,
+                        node_role="group",
+                    )
                     _edge(did, gid)
                     for item_name in items:
                         oid = f"o_{cat_name}_{db_name}_{item_name}"
@@ -194,6 +221,7 @@ def get_role_hierarchy(conn=Depends(get_db)):
     if cache_key in _dag_cache:
         return _dag_cache[cache_key]
     from app.routers.roles import get_role_hierarchy as _get
+
     result = _get(conn=conn)
     _dag_cache[cache_key] = result
     return result
@@ -273,6 +301,7 @@ def get_full_graph(catalog: str = Query(None), conn=Depends(get_db)):
         try:
             grant_rows = execute_query(conn, f"SELECT * FROM {table}")
         except Exception:
+            logger.debug("Failed to query grants from %s", table)
             continue
 
         for g in grant_rows:
@@ -288,10 +317,18 @@ def get_full_graph(catalog: str = Query(None), conn=Depends(get_db)):
 
             # Map object type to node type
             type_map = {
-                "TABLE": "table", "VIEW": "view", "MATERIALIZED VIEW": "mv",
-                "DATABASE": "database", "CATALOG": "catalog", "FUNCTION": "function",
-                "SYSTEM": "system", "RESOURCE GROUP": "system", "RESOURCE": "system",
-                "USER": "user", "STORAGE VOLUME": "system", "GLOBAL FUNCTION": "function",
+                "TABLE": "table",
+                "VIEW": "view",
+                "MATERIALIZED VIEW": "mv",
+                "DATABASE": "database",
+                "CATALOG": "catalog",
+                "FUNCTION": "function",
+                "SYSTEM": "system",
+                "RESOURCE GROUP": "system",
+                "RESOURCE": "system",
+                "USER": "user",
+                "STORAGE VOLUME": "system",
+                "GLOBAL FUNCTION": "function",
             }
             ntype = type_map.get(obj_type, "system")
 
