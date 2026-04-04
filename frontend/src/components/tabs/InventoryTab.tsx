@@ -177,7 +177,7 @@ export default function InventoryTab() {
       catalog: (row.catalog as string) || "default_catalog",
       objectType: objType,
     });
-  }, [subTab]);
+  }, [subTab, setSelected]);
 
   if (loading || error || !data) {
     return (
