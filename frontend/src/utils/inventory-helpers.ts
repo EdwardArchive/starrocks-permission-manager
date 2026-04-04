@@ -57,7 +57,7 @@ export const PRIV_BY_TYPE: Record<string, string[]> = {
   system: ["GRANT", "NODE", "OPERATE", "REPOSITORY", "BLACKLIST", "FILE", "PLUGIN", "CREATE RESOURCE GROUP", "CREATE RESOURCE", "CREATE EXTERNAL CATALOG", "CREATE STORAGE VOLUME", "SECURITY"],
   "global function": ["USAGE", "DROP"],
   warehouse: ["USAGE", "ALTER", "DROP"],
-  "resource group": ["ALTER", "DROP"],
+  "resource group": ["CREATE RESOURCE GROUP", "ALTER", "DROP"],
   "storage volume": ["USAGE", "ALTER", "DROP"],
   resource: ["USAGE", "ALTER", "DROP"],
   pipe: ["CREATE PIPE", "ALTER", "DROP"],

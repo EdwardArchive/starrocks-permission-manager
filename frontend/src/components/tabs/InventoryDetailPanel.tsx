@@ -497,7 +497,10 @@ function UserRolesPane({ userName }: { userName: string }) {
 /* ── System Object Privileges ── */
 function SysObjectPrivilegesPane({ item }: { item: SelectedItem }) {
   const objType = OBJECT_TYPE_MAP[item.tab] || item.tab.toUpperCase();
-  return <ObjectPrivilegesPane catalog={item.catalog || ""} database={item.database || ""} name={item.name} objectType={objType} />;
+  // System objects (RESOURCE GROUP, WAREHOUSE, STORAGE VOLUME, etc.) are not scoped to catalog/database
+  const NON_SCOPED = new Set(["RESOURCE GROUP", "WAREHOUSE", "STORAGE VOLUME", "RESOURCE", "GLOBAL FUNCTION"]);
+  const noScope = NON_SCOPED.has(objType);
+  return <ObjectPrivilegesPane catalog={noScope ? "" : (item.catalog || "")} database={noScope ? "" : (item.database || "")} name={item.name} objectType={objType} />;
 }
 
 /* ── System Object Info ── */

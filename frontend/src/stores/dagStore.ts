@@ -42,7 +42,7 @@ const defaultTypes: Record<string, boolean> = {
 };
 
 export const useDagStore = create<DagState>((set) => ({
-  activeTab: (window.location.hash.replace("#", "") as TabId) || "obj",
+  activeTab: (window.location.hash.replace("#", "").split("/")[0] as TabId) || "obj",
   setActiveTab: (tab) => { window.location.hash = tab; set({ activeTab: tab }); },
 
   activeCatalog: "default_catalog",

@@ -25,7 +25,7 @@ TEST_PASS = "test_pass"
 
 
 def make_token() -> str:
-    session_id = session_store.create(TEST_HOST, TEST_PORT, TEST_USER, TEST_PASS)
+    session_id = session_store.create(TEST_HOST, TEST_PORT, TEST_USER, TEST_PASS, is_admin=True)
     return create_token(session_id, TEST_USER)
 
 
@@ -113,6 +113,10 @@ DEFAULT_QUERY_MAP: dict[str, list[dict[str, Any]]] = {
     "SELECT FROM_ROLE FROM sys.role_edges WHERE TO_ROLE": [],
     "SELECT TO_ROLE FROM sys.role_edges WHERE FROM_ROLE": [
         {"TO_ROLE": "analyst_role"},
+    ],
+    "SELECT TO_ROLE, TO_USER FROM sys.role_edges WHERE FROM_ROLE": [
+        {"TO_ROLE": "analyst_role", "TO_USER": None},
+        {"TO_ROLE": None, "TO_USER": "analyst_kim"},
     ],
     "SELECT TO_USER FROM sys.role_edges WHERE FROM_ROLE": [
         {"TO_USER": "analyst_kim"},
@@ -269,6 +273,7 @@ def client(mock_db, query_map):
             "port": TEST_PORT,
             "username": TEST_USER,
             "password": TEST_PASS,
+            "is_admin": True,
         }
 
     def _override_db():

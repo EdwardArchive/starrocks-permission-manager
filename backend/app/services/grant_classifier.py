@@ -12,7 +12,7 @@ from app.models.schemas import PrivilegeGrant
 # Module-level constants
 # ══════════════════════════════════════════════════════════════════════
 
-_BUILTIN_ROLES = frozenset({"root", "db_admin", "user_admin", "cluster_admin", "security_admin"})
+_BUILTIN_ROLES = frozenset({"root", "db_admin", "user_admin", "cluster_admin", "security_admin", "public"})
 
 _NON_OBJECT_TYPES = frozenset(
     {
@@ -122,7 +122,20 @@ def classify_grant(g: PrivilegeGrant, q: ObjectQuery) -> Relevance:
     # ── SYSTEM handling ──
     if q.is_system:
         return Relevance.EXACT if otype == "SYSTEM" else Relevance.IRRELEVANT
-    if otype == "SYSTEM" or g.privilege_type.upper() in _SYSTEM_ONLY_PRIVS:
+    priv_upper = g.privilege_type.upper()
+    # Allow CREATE X privileges to pass through to their target type queries
+    _SYSTEM_CREATE_MAP = {
+        "CREATE RESOURCE GROUP": "RESOURCE GROUP",
+        "CREATE RESOURCE": "RESOURCE",
+        "CREATE EXTERNAL CATALOG": "CATALOG",
+        "CREATE STORAGE VOLUME": "STORAGE VOLUME",
+        "CREATE WAREHOUSE": "WAREHOUSE",
+        "CREATE GLOBAL FUNCTION": "GLOBAL FUNCTION",
+    }
+    system_create_target = _SYSTEM_CREATE_MAP.get(priv_upper)
+    if system_create_target and q.type_upper == system_create_target:
+        return Relevance.PARENT_SCOPE
+    if otype == "SYSTEM" or priv_upper in _SYSTEM_ONLY_PRIVS:
         return Relevance.IRRELEVANT
 
     # ── Non-object types (USER, RESOURCE GROUP, etc.) ──

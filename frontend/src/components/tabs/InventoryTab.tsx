@@ -27,9 +27,40 @@ export default function InventoryTab() {
   const [pageSize, setPageSize] = useState(25);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
-  const [subTab, setSubTab] = useState<AllTab>("roles");
+  // Restore subTab + selected from URL hash: #myperm/subTab/name?db=...&cat=...
+  const [subTab, setSubTabRaw] = useState<AllTab>(() => {
+    const parts = window.location.hash.replace("#", "").split("/");
+    if (parts[0] === "myperm" && parts[1]) return parts[1] as AllTab;
+    return "roles";
+  });
   const [filter, setFilter] = useState("");
-  const [selected, setSelected] = useState<SelectedItem | null>(null);
+  const [selected, setSelectedRaw] = useState<SelectedItem | null>(() => {
+    const hash = window.location.hash.replace("#", "");
+    const [, tab, ...rest] = hash.split("/");
+    if (!tab || !rest.length) return null;
+    const name = decodeURIComponent(rest.join("/").split("?")[0]);
+    if (!name) return null;
+    const sp = new URLSearchParams(hash.includes("?") ? hash.split("?")[1] : "");
+    return { tab: tab as SubTab, name, database: sp.get("db") || undefined, catalog: sp.get("cat") || undefined, objectType: sp.get("ot") || undefined };
+  });
+
+  // Sync subTab + selected to URL hash
+  const setSubTab = useCallback((t: AllTab) => {
+    setSubTabRaw(t);
+    setSelectedRaw(null);
+    window.location.hash = `myperm/${t}`;
+  }, []);
+  const setSelected = useCallback((item: SelectedItem | null) => {
+    setSelectedRaw(item);
+    if (!item) { window.location.hash = `myperm/${subTab}`; return; }
+    let h = `myperm/${item.tab}/${encodeURIComponent(item.name)}`;
+    const params: string[] = [];
+    if (item.database) params.push(`db=${encodeURIComponent(item.database)}`);
+    if (item.catalog) params.push(`cat=${encodeURIComponent(item.catalog)}`);
+    if (item.objectType) params.push(`ot=${encodeURIComponent(item.objectType)}`);
+    if (params.length) h += `?${params.join("&")}`;
+    window.location.hash = h;
+  }, [subTab]);
 
   /* Load data on mount */
   useEffect(() => {

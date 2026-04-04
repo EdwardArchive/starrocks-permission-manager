@@ -353,6 +353,10 @@ Uses `information_schema.tables` and `columns` as the primary data source, makin
 |---------|---------|
 | v1.0 | Read-only permission exploration & visualization (current) |
 | v1.1 | Full Permission Graph tab, Resource Group/Storage Volume/Resource support |
+| v1.2 | SQL Privilege Checker — Permission Focus 탭에서 SQL 쿼리 입력 시 선택된 유저/역할의 실행 권한 검증 (SELECT, INSERT, CREATE TABLE 등 → 필요 권한 ✅/❌ 표시) |
+| v2.0 | GRANT/REVOKE UI, Bulk Operations |
+| v2.1 | Audit Log, Permission Diff |
+| v2.2 | Alert Rules, Export (CSV/PDF) |
 
 ## License
 

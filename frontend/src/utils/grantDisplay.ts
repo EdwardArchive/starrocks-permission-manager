@@ -21,12 +21,14 @@ export interface GrantDisplayGroup {
 
 // ── Constants ──
 
-const SCOPE_ORDER = ["SYSTEM", "CATALOG", "DATABASE", "TABLE", "VIEW", "MATERIALIZED VIEW", "FUNCTION", "RESOURCE", "STORAGE VOLUME", "USER", "WAREHOUSE"];
+const SCOPE_ORDER = ["SYSTEM", "CATALOG", "DATABASE", "TABLE", "VIEW", "MATERIALIZED VIEW", "FUNCTION", "RESOURCE", "STORAGE VOLUME", "RESOURCE GROUP", "GLOBAL FUNCTION", "WAREHOUSE", "PIPE", "TASK", "USER"];
 
 const SCOPE_ICON_MAP: Record<string, string> = {
   SYSTEM: "system", CATALOG: "catalog", DATABASE: "database",
   TABLE: "table", VIEW: "view", "MATERIALIZED VIEW": "mv",
-  FUNCTION: "function",
+  FUNCTION: "function", WAREHOUSE: "system", "RESOURCE GROUP": "system",
+  "STORAGE VOLUME": "system", RESOURCE: "system", "GLOBAL FUNCTION": "function",
+  PIPE: "system", TASK: "system",
 };
 
 const CHILD_TYPES = new Set(["TABLE", "VIEW", "MATERIALIZED VIEW", "FUNCTION"]);
@@ -69,6 +71,7 @@ export function buildGrantDisplay(
 
   // Mirror CREATE privileges to their target object type section
   // e.g. "CREATE VIEW ON DATABASE" → also show in VIEW section
+  // DB-level CREATE → mirror to target type section
   const _CREATE_SCOPE_MAP: Record<string, string> = {
     "CREATE TABLE": "TABLE",
     "CREATE VIEW": "VIEW",
@@ -76,16 +79,42 @@ export function buildGrantDisplay(
     "CREATE FUNCTION": "FUNCTION",
     "CREATE PIPE": "PIPE",
   };
+  // SYSTEM-level CREATE → mirror to target type section
+  const _SYSTEM_CREATE_MAP: Record<string, string> = {
+    "CREATE RESOURCE GROUP": "RESOURCE GROUP",
+    "CREATE RESOURCE": "RESOURCE",
+    "CREATE EXTERNAL CATALOG": "CATALOG",
+    "CREATE STORAGE VOLUME": "STORAGE VOLUME",
+    "CREATE WAREHOUSE": "WAREHOUSE",
+    "CREATE GLOBAL FUNCTION": "GLOBAL FUNCTION",
+  };
   for (const g of grants) {
     const priv = g.privilege_type?.toUpperCase() || "";
-    const targetScope = _CREATE_SCOPE_MAP[priv];
-    if (!targetScope) continue;
-    const dbName = g.object_database || "ALL DATABASES";
-    const displayName = `CREATE in ${dbName}`;
-    (groups[targetScope] ??= []);
-    const existing = groups[targetScope].find((x) => x.displayName === displayName);
-    if (!existing) {
-      groups[targetScope].push({ displayName, context: g.object_catalog || "", privs: [priv] });
+    const scope = g.object_type?.toUpperCase() || "";
+    // DB-level CREATE mirroring
+    const dbTarget = _CREATE_SCOPE_MAP[priv];
+    if (dbTarget) {
+      const dbName = g.object_database || "ALL DATABASES";
+      const displayName = `CREATE in ${dbName}`;
+      (groups[dbTarget] ??= []);
+      if (!groups[dbTarget].find((x) => x.displayName === displayName)) {
+        groups[dbTarget].push({ displayName, context: g.object_catalog || "", privs: [priv] });
+      }
+      continue;
+    }
+    // SYSTEM-level CREATE mirroring
+    if (scope === "SYSTEM") {
+      const sysTarget = _SYSTEM_CREATE_MAP[priv];
+      if (sysTarget) {
+        const displayName = "CREATE (system)";
+        (groups[sysTarget] ??= []);
+        const existing = groups[sysTarget].find((x) => x.displayName === displayName);
+        if (existing) {
+          if (!existing.privs.includes(priv)) existing.privs.push(priv);
+        } else {
+          groups[sysTarget].push({ displayName, context: "", privs: [priv] });
+        }
+      }
     }
   }
 
