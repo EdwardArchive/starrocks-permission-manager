@@ -14,6 +14,7 @@ from app.routers import (
     user_dag,
     user_objects,
     user_permissions,
+    user_privileges,
     user_roles,
     user_search,
 )
@@ -50,6 +51,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(user_objects.router, prefix="/api/user/objects", tags=["user-objects"])
 app.include_router(user_permissions.router, prefix="/api/user", tags=["user-permissions"])
 app.include_router(user_roles.router, prefix="/api/user/roles", tags=["user-roles"])
+app.include_router(user_privileges.router, prefix="/api/user/privileges", tags=["user-privileges"])
 app.include_router(user_dag.router, prefix="/api/user/dag", tags=["user-dag"])
 app.include_router(user_search.router, prefix="/api/user/search", tags=["user-search"])
 

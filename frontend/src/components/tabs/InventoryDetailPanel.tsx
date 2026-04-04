@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { type MyPermissionsResponse, getDatabases, getTableDetail, getTables } from "../../api/user";
-import { getRolePrivileges, getUserEffectivePrivileges } from "../../api/admin";
+import { getRolePrivileges, getUserEffectivePrivileges, getObjectPrivileges } from "../../api/user";
 import type { PrivilegeGrant, TableDetail, ObjectItem } from "../../types";
 import InlineIcon from "../common/InlineIcon";
 import GrantTreeView from "../common/GrantTreeView";
@@ -10,7 +10,7 @@ import {
   type SelectedItem,
 } from "../../utils/inventory-helpers";
 import { SectionLabel, Loader, TH, TD, MetaItem } from "./inventory-ui";
-import { ObjectPrivilegesPane } from "./PermissionMatrix";
+import { ObjectPrivilegesPane, PermissionMatrixView } from "./PermissionMatrix";
 
 /* ══════════════════════════════════════════════════════════════
    Detail Panel
@@ -151,7 +151,10 @@ export default function DetailPanel({ item, onClose, myData }: { item: SelectedI
             </p>
           </div>
         )}
-        {isSysObject && detailTab === "privileges" && item.tab !== "tasks" && (
+        {isSysObject && detailTab === "privileges" && item.tab === "pipes" && (
+          <PipePrivilegesPane item={item} />
+        )}
+        {isSysObject && detailTab === "privileges" && item.tab !== "tasks" && item.tab !== "pipes" && (
           <SysObjectPrivilegesPane item={item} />
         )}
         {isSysObject && detailTab === "info" && (
@@ -367,7 +370,7 @@ function RoleMembersPane({ roleName, myData }: { roleName: string; myData: MyPer
   const [apiState, setApiState] = useState<{ childRoles: string[]; users: string[]; loading: boolean }>({ childRoles: [], users: [], loading: true });
 
   useEffect(() => {
-    import("../../api/admin").then(({ getInheritanceDag }) =>
+    import("../../api/user").then(({ getInheritanceDag }) =>
       getInheritanceDag(roleName, "role")
         .then((dag) => {
           const childRoleIds = new Set(
@@ -485,6 +488,65 @@ function UserRolesPane({ userName }: { userName: string }) {
             <span style={{ color: C.text1, fontWeight: 500 }}>{r}</span>
           </div>
         ))
+      )}
+    </div>
+  );
+}
+
+/* ── Pipe Privileges (with context explanation) ── */
+function PipePrivilegesPane({ item }: { item: SelectedItem }) {
+  const [state, setState] = useState<{ grants: PrivilegeGrant[]; loading: boolean }>({ grants: [], loading: true });
+
+  useEffect(() => {
+    getObjectPrivileges(undefined, undefined, item.name, "PIPE")
+      .then((grants) => setState({ grants, loading: false }))
+      .catch(() => setState({ grants: [], loading: false }));
+  }, [item.name]);
+
+  return (
+    <div style={{ padding: 16, fontSize: 12, color: C.text2, lineHeight: 1.8 }}>
+      {state.loading ? (
+        <Loader />
+      ) : state.grants.length > 0 ? (
+        <PermissionMatrixView grants={state.grants} objectType="PIPE" />
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, padding: "8px 12px", background: "rgba(59,130,246,0.06)", borderLeft: "2px solid #3b82f6", borderRadius: "0 4px 4px 0" }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: C.text1 }}>NO PRIVILEGE GRANTS FOUND</span>
+          </div>
+          <p style={{ marginBottom: 10, color: C.text2 }}>
+            This pipe is visible via <code style={{ color: C.accent, fontSize: 11 }}>information_schema.pipes</code>, but no explicit <code style={{ color: C.accent, fontSize: 11 }}>GRANT ... ON PIPE</code> was found for your roles.
+          </p>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginBottom: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                <th style={{ textAlign: "left", padding: "6px 8px", color: C.text3, fontSize: 10, textTransform: "uppercase" }}>Action</th>
+                <th style={{ textAlign: "left", padding: "6px 8px", color: C.text3, fontSize: 10, textTransform: "uppercase" }}>Required Privilege</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style={{ borderBottom: `1px solid ${C.border}22` }}>
+                <td style={{ padding: "6px 8px", color: C.text1, fontWeight: 500 }}>CREATE PIPE</td>
+                <td style={{ padding: "6px 8px" }}><code style={{ color: C.accent }}>CREATE PIPE</code> on the database + INSERT on target table</td>
+              </tr>
+              <tr style={{ borderBottom: `1px solid ${C.border}22` }}>
+                <td style={{ padding: "6px 8px", color: C.text1, fontWeight: 500 }}>ALTER / SUSPEND / RESUME</td>
+                <td style={{ padding: "6px 8px" }}>Owner or <code style={{ color: C.accent }}>ALTER</code> privilege on the pipe</td>
+              </tr>
+              <tr style={{ borderBottom: `1px solid ${C.border}22` }}>
+                <td style={{ padding: "6px 8px", color: C.text1, fontWeight: 500 }}>DROP PIPE</td>
+                <td style={{ padding: "6px 8px" }}>Owner or <code style={{ color: C.accent }}>DROP</code> privilege on the pipe</td>
+              </tr>
+              <tr style={{ borderBottom: `1px solid ${C.border}22` }}>
+                <td style={{ padding: "6px 8px", color: C.text1, fontWeight: 500 }}>View Pipes</td>
+                <td style={{ padding: "6px 8px" }}>All users via <code style={{ color: C.accent }}>information_schema.pipes</code></td>
+              </tr>
+            </tbody>
+          </table>
+          <p style={{ fontSize: 11, color: C.text3, fontStyle: "italic" }}>
+            Note: Pipes run under the creator&apos;s privilege context. The pipe is visible to all users, but only the owner or users with explicit GRANT can manage it.
+          </p>
+        </>
       )}
     </div>
   );

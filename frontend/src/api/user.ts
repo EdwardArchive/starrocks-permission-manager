@@ -3,7 +3,7 @@
  * Uses only INFORMATION_SCHEMA + SHOW commands.
  */
 import { apiFetch } from "./client";
-import type { CatalogItem, DAGGraph, DatabaseItem, ObjectItem, RoleItem, TableDetail } from "../types";
+import type { CatalogItem, DAGGraph, DatabaseItem, ObjectItem, PrivilegeGrant, RoleItem, TableDetail } from "../types";
 
 // ── Objects ──
 export const getCatalogs = () =>
@@ -40,8 +40,27 @@ export interface MyPermissionsResponse {
 export const getMyPermissions = (signal?: AbortSignal) =>
   apiFetch<MyPermissionsResponse>("/user/my-permissions", { signal });
 
+// ── Privileges ──
+export const getUserEffectivePrivileges = (username: string, signal?: AbortSignal) =>
+  apiFetch<PrivilegeGrant[]>(`/user/privileges/user/${encodeURIComponent(username)}/effective`, { signal });
+
+export const getRolePrivileges = (rolename: string, signal?: AbortSignal) =>
+  apiFetch<PrivilegeGrant[]>(`/user/privileges/role/${encodeURIComponent(rolename)}`, { signal });
+
+export const getObjectPrivileges = (catalog?: string, database?: string, name?: string, objectType?: string) => {
+  const params = new URLSearchParams();
+  if (catalog) params.set("catalog", catalog);
+  if (database) params.set("database", database);
+  if (name) params.set("name", name);
+  if (objectType) params.set("object_type", objectType);
+  return apiFetch<PrivilegeGrant[]>(`/user/privileges/object?${params}`);
+};
+
 // ── Roles ──
 export const getRoles = () => apiFetch<RoleItem[]>("/user/roles");
+
+export const getInheritanceDag = (name: string, type: "user" | "role", signal?: AbortSignal) =>
+  apiFetch<DAGGraph>(`/user/roles/inheritance-dag?name=${encodeURIComponent(name)}&type=${type}`, { signal });
 
 export const getRoleHierarchy = (signal?: AbortSignal) =>
   apiFetch<DAGGraph>("/user/dag/role-hierarchy", { signal });
