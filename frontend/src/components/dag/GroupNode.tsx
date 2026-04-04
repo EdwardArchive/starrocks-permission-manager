@@ -47,9 +47,9 @@ export default function GroupNode({ data }: NodeProps) {
         >
           {svg && (
             <span
-              style={{ width: 12, height: 12, display: "inline-flex" }}
+              style={{ width: 16, height: 16, display: "inline-flex" }}
               dangerouslySetInnerHTML={{
-                __html: svg.replace(/width="[^"]*"/, 'width="12"').replace(/height="[^"]*"/, 'height="12"'),
+                __html: svg.replace(/width="[^"]*"/, 'width="16"').replace(/height="[^"]*"/, 'height="16"'),
               }}
             />
           )}

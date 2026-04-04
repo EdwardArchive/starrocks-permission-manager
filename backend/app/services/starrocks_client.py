@@ -1,12 +1,14 @@
 from __future__ import annotations
-
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from threading import Semaphore
 from collections.abc import Callable
 from typing import Any
-
 import mysql.connector
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Max parallel DB connections per request (prevents connection flood)
 _MAX_PARALLEL = 10
@@ -57,19 +59,16 @@ def parallel_queries(
     timeout: float = 5.0,
 ) -> dict[str, Any]:
     """Execute multiple query tasks in parallel, each on its own connection.
-
     Args:
         credentials: {host, port, username, password} for creating connections
         tasks: list of (key, fn) where fn(conn) -> result
         max_workers: max threads (default: _MAX_PARALLEL)
         timeout: per-task timeout in seconds (default: 5s)
-
     Returns:
         dict of {key: result} for successful tasks (failed/timed-out tasks are skipped)
     """
     workers = min(max_workers or _MAX_PARALLEL, len(tasks), _MAX_PARALLEL)
     results: dict[str, Any] = {}
-
     conn_timeout = min(int(timeout), 3)
 
     def _run(key: str, fn: Callable):
@@ -97,7 +96,7 @@ def parallel_queries(
                     key, result = future.result(timeout=timeout)
                     results[key] = result
                 except Exception:
-                    pass
+                    logger.debug("Query failed, skipping")
         except TimeoutError:
             # Some tasks didn't finish in time — collect whatever completed
             for future in futures:
@@ -107,6 +106,5 @@ def parallel_queries(
                         if key not in results:
                             results[key] = result
                     except Exception:
-                        pass
-
+                        logger.debug("Parallel query failed for key %s", key if "key" in dir() else "?")
     return results

@@ -1,13 +1,14 @@
 """Shared helpers for user/role discovery from StarRocks system tables."""
 
 from __future__ import annotations
-
 import threading
-
 from cachetools import TTLCache
-
 from app.config import settings
 from app.services.starrocks_client import execute_query
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ── TTL cache for users ──
 _user_cache: TTLCache = TTLCache(maxsize=1, ttl=settings.cache_ttl_seconds)
@@ -16,7 +17,6 @@ _user_cache_lock = threading.Lock()
 
 def get_all_users(conn) -> set[str]:
     """Collect all known users from role_edges and grants_to_users.
-
     Returns a set of unique user names gathered from:
     - ``sys.role_edges`` (TO_USER column)
     - ``sys.grants_to_users`` (GRANTEE column, as supplementary source)
@@ -25,9 +25,7 @@ def get_all_users(conn) -> set[str]:
     with _user_cache_lock:
         if cache_key in _user_cache:
             return _user_cache[cache_key]
-
     users: set[str] = set()
-
     # Primary: users from role_edges
     try:
         rows = execute_query(
@@ -38,8 +36,7 @@ def get_all_users(conn) -> set[str]:
             if u:
                 users.add(u)
     except Exception:
-        pass
-
+        logger.debug("Query failed, skipping")
     # Supplement: users from grants_to_users (role_edges may be incomplete)
     try:
         grant_user_rows = execute_query(conn, "SELECT DISTINCT GRANTEE FROM sys.grants_to_users")
@@ -48,9 +45,7 @@ def get_all_users(conn) -> set[str]:
             if u:
                 users.add(u)
     except Exception:
-        pass
-
+        logger.debug("Query failed, skipping")
     with _user_cache_lock:
         _user_cache[cache_key] = users
-
     return users

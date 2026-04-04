@@ -5,3 +5,8 @@
 frontend/node_modules/
 frontend/dist/
 .env
+
+# Reports & mockups
+reports/
+frontend/mockup-*.html
+backup_temp/

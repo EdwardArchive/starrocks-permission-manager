@@ -5,8 +5,8 @@ import { getInheritanceDag } from "../../api/dag";
 import { getUserEffectivePrivileges, getRolePrivileges } from "../../api/privileges";
 import { searchUsersRoles } from "../../api/search";
 import InlineIcon from "../common/InlineIcon";
-import { getPrivColor } from "../../utils/privColors";
-import { SCOPE_ORDER, SCOPE_ICONS } from "../../utils/scopeConfig";
+import GrantTreeView from "../common/GrantTreeView";
+import { buildGrantDisplay } from "../../utils/grantDisplay";
 import DAGView from "../dag/DAGView";
 import ExportPngBtn from "../common/ExportPngBtn";
 import { useDagStore } from "../../stores/dagStore";
@@ -101,8 +101,8 @@ export default function PermissionDetailTab() {
     setFilterText("");
   }, []);
 
-  // Group grants by scope
-  const grouped = groupGrantsByScope(entity.grants, filterText);
+  // Group grants by scope (shared utility)
+  const grouped = buildGrantDisplay(entity.grants, { filter: filterText });
 
   return (
     <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -197,40 +197,10 @@ export default function PermissionDetailTab() {
             </p>
           ) : entity.grantsLoading ? (
             <p style={{ padding: 16, fontSize: 13, color: "#94a3b8", fontStyle: "italic", textAlign: "center" }}>Loading privileges...</p>
-          ) : grouped.length === 0 ? (
-            <p style={{ padding: 16, fontSize: 13, color: "#64748b", textAlign: "center" }}>
-              {filterText ? "No matching privileges" : "No grants found"}
-            </p>
           ) : (
-            grouped.map(({ scope, items }) => (
-              <div key={scope} style={{ marginBottom: 10, padding: "0 12px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, fontSize: 12, fontWeight: 600, color: "#94a3b8", whiteSpace: "nowrap" }}>
-                  <InlineIcon type={SCOPE_ICONS[scope] || "system"} size={14} />
-                  {scope}
-                  <span style={{ fontSize: 10, color: "#64748b" }}>({items.length})</span>
-                </div>
-                {items.map((obj, idx) => (
-                  <div key={`${obj.path}-${idx}`} style={{ padding: "6px 0 6px 20px", borderBottom: "1px solid rgba(71,85,105,0.15)", fontSize: 12 }}>
-                    <div style={{ fontWeight: 500, color: "#e2e8f0", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {obj.displayName}
-                    </div>
-                    {obj.context && (
-                      <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>{obj.context}</div>
-                    )}
-                    <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                      {obj.privs.map((p) => {
-                        const c = getPrivColor(p);
-                        return (
-                          <span key={p} style={{ padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 600, background: c.bg, color: c.fg, whiteSpace: "nowrap", lineHeight: 1.4 }}>
-                            {p}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))
+            <div style={{ padding: "0 12px" }}>
+              <GrantTreeView groups={grouped} />
+            </div>
           )}
         </div>
       </div>
@@ -287,38 +257,10 @@ export default function PermissionDetailTab() {
           <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
             {clicked.loading ? (
               <p style={{ padding: 16, fontSize: 13, color: "#94a3b8", fontStyle: "italic", textAlign: "center" }}>Loading privileges...</p>
-            ) : clicked.grants.length === 0 ? (
-              <p style={{ padding: 16, fontSize: 13, color: "#64748b", textAlign: "center" }}>No grants found</p>
             ) : (
-              groupGrantsByScope(clicked.grants, "").map(({ scope, items }) => (
-                <div key={scope} style={{ marginBottom: 10, padding: "0 12px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, fontSize: 12, fontWeight: 600, color: "#94a3b8", whiteSpace: "nowrap" }}>
-                    <InlineIcon type={SCOPE_ICONS[scope] || "system"} size={14} />
-                    {scope}
-                    <span style={{ fontSize: 10, color: "#64748b" }}>({items.length})</span>
-                  </div>
-                  {items.map((obj, idx) => (
-                    <div key={`${obj.path}-${idx}`} style={{ padding: "6px 0 6px 20px", borderBottom: "1px solid rgba(71,85,105,0.15)", fontSize: 12 }}>
-                      <div style={{ fontWeight: 500, color: "#e2e8f0", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {obj.displayName}
-                      </div>
-                      {obj.context && (
-                        <div style={{ fontSize: 10, color: "#64748b", marginBottom: 3 }}>{obj.context}</div>
-                      )}
-                      <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                        {obj.privs.map((p) => {
-                          const c = getPrivColor(p);
-                          return (
-                            <span key={p} style={{ padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 600, background: c.bg, color: c.fg, whiteSpace: "nowrap", lineHeight: 1.4 }}>
-                              {p}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ))
+              <div style={{ padding: "0 12px" }}>
+                <GrantTreeView groups={buildGrantDisplay(clicked.grants)} />
+              </div>
             )}
           </div>
         </div>
@@ -343,41 +285,3 @@ function FormattedName({ name }: { name: string }) {
   return <>{name}</>;
 }
 
-interface GroupedScope {
-  scope: string;
-  items: { path: string; displayName: string; context: string; privs: string[] }[];
-}
-
-function groupGrantsByScope(grants: PrivilegeGrant[], filter: string): GroupedScope[] {
-  const filterLower = filter.toLowerCase();
-  const groups: Record<string, GroupedScope["items"]> = {};
-
-  for (const g of grants) {
-    const scope = g.object_type?.toUpperCase() || "SYSTEM";
-    const path = [g.object_catalog, g.object_database, g.object_name].filter(Boolean).join(".");
-    const displayName = g.object_name || g.object_database || scope;
-    const context = g.object_name && g.object_database
-      ? `${g.object_catalog || ""}.${g.object_database}`
-      : g.object_catalog || "";
-
-    // Apply filter
-    if (filterLower) {
-      const searchable = `${displayName} ${context} ${g.privilege_type} ${scope}`.toLowerCase();
-      if (!searchable.includes(filterLower)) continue;
-    }
-
-    const key = path || scope;
-    (groups[scope] ??= []);
-    const existing = groups[scope].find((x) => x.path === key);
-    if (existing) {
-      if (!existing.privs.includes(g.privilege_type)) existing.privs.push(g.privilege_type);
-    } else {
-      groups[scope].push({ path: key, displayName, context, privs: [g.privilege_type] });
-    }
-  }
-
-  const sorted = SCOPE_ORDER.filter((s) => groups[s]?.length);
-  Object.keys(groups).forEach((s) => { if (!sorted.includes(s)) sorted.push(s); });
-
-  return sorted.map((scope) => ({ scope, items: groups[scope] }));
-}

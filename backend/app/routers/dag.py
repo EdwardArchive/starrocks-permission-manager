@@ -72,6 +72,12 @@ def get_object_hierarchy(
         edges.append(DAGEdge(id=f"e{edge_idx[0]}", source=src, target=tgt, edge_type=etype))
         edge_idx[0] += 1
 
+    # Activate all roles so information_schema shows all accessible objects
+    try:
+        execute_query(conn, "SET ROLE ALL")
+    except Exception:
+        logger.debug("Failed to SET ROLE ALL")
+
     # SYSTEM node
     _add("sys", "SYSTEM", "system")
 
@@ -164,10 +170,11 @@ def get_object_hierarchy(
                     fn_rows = execute_query(c, f"SHOW FUNCTIONS FROM `{safe_identifier(db_n)}`")
                     fns = []
                     for fr in fn_rows:
-                        sig = fr.get("Signature") or fr.get("signature") or ""
+                        sig = fr.get("Signature") or fr.get("signature") or fr.get("Function Name") or ""
                         if "(" in sig:
                             sig = sig.split("(")[0]
-                        fns.append(sig)
+                        if sig and sig not in fns:
+                            fns.append(sig)
                     return fns
 
                 return fn
@@ -216,13 +223,14 @@ def get_object_hierarchy(
 
 
 @router.get("/role-hierarchy", response_model=DAGGraph)
-def get_role_hierarchy(conn=Depends(get_db)):
-    cache_key = "role_hier"
+def get_role_hierarchy(conn=Depends(get_db), credentials: dict = Depends(get_credentials)):
+    is_admin = credentials.get("is_admin", False)
+    cache_key = f"role_hier_{is_admin}"
     if cache_key in _dag_cache:
         return _dag_cache[cache_key]
     from app.routers.roles import get_role_hierarchy as _get
 
-    result = _get(conn=conn)
+    result = _get(conn=conn, credentials=credentials)
     _dag_cache[cache_key] = result
     return result
 

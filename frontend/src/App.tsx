@@ -17,11 +17,13 @@ import GroupDetailPanel from "./components/panels/GroupDetailPanel";
 import { NODE_COLORS } from "./components/dag/nodeIcons";
 import ExportPngBtn from "./components/common/ExportPngBtn";
 import PermissionDetailTab from "./components/tabs/PermissionDetailTab";
+import InventoryTab from "./components/tabs/InventoryTab";
 
-const TAB_CONFIG: { id: TabId; label: string; icon: string; disabled?: boolean }[] = [
+const TAB_CONFIG: { id: TabId; label: string; icon: string; disabled?: boolean; adminOnly?: boolean }[] = [
   { id: "obj", label: "Object Hierarchy", icon: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>' },
   { id: "role", label: "Role Map", icon: '<circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="17" r="2.5"/><circle cx="19" cy="17" r="2.5"/><path d="M12 7.5v3"/><path d="M12 10.5L5 14.5"/><path d="M12 10.5L19 14.5"/>' },
-  { id: "perm", label: "Permission Details", icon: '<circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/>' },
+  { id: "perm", label: "Permission Focus", icon: '<circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/>', adminOnly: true },
+  { id: "myperm", label: "My Inventory Search", icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>' },
   { id: "full", label: "Full Permission Graph", icon: '<circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="5" cy="18" r="2.5"/><circle cx="19" cy="18" r="2.5"/><line x1="7.5" y1="6" x2="16.5" y2="6"/><line x1="5" y1="8.5" x2="5" y2="15.5"/><line x1="7" y1="7.5" x2="17" y2="16.5"/>', disabled: true },
 ];
 
@@ -56,6 +58,9 @@ export default function App() {
     }))
   );
 
+  const isAdmin = user?.is_user_admin ?? true;
+  const visibleTabs = TAB_CONFIG.filter((t) => !t.adminOnly || isAdmin);
+
   const [dagState, setDagState] = useState<{ cache: Record<string, DAGGraph | null>; loading: boolean }>({
     cache: {}, loading: false,
   });
@@ -67,10 +72,17 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: restore login session once
   }, []);
 
+  // Clear DAG cache on logout (isLoggedIn goes false)
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setDagState({ cache: {}, loading: false });
+    }
+  }, [isLoggedIn]);
+
   // Load DAG data when tab or catalog changes (skip perm tab - it manages its own DAG)
   const dagKey = `${activeTab}_${activeCatalog}`;
   useEffect(() => {
-    if (!isLoggedIn || activeTab === "perm") return;
+    if (!isLoggedIn || activeTab === "perm" || activeTab === "myperm") return;
     if (dagState.cache[dagKey]) return;
     const controller = new AbortController();
     setDagState((prev) => ({ ...prev, loading: true }));
@@ -96,14 +108,14 @@ export default function App() {
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <Header />
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        {/* Sidebar: hidden on perm tab (it has its own) */}
-        {activeTab !== "perm" && <Sidebar />}
+        {/* Sidebar: hidden on perm/myperm tabs (they have their own layout) */}
+        {activeTab !== "perm" && activeTab !== "myperm" && <Sidebar />}
 
         {/* Main content */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {/* Tab bar */}
           <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #475569", background: "#1e293b", padding: "0 16px", flexShrink: 0 }}>
-            {TAB_CONFIG.map((t) => {
+            {visibleTabs.map((t) => {
               const active = activeTab === t.id;
               return (
                 <button
@@ -128,8 +140,10 @@ export default function App() {
             })}
           </div>
 
-          {/* Content area: perm tab has its own layout */}
-          {activeTab === "perm" ? (
+          {/* Content area */}
+          {activeTab === "myperm" ? (
+            <InventoryTab />
+          ) : activeTab === "perm" ? (
             <PermissionDetailTab />
           ) : (
             <div style={{ flex: 1, position: "relative", background: "#0f172a" }}>
@@ -165,8 +179,8 @@ export default function App() {
           )}
         </div>
 
-        {/* Detail panel: hidden on perm tab */}
-        {activeTab !== "perm" && (
+        {/* Detail panel: hidden on perm/myperm tabs */}
+        {activeTab !== "perm" && activeTab !== "myperm" && (
           <div
             style={{
               width: panelMode ? 380 : 0,
@@ -201,4 +215,3 @@ export default function App() {
     </div>
   );
 }
-

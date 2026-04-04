@@ -40,12 +40,19 @@ skip_no_sr = pytest.mark.skipif(
 def real_client():
     """TestClient that connects to a real StarRocks cluster."""
 
+    # Detect admin status once
+    from app.utils.sys_access import can_access_sys
+
+    with get_connection(SR_HOST, SR_PORT, SR_USER, SR_PASS) as _probe:
+        _is_admin = can_access_sys(_probe)
+
     def _real_credentials():
         return {
             "host": SR_HOST,
             "port": SR_PORT,
             "username": SR_USER,
             "password": SR_PASS,
+            "is_admin": _is_admin,
         }
 
     def _real_db():
@@ -63,7 +70,7 @@ def real_client():
 
 @pytest.fixture()
 def real_token():
-    session_id = session_store.create(SR_HOST, SR_PORT, SR_USER, SR_PASS)
+    session_id = session_store.create(SR_HOST, SR_PORT, SR_USER, SR_PASS, is_admin=True)
     return create_token(session_id, SR_USER)
 
 
@@ -110,10 +117,32 @@ def test_real_me(real_client, real_header):
 
 
 @skip_no_sr
-def test_real_logout(real_client, real_header):
-    resp = real_client.post("/api/auth/logout", headers=real_header)
-    assert resp.status_code == 200
-    assert resp.json()["detail"] == "Logged out"
+def test_real_logout():
+    """Logout should invalidate the session — subsequent API calls must fail.
+    Uses a raw TestClient without dependency overrides so session store is used."""
+    with TestClient(app) as client:
+        # Login to get a fresh token (goes through real session store)
+        resp = client.post(
+            "/api/auth/login",
+            json={"host": SR_HOST, "port": SR_PORT, "username": SR_USER, "password": SR_PASS},
+        )
+        assert resp.status_code == 200
+        token = resp.json()["token"]
+        header = {"Authorization": f"Bearer {token}"}
+
+        # Verify token works before logout
+        resp = client.get("/api/auth/me", headers=header)
+        assert resp.status_code == 200
+
+        # Logout — destroys server-side session
+        resp = client.post("/api/auth/logout", headers=header)
+        assert resp.status_code == 200
+        assert resp.json()["detail"] == "Logged out"
+
+        # Token should now be invalid — session destroyed
+        resp = client.get("/api/auth/me", headers=header)
+        assert resp.status_code == 401, f"Expected 401 after logout, got {resp.status_code}"
+        print("\n  Logout verified: token rejected after session invalidation")
 
 
 # ── Objects ──

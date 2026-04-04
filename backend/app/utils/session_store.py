@@ -26,7 +26,7 @@ class SessionStore:
         self._store: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
 
-    def create(self, host: str, port: int, username: str, password: str) -> str:
+    def create(self, host: str, port: int, username: str, password: str, is_admin: bool = False) -> str:
         session_id = uuid.uuid4().hex
         expires_at = time.time() + settings.jwt_expire_minutes * 60
         with self._lock:
@@ -35,6 +35,7 @@ class SessionStore:
                 "port": port,
                 "username": username,
                 "password": password,
+                "is_admin": is_admin,
                 "expires_at": expires_at,
             }
         return session_id
@@ -52,6 +53,7 @@ class SessionStore:
                 "port": entry["port"],
                 "username": entry["username"],
                 "password": entry["password"],
+                "is_admin": entry.get("is_admin", False),
             }
 
     def delete(self, session_id: str) -> bool:

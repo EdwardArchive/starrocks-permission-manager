@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { DAGNode } from "../types";
 
-export type TabId = "obj" | "role" | "full" | "perm";
+export type TabId = "obj" | "role" | "full" | "perm" | "myperm";
 export type PanelMode = "object" | "user" | "group" | null;
 
 interface DagState {
@@ -42,8 +42,8 @@ const defaultTypes: Record<string, boolean> = {
 };
 
 export const useDagStore = create<DagState>((set) => ({
-  activeTab: "obj",
-  setActiveTab: (tab) => set({ activeTab: tab }),
+  activeTab: (window.location.hash.replace("#", "").split("/")[0] as TabId) || "obj",
+  setActiveTab: (tab) => { window.location.hash = tab; set({ activeTab: tab }); },
 
   activeCatalog: "default_catalog",
   setActiveCatalog: (catalog) => set({ activeCatalog: catalog }),
