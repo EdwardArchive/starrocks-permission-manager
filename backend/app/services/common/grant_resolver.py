@@ -17,13 +17,13 @@ from __future__ import annotations
 import logging
 
 from app.models.schemas import PrivilegeGrant
-from app.services.bfs_resolver import (
+from app.services.admin.bfs_resolver import (
     _bfs_child_roles,
     _bfs_user_privs,
     _finalize,
     _find_ancestors_with_grants,
 )
-from app.services.grant_classifier import (
+from app.services.common.grant_classifier import (
     ObjectQuery,
     Relevance,
     _make_inherited_grant,

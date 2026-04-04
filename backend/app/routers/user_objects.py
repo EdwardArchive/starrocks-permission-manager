@@ -1,3 +1,9 @@
+"""Router for /api/user/objects/* endpoints.
+
+Uses only INFORMATION_SCHEMA + SHOW commands (no sys.* tables).
+Mirrors the existing objects.py router for non-admin access.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -9,9 +15,10 @@ from fastapi import APIRouter, Depends, Query
 
 from app.config import settings
 from app.dependencies import get_db
-from app.utils.sql_safety import safe_identifier
 from app.models.schemas import CatalogItem, ColumnInfo, DatabaseItem, ObjectItem, TableDetail
+from app.services.shared.name_utils import normalize_fn_name
 from app.services.starrocks_client import execute_query, execute_single
+from app.utils.sql_safety import safe_identifier
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -22,7 +29,7 @@ _RE_RANDOM_DIST = re.compile(r"DISTRIBUTED BY RANDOM\s*BUCKETS\s*(\d+)", re.I)
 _RE_PARTITION_RANGE = re.compile(r"PARTITION BY RANGE\(([^)]+)\)", re.I)
 _RE_PARTITION_LIST = re.compile(r"PARTITION BY LIST\(([^)]+)\)", re.I)
 _RE_PARTITION_GENERIC = re.compile(r"PARTITION BY\s+(\w+)\(([^)]+)\)", re.I)
-_RE_PARTITION_SIMPLE = re.compile(r"PARTITION BY\s*\(([^)]+)\)", re.I)  # Hive/Iceberg: PARTITION BY (col)
+_RE_PARTITION_SIMPLE = re.compile(r"PARTITION BY\s*\(([^)]+)\)", re.I)
 
 # ── TTL cache for catalogs ──
 _catalog_cache: TTLCache = TTLCache(maxsize=1, ttl=settings.cache_ttl_seconds)
@@ -102,8 +109,7 @@ def list_tables(
         seen_fns: set[str] = set()
         for r in fn_rows:
             name = r.get("Signature") or r.get("signature") or r.get("Function Name") or ""
-            if "(" in name:
-                name = name.split("(")[0]
+            name = normalize_fn_name(name)
             if name and name not in seen_fns:
                 seen_fns.add(name)
                 result.append(ObjectItem(name=name, object_type="FUNCTION", catalog=catalog, database=database))
@@ -120,10 +126,6 @@ def get_table_detail(
     table: str = Query(...),
     conn=Depends(get_db),
 ):
-    import logging
-
-    logger = logging.getLogger("objects")
-
     # Set catalog and database context
     try:
         execute_query(conn, f"SET CATALOG `{catalog}`")
@@ -181,7 +183,6 @@ def get_table_detail(
     try:
         ddl_row = execute_single(conn, f"SHOW CREATE TABLE `{safe_identifier(database)}`.`{safe_identifier(table)}`")
         if ddl_row:
-            # StarRocks returns different column names depending on object type
             ddl = (
                 ddl_row.get("Create Table")
                 or ddl_row.get("Create View")
@@ -280,7 +281,6 @@ def _parse_partition(ddl: str) -> tuple[str | None, str | None]:
     m = _RE_PARTITION_GENERIC.search(ddl)
     if m:
         return m.group(1).upper(), m.group(2).strip().strip("`")
-    # Hive/Iceberg: PARTITION BY (col1, col2) — no method keyword
     m = _RE_PARTITION_SIMPLE.search(ddl)
     if m:
         cols = ", ".join(c.strip().strip("`") for c in m.group(1).split(","))

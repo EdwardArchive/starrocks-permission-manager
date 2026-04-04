@@ -5,32 +5,19 @@ from __future__ import annotations
 import logging
 
 from app.models.schemas import PrivilegeGrant
-from app.services.grant_classifier import (
+from app.services.common.grant_classifier import (
     ObjectQuery,
     Relevance,
     _deduplicate,
 )
-from app.services.starrocks_client import execute_query
+from app.services.shared.role_graph import fetch_role_child_map
 from app.utils.role_helpers import get_parent_roles, get_user_roles
 
 logger = logging.getLogger("privileges")
 
 
-def _fetch_role_child_map(conn) -> dict[str, list[str]]:
-    """Fetch sys.role_edges → {parent: [child_roles]}."""
-    children_of: dict[str, list[str]] = {}
-    try:
-        rows = execute_query(
-            conn, "SELECT FROM_ROLE, TO_ROLE FROM sys.role_edges WHERE TO_ROLE IS NOT NULL AND TO_ROLE != ''"
-        )
-        for e in rows:
-            parent = e.get("FROM_ROLE") or ""
-            child = e.get("TO_ROLE") or ""
-            if parent and child:
-                children_of.setdefault(parent, []).append(child)
-    except Exception:
-        logger.debug("Failed to query sys.role_edges")
-    return children_of
+# Backward-compatible alias
+_fetch_role_child_map = fetch_role_child_map
 
 
 def _bfs_child_roles(

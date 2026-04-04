@@ -12,7 +12,10 @@ from app.models.schemas import PrivilegeGrant
 # Module-level constants
 # ══════════════════════════════════════════════════════════════════════
 
-_BUILTIN_ROLES = frozenset({"root", "db_admin", "user_admin", "cluster_admin", "security_admin", "public"})
+from app.services.shared.constants import BUILTIN_ROLES
+from app.services.shared.name_utils import normalize_fn_name
+
+_BUILTIN_ROLES = BUILTIN_ROLES
 
 _NON_OBJECT_TYPES = frozenset(
     {
@@ -145,8 +148,8 @@ def classify_grant(g: PrivilegeGrant, q: ObjectQuery) -> Relevance:
         # Type matches — check name if both grant and query specify one
         # Normalize function signatures: "fn(VARCHAR)" matches "fn"
         if gn and q.name:
-            gn_base = gn.split("(")[0] if "(" in gn else gn
-            qn_base = q.name.split("(")[0] if "(" in q.name else q.name
+            gn_base = normalize_fn_name(gn)
+            qn_base = normalize_fn_name(q.name)
             if gn_base != qn_base:
                 return Relevance.IRRELEVANT
         # Wildcard grant (no name) → PARENT_SCOPE, exact name match → EXACT

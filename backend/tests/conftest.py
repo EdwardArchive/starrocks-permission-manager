@@ -286,11 +286,17 @@ def client(mock_db, query_map):
     """FastAPI TestClient with mocked DB dependency."""
 
     # Clear TTL caches to prevent cross-test leakage
-    from app.routers.objects import _catalog_cache
-    from app.routers.roles import _role_cache
-    from app.services.user_service import _user_cache
+    from app.routers.user_objects import _catalog_cache
+    from app.routers.admin_roles import _role_cache as admin_role_cache
+    from app.routers.user_roles import _role_cache as user_role_cache
+    from app.routers.admin_dag import _dag_cache as admin_dag_cache
+    from app.routers.user_dag import _dag_cache as user_dag_cache
+    from app.services.admin.user_service import _user_cache
     _catalog_cache.clear()
-    _role_cache.clear()
+    admin_role_cache.clear()
+    user_role_cache.clear()
+    admin_dag_cache.clear()
+    user_dag_cache.clear()
     _user_cache.clear()
 
     def _override_credentials():
@@ -309,13 +315,17 @@ def client(mock_db, query_map):
     app.dependency_overrides[get_db] = _override_db
 
     # Mock parallel_queries to use FakeConnection instead of real connections
-    # Patch both the module attr AND the already-imported references in routers
+    # Patch the module attr AND the already-imported references in routers
     import app.services.starrocks_client as sc
-    import app.routers.dag as dag_mod
-    import app.routers.search as search_mod
+    import app.routers.user_dag as user_dag_mod
+    import app.routers.admin_dag as admin_dag_mod
+    import app.routers.user_search as user_search_mod
+    import app.routers.admin_search as admin_search_mod
     _orig_sc = sc.parallel_queries
-    _orig_dag = dag_mod.parallel_queries
-    _orig_search = search_mod.parallel_queries
+    _orig_user_dag = user_dag_mod.parallel_queries
+    _orig_admin_dag = admin_dag_mod.parallel_queries
+    _orig_user_search = user_search_mod.parallel_queries
+    _orig_admin_search = admin_search_mod.parallel_queries
     _qmap = query_map
 
     def _mock_parallel(credentials, tasks, max_workers=None, timeout=5.0):
@@ -329,15 +339,19 @@ def client(mock_db, query_map):
         return results
 
     sc.parallel_queries = _mock_parallel
-    dag_mod.parallel_queries = _mock_parallel
-    search_mod.parallel_queries = _mock_parallel
+    user_dag_mod.parallel_queries = _mock_parallel
+    admin_dag_mod.parallel_queries = _mock_parallel
+    user_search_mod.parallel_queries = _mock_parallel
+    admin_search_mod.parallel_queries = _mock_parallel
 
     with TestClient(app) as c:
         yield c
 
     sc.parallel_queries = _orig_sc
-    dag_mod.parallel_queries = _orig_dag
-    search_mod.parallel_queries = _orig_search
+    user_dag_mod.parallel_queries = _orig_user_dag
+    admin_dag_mod.parallel_queries = _orig_admin_dag
+    user_search_mod.parallel_queries = _orig_user_search
+    admin_search_mod.parallel_queries = _orig_admin_search
     app.dependency_overrides.clear()
 
 

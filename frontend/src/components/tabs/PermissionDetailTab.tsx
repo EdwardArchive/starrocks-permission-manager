@@ -1,9 +1,7 @@
 /* eslint-disable react-hooks/set-state-in-effect -- setState in effects is intentional; React 18+ auto-batches these calls */
 import { useEffect, useState, useCallback } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
-import { getInheritanceDag } from "../../api/dag";
-import { getUserEffectivePrivileges, getRolePrivileges } from "../../api/privileges";
-import { searchUsersRoles } from "../../api/search";
+import { getInheritanceDag, getUserEffectivePrivileges, getRolePrivileges, searchUsersRoles } from "../../api/admin";
 import InlineIcon from "../common/InlineIcon";
 import GrantTreeView from "../common/GrantTreeView";
 import { buildGrantDisplay } from "../../utils/grantDisplay";

@@ -27,6 +27,13 @@ def get_credentials(authorization: str = Header(...)) -> dict:
     return credentials
 
 
+def require_admin(credentials: dict = Depends(get_credentials)) -> dict:
+    """Dependency that ensures the user has admin privileges."""
+    if not credentials.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return credentials
+
+
 def get_db(credentials: dict = Depends(get_credentials)):
     with get_connection(
         host=credentials["host"],

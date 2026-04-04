@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getObjectPrivileges } from "../../api/privileges";
+import { getObjectPrivileges } from "../../api/admin";
 import type { PrivilegeGrant } from "../../types";
 import InlineIcon from "../common/InlineIcon";
 import { C, PRIV_BY_TYPE, PRIV_KEY_MAP, matrixTh } from "../../utils/inventory-helpers";

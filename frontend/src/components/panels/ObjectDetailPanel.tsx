@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useDagStore } from "../../stores/dagStore";
-import { getObjectPrivileges, getRolePrivileges } from "../../api/privileges";
-import { getTableDetail } from "../../api/objects";
+import { getObjectPrivileges, getRolePrivileges } from "../../api/admin";
+import { getTableDetail } from "../../api/user";
 import GrantTreeView from "../common/GrantTreeView";
 import { buildGrantDisplay, extractSourceRoles } from "../../utils/grantDisplay";
 import { PermissionMatrixView } from "../tabs/PermissionMatrix";

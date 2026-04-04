@@ -4,7 +4,8 @@ import { useAuthStore } from "./stores/authStore";
 import { useShallow } from "zustand/react/shallow";
 import { useDagStore, type TabId } from "./stores/dagStore";
 import { getMe } from "./api/auth";
-import { getObjectHierarchy, getRoleHierarchy, getFullGraph } from "./api/dag";
+import { getObjectHierarchy as userGetObjectHierarchy, getRoleHierarchy as userGetRoleHierarchy } from "./api/user";
+import { getObjectHierarchy as adminGetObjectHierarchy, getRoleHierarchy as adminGetRoleHierarchy, getFullGraph } from "./api/admin";
 import type { DAGGraph } from "./types";
 
 import LoginForm from "./components/auth/LoginForm";
@@ -87,6 +88,8 @@ export default function App() {
     if (dagState.cache[dagKey]) return;
     const controller = new AbortController();
     setDagState((prev) => ({ ...prev, loading: true }));
+    const getObjectHierarchy = isAdmin ? adminGetObjectHierarchy : userGetObjectHierarchy;
+    const getRoleHierarchy = isAdmin ? adminGetRoleHierarchy : userGetRoleHierarchy;
     const fetcher =
       activeTab === "obj" ? () => getObjectHierarchy(activeCatalog, controller.signal) :
       activeTab === "role" ? () => getRoleHierarchy(controller.signal) :

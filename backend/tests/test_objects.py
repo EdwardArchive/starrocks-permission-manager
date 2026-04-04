@@ -1,5 +1,5 @@
 def test_list_catalogs(client, auth_header):
-    resp = client.get("/api/objects/catalogs", headers=auth_header)
+    resp = client.get("/api/user/objects/catalogs", headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -14,7 +14,7 @@ def test_list_catalogs(client, auth_header):
 
 def test_list_databases(client, auth_header):
     resp = client.get(
-        "/api/objects/databases",
+        "/api/user/objects/databases",
         params={"catalog": "default_catalog"},
         headers=auth_header,
     )
@@ -30,13 +30,13 @@ def test_list_databases(client, auth_header):
 
 
 def test_list_databases_missing_catalog(client, auth_header):
-    resp = client.get("/api/objects/databases", headers=auth_header)
+    resp = client.get("/api/user/objects/databases", headers=auth_header)
     assert resp.status_code == 422  # missing required param
 
 
 def test_list_tables(client, auth_header):
     resp = client.get(
-        "/api/objects/tables",
+        "/api/user/objects/tables",
         params={"catalog": "default_catalog", "database": "analytics_db"},
         headers=auth_header,
     )
@@ -55,7 +55,7 @@ def test_list_tables(client, auth_header):
 
 def test_table_detail(client, auth_header):
     resp = client.get(
-        "/api/objects/table-detail",
+        "/api/user/objects/table-detail",
         params={
             "catalog": "default_catalog",
             "database": "analytics_db",
@@ -94,7 +94,7 @@ def test_table_detail(client, auth_header):
 
 def test_table_detail_missing_params(client, auth_header):
     resp = client.get(
-        "/api/objects/table-detail",
+        "/api/user/objects/table-detail",
         params={"catalog": "default_catalog"},
         headers=auth_header,
     )

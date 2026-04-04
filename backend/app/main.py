@@ -5,7 +5,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import auth, dag, objects, privileges, roles, search
+from app.routers import auth
+from app.routers import (
+    admin_dag,
+    admin_privileges,
+    admin_roles,
+    admin_search,
+    user_dag,
+    user_objects,
+    user_permissions,
+    user_roles,
+    user_search,
+)
 from app.utils.session_store import session_store
 
 
@@ -34,11 +45,19 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(objects.router, prefix="/api/objects", tags=["objects"])
-app.include_router(privileges.router, prefix="/api/privileges", tags=["privileges"])
-app.include_router(roles.router, prefix="/api/roles", tags=["roles"])
-app.include_router(dag.router, prefix="/api/dag", tags=["dag"])
-app.include_router(search.router, prefix="/api/search", tags=["search"])
+
+# User routes (Layer 1 — all users)
+app.include_router(user_objects.router, prefix="/api/user/objects", tags=["user-objects"])
+app.include_router(user_permissions.router, prefix="/api/user", tags=["user-permissions"])
+app.include_router(user_roles.router, prefix="/api/user/roles", tags=["user-roles"])
+app.include_router(user_dag.router, prefix="/api/user/dag", tags=["user-dag"])
+app.include_router(user_search.router, prefix="/api/user/search", tags=["user-search"])
+
+# Admin routes (Layer 1+2 — admin only)
+app.include_router(admin_privileges.router, prefix="/api/admin/privileges", tags=["admin-privileges"])
+app.include_router(admin_roles.router, prefix="/api/admin/roles", tags=["admin-roles"])
+app.include_router(admin_dag.router, prefix="/api/admin/dag", tags=["admin-dag"])
+app.include_router(admin_search.router, prefix="/api/admin/search", tags=["admin-search"])
 
 
 @app.get("/api/health")

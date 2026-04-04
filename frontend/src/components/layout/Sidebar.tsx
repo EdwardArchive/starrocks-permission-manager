@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from "react";
-import { getCatalogs, getDatabases, getTables } from "../../api/objects";
-import { getRoles } from "../../api/dag";
-import { searchAll, type SearchResult } from "../../api/search";
+import { getCatalogs, getDatabases, getTables, getRoles as userGetRoles, searchAll as userSearchAll, type SearchResult } from "../../api/user";
+import { getRoles as adminGetRoles, searchAll as adminSearchAll } from "../../api/admin";
 import { useDagStore } from "../../stores/dagStore";
 import { useAuthStore } from "../../stores/authStore";
 import { colorizedSvg, NODE_COLORS } from "../dag/nodeIcons";
@@ -89,6 +88,7 @@ function EyeToggle({ label, hidden, onToggle }: { label: string; hidden: boolean
 export default function Sidebar() {
   const { activeTab, searchQuery, setSearchQuery, setSelectedNode, setPanelMode, activeCatalog, setActiveCatalog, setActiveTab, hiddenNodes, toggleNodeVisibility } = useDagStore();
   const { user } = useAuthStore();
+  const isAdmin = user?.is_user_admin ?? false;
 
   const [catalogs, setCatalogs] = useState<CatalogItem[]>([]);
   const [dbMap, setDbMap] = useState<Record<string, DatabaseItem[]>>({});
@@ -104,8 +104,9 @@ export default function Sidebar() {
 
   useEffect(() => {
     getCatalogs().then(setCatalogs).catch(() => {});
+    const getRoles = isAdmin ? adminGetRoles : userGetRoles;
     getRoles().then(setRoles).catch(() => {});
-  }, []);
+  }, [isAdmin]);
 
   // Debounced search: trigger after 300ms of no typing, min 2 chars
   useEffect(() => {
@@ -118,13 +119,14 @@ export default function Sidebar() {
     }
     setSearching(true);
     debounceRef.current = setTimeout(() => {
+      const searchAll = isAdmin ? adminSearchAll : userSearchAll;
       searchAll(trimmed)
         .then(setSearchResults)
         .catch(() => setSearchResults([]))
         .finally(() => setSearching(false));
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [searchQuery]);
+  }, [searchQuery, isAdmin]);
 
   const toggleCat = async (cat: string) => {
     const next = new Set(expandedCats);

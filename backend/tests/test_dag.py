@@ -1,5 +1,5 @@
 def test_object_hierarchy(client, auth_header):
-    resp = client.get("/api/dag/object-hierarchy", headers=auth_header)
+    resp = client.get("/api/user/dag/object-hierarchy", headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
 
@@ -30,7 +30,7 @@ def test_object_hierarchy(client, auth_header):
 
 def test_object_hierarchy_filtered(client, auth_header):
     resp = client.get(
-        "/api/dag/object-hierarchy",
+        "/api/user/dag/object-hierarchy",
         params={"catalog": "default_catalog"},
         headers=auth_header,
     )
@@ -43,7 +43,7 @@ def test_object_hierarchy_filtered(client, auth_header):
 
 
 def test_role_hierarchy(client, auth_header):
-    resp = client.get("/api/dag/role-hierarchy", headers=auth_header)
+    resp = client.get("/api/admin/dag/role-hierarchy", headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
 
@@ -61,7 +61,7 @@ def test_role_hierarchy(client, auth_header):
 
 
 def test_full_graph(client, auth_header):
-    resp = client.get("/api/dag/full", headers=auth_header)
+    resp = client.get("/api/admin/dag/full", headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
 
@@ -91,7 +91,7 @@ def test_full_graph(client, auth_header):
 
 def test_full_graph_privilege_edges(client, auth_header):
     """Verify privilege edges have correct types (not all defaulting to 'select')."""
-    resp = client.get("/api/dag/full", headers=auth_header)
+    resp = client.get("/api/admin/dag/full", headers=auth_header)
     data = resp.json()
     edge_types = {e["edge_type"] for e in data["edges"]}
     # Should have privilege edges from mock data
@@ -100,7 +100,7 @@ def test_full_graph_privilege_edges(client, auth_header):
 
 def test_full_graph_system_nodes(client, auth_header):
     """System-level grants should create 'system' type nodes, not 'table'."""
-    resp = client.get("/api/dag/full", headers=auth_header)
+    resp = client.get("/api/admin/dag/full", headers=auth_header)
     data = resp.json()
     # If any node has label containing "SYSTEM", it should be type "system"
     for n in data["nodes"]:
@@ -110,7 +110,7 @@ def test_full_graph_system_nodes(client, auth_header):
 
 def test_full_graph_filtered(client, auth_header):
     resp = client.get(
-        "/api/dag/full",
+        "/api/admin/dag/full",
         params={"catalog": "default_catalog"},
         headers=auth_header,
     )
@@ -123,9 +123,9 @@ def test_full_graph_filtered(client, auth_header):
 def test_dag_node_structure(client, auth_header):
     """Verify DAGNode schema compliance across all DAG endpoints."""
     for endpoint in [
-        "/api/dag/object-hierarchy",
-        "/api/dag/role-hierarchy",
-        "/api/dag/full",
+        "/api/user/dag/object-hierarchy",
+        "/api/admin/dag/role-hierarchy",
+        "/api/admin/dag/full",
     ]:
         resp = client.get(endpoint, headers=auth_header)
         assert resp.status_code == 200

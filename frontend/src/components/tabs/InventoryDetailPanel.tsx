@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  type MyPermissionsResponse,
-  getRolePrivileges,
-  getUserEffectivePrivileges,
-} from "../../api/privileges";
-import { getDatabases, getTableDetail, getTables } from "../../api/objects";
+import { type MyPermissionsResponse, getDatabases, getTableDetail, getTables } from "../../api/user";
+import { getRolePrivileges, getUserEffectivePrivileges } from "../../api/admin";
 import type { PrivilegeGrant, TableDetail, ObjectItem } from "../../types";
 import InlineIcon from "../common/InlineIcon";
 import GrantTreeView from "../common/GrantTreeView";
@@ -371,7 +367,7 @@ function RoleMembersPane({ roleName, myData }: { roleName: string; myData: MyPer
   const [apiState, setApiState] = useState<{ childRoles: string[]; users: string[]; loading: boolean }>({ childRoles: [], users: [], loading: true });
 
   useEffect(() => {
-    import("../../api/dag").then(({ getInheritanceDag }) =>
+    import("../../api/admin").then(({ getInheritanceDag }) =>
       getInheritanceDag(roleName, "role")
         .then((dag) => {
           const childRoleIds = new Set(

@@ -1,5 +1,5 @@
 def test_list_roles(client, auth_header):
-    resp = client.get("/api/roles", headers=auth_header)
+    resp = client.get("/api/admin/roles", headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -18,7 +18,7 @@ def test_list_roles(client, auth_header):
 
 
 def test_role_hierarchy(client, auth_header):
-    resp = client.get("/api/roles/hierarchy", headers=auth_header)
+    resp = client.get("/api/admin/roles/hierarchy", headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
 
@@ -46,7 +46,7 @@ def test_role_hierarchy(client, auth_header):
 
 def test_inheritance_dag_user(client, auth_header):
     """GET /roles/inheritance-dag?name=analyst_kim&type=user returns user node + role nodes + edges."""
-    resp = client.get("/api/roles/inheritance-dag?name=analyst_kim&type=user", headers=auth_header)
+    resp = client.get("/api/admin/roles/inheritance-dag?name=analyst_kim&type=user", headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
 
@@ -76,7 +76,7 @@ def test_inheritance_dag_user(client, auth_header):
 
 def test_inheritance_dag_role(client, auth_header):
     """GET /roles/inheritance-dag?name=db_admin&type=role returns role node + children + users."""
-    resp = client.get("/api/roles/inheritance-dag?name=db_admin&type=role", headers=auth_header)
+    resp = client.get("/api/admin/roles/inheritance-dag?name=db_admin&type=role", headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
 
@@ -105,7 +105,7 @@ def test_inheritance_dag_role(client, auth_header):
 
 def test_inheritance_dag_empty(client, auth_header):
     """GET /roles/inheritance-dag?name=unknown_user&type=user returns minimal response."""
-    resp = client.get("/api/roles/inheritance-dag?name=unknown_user&type=user", headers=auth_header)
+    resp = client.get("/api/admin/roles/inheritance-dag?name=unknown_user&type=user", headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
 
@@ -124,7 +124,7 @@ def test_inheritance_dag_empty(client, auth_header):
 
 
 def test_role_users(client, auth_header):
-    resp = client.get("/api/roles/root/users", headers=auth_header)
+    resp = client.get("/api/admin/roles/root/users", headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)

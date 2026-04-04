@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useDagStore } from "../../stores/dagStore";
-import { getUserEffectivePrivileges } from "../../api/privileges";
+import { getUserEffectivePrivileges } from "../../api/admin";
 import InlineIcon from "../common/InlineIcon";
 import GrantTreeView from "../common/GrantTreeView";
 import { buildGrantDisplay, extractSourceRoles } from "../../utils/grantDisplay";
