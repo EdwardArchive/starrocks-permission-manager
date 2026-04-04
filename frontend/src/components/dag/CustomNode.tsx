@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { colorizedSvg, NODE_COLORS } from "./nodeIcons";
+import { C } from "../../utils/colors";
 
 interface CustomData {
   label: string;
@@ -34,7 +35,7 @@ export default function CustomNode({ data }: NodeProps) {
           padding: "6px 10px",
           borderRadius: 8,
           border: `2px solid ${color}`,
-          background: "#1e293b",
+          background: C.card,
           width: FIXED_W,
           boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
         }}
@@ -46,7 +47,7 @@ export default function CustomNode({ data }: NodeProps) {
           />
         )}
         <span style={{
-          fontSize: 12, fontWeight: 500, color: "#e2e8f0",
+          fontSize: 12, fontWeight: 500, color: C.text1,
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           textAlign: "center", flex: 1,
         }}>
