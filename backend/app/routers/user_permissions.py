@@ -1,16 +1,21 @@
-"""Router for the /my-permissions endpoint."""
+"""Router for /api/user/privileges/my-permissions endpoint.
+
+Uses only SHOW GRANTS + INFORMATION_SCHEMA (no sys.* tables).
+Mirrors the existing my_permissions.py router for non-admin access.
+"""
 
 from __future__ import annotations
 
 import logging
-import re
 
 from fastapi import APIRouter, Depends
 
 from app.dependencies import get_credentials, get_db
 from app.models.schemas import PrivilegeGrant
-from app.services.grant_parser import _parse_show_grants
+from app.services.common.grant_parser import _parse_show_grants
+from app.services.shared.name_utils import normalize_fn_name
 from app.services.starrocks_client import execute_query
+from app.utils.role_helpers import parse_role_assignments
 from app.utils.sql_safety import safe_name
 
 logger = logging.getLogger("privileges")
@@ -41,17 +46,9 @@ def get_my_permissions(
             direct_privileges.append(g)
 
     # Also parse raw output for comma-separated role assignments
-    try:
-        rows = execute_query(conn, f"SHOW GRANTS FOR '{safe_name(username)}'")
-        for row in rows:
-            for val in row.values():
-                s = str(val)
-                if s.upper().startswith("GRANT") and " ON " not in s.upper():
-                    for role_name in re.findall(r"'([^']+)'", s.split(" TO ")[0]):
-                        if role_name not in direct_roles:
-                            direct_roles.append(role_name)
-    except Exception:
-        logger.debug("Failed to parse raw SHOW GRANTS for user %s", username)
+    for role_name in parse_role_assignments(conn, username, "USER"):
+        if role_name not in direct_roles:
+            direct_roles.append(role_name)
 
     # BFS through role chain
     role_tree: dict[str, dict] = {}
@@ -72,17 +69,9 @@ def get_my_permissions(
                     role_grants.append(g)
         except Exception:
             logger.debug("Cannot access SHOW GRANTS FOR ROLE '%s'", role)
-        try:
-            rows = execute_query(conn, f"SHOW GRANTS FOR ROLE '{safe_name(role)}'")
-            for row in rows:
-                for val in row.values():
-                    s = str(val)
-                    if s.upper().startswith("GRANT") and " ON " not in s.upper():
-                        for rn in re.findall(r"'([^']+)'", s.split(" TO ")[0]):
-                            if rn not in child_roles:
-                                child_roles.append(rn)
-        except Exception:
-            logger.debug("Failed to parse raw SHOW GRANTS FOR ROLE '%s'", role)
+        for rn in parse_role_assignments(conn, role, "ROLE"):
+            if rn not in child_roles:
+                child_roles.append(rn)
         role_tree[role] = {"grants": role_grants, "parent_roles": child_roles}
         queue.extend(r for r in child_roles if r not in visited)
 
@@ -175,7 +164,7 @@ def get_my_permissions(
                     seen_fns: set[str] = set()
                     for r in fn_rows:
                         sig = r.get("Signature") or r.get("Function Name") or ""
-                        fn_name = sig.split("(")[0] if "(" in sig else sig
+                        fn_name = normalize_fn_name(sig)
                         if fn_name and fn_name not in seen_fns:
                             seen_fns.add(fn_name)
                             fn_obj: dict = {
@@ -273,9 +262,10 @@ def get_my_permissions(
     for name, info in _res_data.items():
         _add_sys(name, "RESOURCE", **{k: str(v) for k, v in info.items()})
 
-    # Warehouses
+    # Warehouses — try SHOW WAREHOUSES first (non-admin compatible), fallback to SHOW PROC
     try:
-        for r in execute_query(conn, "SHOW PROC '/warehouses'"):
+        wh_rows = execute_query(conn, "SHOW WAREHOUSES")
+        for r in wh_rows:
             _add_sys(
                 r.get("Name") or r.get("name") or "",
                 "WAREHOUSE",
@@ -285,13 +275,24 @@ def get_my_permissions(
                 queued_sql=str(r.get("QueuedSql") or "0"),
             )
     except Exception:
-        logger.debug("Query failed, skipping")
+        try:
+            for r in execute_query(conn, "SHOW PROC '/warehouses'"):
+                _add_sys(
+                    r.get("Name") or r.get("name") or "",
+                    "WAREHOUSE",
+                    state=str(r.get("State") or ""),
+                    node_count=str(r.get("NodeCount") or "0"),
+                    running_sql=str(r.get("RunningSql") or "0"),
+                    queued_sql=str(r.get("QueuedSql") or "0"),
+                )
+        except Exception:
+            logger.debug("Query failed, skipping")
 
     # Global Functions
     try:
         for r in execute_query(conn, "SHOW FULL GLOBAL FUNCTIONS"):
             sig = r.get("Signature") or r.get("Function Name") or ""
-            fn_name = sig.split("(")[0] if "(" in sig else sig
+            fn_name = normalize_fn_name(sig)
             _add_sys(
                 fn_name,
                 "GLOBAL_FUNCTION",

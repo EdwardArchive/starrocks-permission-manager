@@ -11,8 +11,7 @@ A web UI for visually exploring user, role, and object permission structures acr
   - **Role Map**: root → built-in roles → custom roles → users (top-to-bottom DAG with full inheritance chain)
   - **Permission Focus**: Search a user or role → view inheritance DAG + privilege list (admin only)
   - **My Inventory**: Browse all accessible objects by type with detail side panel (Roles, Users, Catalogs, Databases, Tables, MVs, Views, Functions)
-  - **Full Permission Graph**: Users → Roles → Objects unified view (coming soon)
-- **Admin & Non-Admin Support** — Admin users see all roles/users/objects. Non-admin users see only their accessible objects and role chain, using `SHOW GRANTS` fallback when `sys.*` tables are unavailable.
+- **Admin & Non-Admin Support** — Admin users see all roles/users/objects via `/api/admin/*` routes (sys.* tables). Non-admin users see only their accessible objects and role chain via `/api/user/*` routes (SHOW GRANTS + INFORMATION_SCHEMA). Admin routes enforce `require_admin` (403 for non-admin).
 - **Object Permission Matrix** — Click an object to see a grantee × privilege matrix (Direct/Inherited indicators), with type-specific columns per object type
 - **Implicit USAGE** — TABLE-level grants automatically show implicit DATABASE/CATALOG USAGE access
 - **User/Role Privilege View** — Unified scope-grouped tree (GrantTreeView) across all panels
@@ -53,23 +52,31 @@ A web UI for visually exploring user, role, and object permission structures acr
 │   └── app/
 │       ├── main.py
 │       ├── config.py
-│       ├── dependencies.py     # JWT auth + DB connection DI
-│       ├── routers/            # auth, objects, privileges, roles, dag, search
-│       ├── services/           # starrocks_client, user_service
+│       ├── dependencies.py     # JWT auth + DB connection DI + require_admin guard
+│       ├── routers/
+│       │   ├── auth.py              # /api/auth/* (shared)
+│       │   ├── user_*.py            # /api/user/* (all users, Layer 1 only)
+│       │   └── admin_*.py           # /api/admin/* (admin only, Layer 1+2)
+│       ├── services/
+│       │   ├── starrocks_client.py  # MySQL connector wrapper
+│       │   ├── grant_collector.py   # Facade (delegates to common or admin)
+│       │   ├── shared/              # Constants, name_utils, role_graph
+│       │   ├── common/              # Layer 1: SHOW + INFORMATION_SCHEMA
+│       │   └── admin/               # Layer 2: sys.* tables (admin only)
 │       ├── models/             # Pydantic schemas
 │       └── utils/              # JWT session, session store, cache, role_helpers, sys_access
-└── frontend/            # React 18 + Vite + TypeScript
+└── frontend/            # React 19 + Vite + TypeScript
     ├── icons/           # Customizable SVG icons (single source of truth)
     └── src/
-        ├── api/         # API clients
+        ├── api/         # API clients (client.ts, auth.ts, user.ts, admin.ts)
         ├── stores/      # Zustand state management
-        ├── utils/       # grantDisplay, privColors, scopeConfig, toast
+        ├── utils/       # grantDisplay, inventory-helpers, privColors, scopeConfig, toast
         └── components/
             ├── auth/    # Login form
-            ├── layout/  # Header, Sidebar
+            ├── layout/  # Header, Sidebar (isAdmin-conditional APIs)
             ├── common/  # InlineIcon, GrantTreeView, ExportPngBtn
             ├── dag/     # React Flow + dagre layout
-            ├── tabs/    # PermissionDetailTab (Permission Focus), InventoryTab (My Inventory)
+            ├── tabs/    # PermissionDetailTab, PermissionMatrix, InventoryTab, InventoryDetailPanel, inventory-ui
             └── panels/  # Object / User / Group detail panels
 ```
 
@@ -152,7 +159,6 @@ server {
 | **Role Map** | Shows role inheritance with full BFS child traversal. Clicking a role shows the complete inheritance chain (parents + children + users). | No |
 | **Permission Focus** | Search for a user or role to view their inheritance DAG and full privilege list side-by-side. | Yes |
 | **My Inventory** | Browse all accessible objects organized by sub-tabs (Roles, Users, Catalogs, Databases, Tables, MVs, Views, Functions) with a detail side panel. | No |
-| **Full Permission Graph** | Combined users → roles → objects graph with privilege-colored edges. | Coming soon |
 
 ### My Inventory Sub-tabs
 
@@ -217,16 +223,24 @@ curl -X POST http://localhost:8001/api/auth/login \
 # Extract token from response
 TOKEN="eyJhbG..."
 
-# My Inventory data (all accessible objects for current user)
-curl http://localhost:8001/api/privileges/my-permissions \
+# --- User routes (all users) ---
+
+# My permissions + accessible objects
+curl http://localhost:8001/api/user/my-permissions \
   -H "Authorization: Bearer $TOKEN"
+
+# Object Hierarchy DAG (user-scoped)
+curl "http://localhost:8001/api/user/dag/object-hierarchy?catalog=default_catalog" \
+  -H "Authorization: Bearer $TOKEN"
+
+# --- Admin routes (admin only, returns 403 for non-admin) ---
 
 # Object privileges (permission matrix)
-curl "http://localhost:8001/api/privileges/object?catalog=default_catalog&database=mydb&name=mytable&object_type=TABLE" \
+curl "http://localhost:8001/api/admin/privileges/object?catalog=default_catalog&database=mydb&name=mytable&object_type=TABLE" \
   -H "Authorization: Bearer $TOKEN"
 
-# Object Hierarchy DAG
-curl "http://localhost:8001/api/dag/object-hierarchy?catalog=default_catalog" \
+# All roles in cluster
+curl http://localhost:8001/api/admin/roles \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -239,7 +253,7 @@ cd backend
 source venv/bin/activate
 ```
 
-**Unit tests** (mock DB, no StarRocks connection required):
+**Unit tests** (71 tests — mock DB, no StarRocks connection required):
 ```bash
 python -m pytest tests/ -v --ignore=tests/test_integration.py
 ```
@@ -287,57 +301,50 @@ npx eslint src/ --max-warnings 0
 | Layer | Technology |
 |-------|-----------|
 | Backend | Python 3.10+, FastAPI, mysql-connector-python, PyJWT, pydantic-settings |
-| Frontend | React 18, Vite, TypeScript, React Flow (@xyflow/react), dagre, Tailwind CSS, Zustand |
+| Frontend | React 19, Vite, TypeScript, React Flow (@xyflow/react), dagre, Tailwind CSS, Zustand |
 | Linting | Ruff, Bandit (backend), ESLint (frontend) |
 | Deployment | Docker (multi-stage build) |
 
-## API Endpoints (20)
+## API Endpoints
 
-### Authentication
+### Authentication & Health
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/auth/login` | Login with StarRocks credentials → JWT |
 | POST | `/api/auth/logout` | Invalidate server-side session |
 | GET | `/api/auth/me` | Current user info + roles + is_user_admin |
-
-### Objects
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/objects/catalogs` | List catalogs |
-| GET | `/api/objects/databases?catalog=X` | List databases |
-| GET | `/api/objects/tables?catalog=X&database=Y` | List tables/views/MVs/functions |
-| GET | `/api/objects/table-detail?catalog=X&database=Y&table=Z` | Detailed metadata |
-
-### Privileges
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/privileges/user/{name}` | User direct privileges |
-| GET | `/api/privileges/user/{name}/effective` | Effective privileges (including inherited) |
-| GET | `/api/privileges/role/{name}` | Role privileges (including inherited from parents) |
-| GET | `/api/privileges/object?catalog=X&database=Y&name=Z&object_type=T` | Privileges on an object |
-| GET | `/api/privileges/my-permissions` | Current user's full permission tree + accessible objects |
-
-### Roles
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/roles` | List roles (admin: all, non-admin: own roles) |
-| GET | `/api/roles/hierarchy` | Role inheritance DAG |
-| GET | `/api/roles/inheritance-dag?name=X&type=role` | Focused inheritance DAG (full BFS up + down) |
-| GET | `/api/roles/{name}/users` | Users assigned to a role |
-
-### DAG
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/dag/object-hierarchy?catalog=X` | Object hierarchy DAG |
-| GET | `/api/dag/role-hierarchy` | Role hierarchy DAG |
-| GET | `/api/dag/full?catalog=X` | Full permission DAG |
-
-### Search & Health
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/search?q=keyword&limit=50` | Unified search (objects/users/roles) |
-| GET | `/api/search/users-roles?q=keyword` | Fast user/role search only |
 | GET | `/api/health` | Server health check (no auth required) |
+
+### User Routes (`/api/user/*` — all users, Layer 1 only)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/user/objects/catalogs` | List accessible catalogs |
+| GET | `/api/user/objects/databases?catalog=X` | List accessible databases |
+| GET | `/api/user/objects/tables?catalog=X&database=Y` | List accessible tables/views/MVs/functions |
+| GET | `/api/user/objects/table-detail?catalog=X&database=Y&table=Z` | Detailed metadata |
+| GET | `/api/user/my-permissions` | Current user's permission tree + accessible objects |
+| GET | `/api/user/roles` | Current user's roles |
+| GET | `/api/user/roles/hierarchy` | Current user's role hierarchy DAG |
+| GET | `/api/user/dag/object-hierarchy?catalog=X` | Object hierarchy DAG (user-scoped) |
+| GET | `/api/user/dag/role-hierarchy` | Role hierarchy DAG (user-scoped) |
+| GET | `/api/user/search?q=keyword&limit=50` | Search accessible objects |
+
+### Admin Routes (`/api/admin/*` — admin only, requires `require_admin`)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/admin/privileges/user/{name}` | User direct privileges |
+| GET | `/api/admin/privileges/user/{name}/effective` | Effective privileges (including inherited) |
+| GET | `/api/admin/privileges/role/{name}` | Role privileges (including inherited) |
+| GET | `/api/admin/privileges/role/{name}/raw` | Raw role grants |
+| GET | `/api/admin/privileges/object?catalog=X&database=Y&name=Z&object_type=T` | Privileges on an object |
+| GET | `/api/admin/roles` | All roles in cluster |
+| GET | `/api/admin/roles/hierarchy` | Full role inheritance DAG |
+| GET | `/api/admin/roles/inheritance-dag?name=X&type=role` | Focused inheritance DAG (BFS up + down) |
+| GET | `/api/admin/roles/{name}/users` | Users assigned to a role |
+| GET | `/api/admin/dag/object-hierarchy?catalog=X` | Object hierarchy DAG (all objects) |
+| GET | `/api/admin/dag/role-hierarchy` | Role hierarchy DAG (all roles) |
+| GET | `/api/admin/search?q=keyword&limit=50` | Unified search (all objects/users/roles) |
+| GET | `/api/admin/search/users-roles?q=keyword` | Fast user/role search |
 
 ## Icon Customization
 
@@ -352,7 +359,7 @@ Uses `information_schema.tables` and `columns` as the primary data source, makin
 | Version | Feature |
 |---------|---------|
 | v1.0 | Read-only permission exploration & visualization (current) |
-| v1.1 | Full Permission Graph tab, Resource Group/Storage Volume/Resource support |
+| v1.1 | 3-layer service architecture, layered API routes (`/api/user/*` + `/api/admin/*`), Resource Group/Storage Volume/Resource support |
 | v1.2 | SQL Privilege Checker — Permission Focus 탭에서 SQL 쿼리 입력 시 선택된 유저/역할의 실행 권한 검증 (SELECT, INSERT, CREATE TABLE 등 → 필요 권한 ✅/❌ 표시) |
 | v2.0 | GRANT/REVOKE UI, Bulk Operations |
 | v2.1 | Audit Log, Permission Diff |

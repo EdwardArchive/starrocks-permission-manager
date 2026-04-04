@@ -315,6 +315,42 @@ Traverses the role hierarchy (up to 16 levels) via BFS to collect all inherited 
 
 ---
 
+### GET `/api/privileges/role/{rolename}/raw`
+
+Debug endpoint: returns raw `SHOW GRANTS` and `sys.grants_to_roles` output for a role.
+
+**Path Parameters**
+| Param | Type | Description |
+|-------|------|-------------|
+| rolename | string | Role name |
+
+**Response** `200 OK`
+```json
+{
+  "sys_grants_to_roles": [ ... ],
+  "show_grants": [ ... ]
+}
+```
+
+---
+
+### GET `/api/privileges/my-permissions`
+
+Returns the current user's full permission tree and all accessible objects. Uses SHOW GRANTS with BFS role chain traversal.
+
+**Response** `200 OK`
+```json
+{
+  "role_tree": { ... },
+  "accessible_catalogs": [ ... ],
+  "accessible_databases": [ ... ],
+  "accessible_objects": [ ... ],
+  "system_objects": [ ... ]
+}
+```
+
+---
+
 ### GET `/api/privileges/object`
 
 Returns all privilege grants on a specific object (users + roles).
@@ -357,6 +393,20 @@ Returns the full list of roles.
 Returns the role inheritance structure as a DAG. Used directly by the Role Map tab.
 
 **Response** `200 OK` - `DAGGraph` (see DAG schema below)
+
+---
+
+### GET `/api/roles/inheritance-dag`
+
+Returns a focused inheritance DAG for a specific role or user, with full BFS traversal up (parents) and down (children).
+
+**Query Parameters**
+| Param | Type | Required | Description |
+|-------|------|----------|-------------|
+| name | string | Yes | Role or user name |
+| type | string | No | `role` (default) or `user` |
+
+**Response** `200 OK` - `DAGGraph`
 
 ---
 
@@ -430,19 +480,6 @@ Returns the object hierarchy DAG. Structure: SYSTEM → CATALOG → DATABASE →
 ### GET `/api/dag/role-hierarchy`
 
 Returns the role hierarchy DAG. Structure: root (top) → built-in roles → custom roles → users.
-
-**Response** `200 OK` - `DAGGraph`
-
----
-
-### GET `/api/dag/full`
-
-Returns the full permission graph. Users → Roles → Objects with privilege edges.
-
-**Query Parameters**
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| catalog | string | No | Filter to a specific catalog |
 
 **Response** `200 OK` - `DAGGraph`
 

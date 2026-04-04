@@ -1,5 +1,5 @@
 def test_user_privileges(client, auth_header):
-    resp = client.get("/api/privileges/user/test_admin", headers=auth_header)
+    resp = client.get("/api/admin/privileges/user/test_admin", headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -13,7 +13,7 @@ def test_user_privileges(client, auth_header):
 
 
 def test_user_effective_privileges(client, auth_header):
-    resp = client.get("/api/privileges/user/test_admin/effective", headers=auth_header)
+    resp = client.get("/api/admin/privileges/user/test_admin/effective", headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -24,7 +24,7 @@ def test_user_effective_privileges(client, auth_header):
 
 
 def test_role_privileges(client, auth_header):
-    resp = client.get("/api/privileges/role/analyst_role", headers=auth_header)
+    resp = client.get("/api/admin/privileges/role/analyst_role", headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -37,7 +37,7 @@ def test_role_privileges(client, auth_header):
 
 def test_object_privileges(client, auth_header):
     resp = client.get(
-        "/api/privileges/object",
+        "/api/admin/privileges/object",
         params={
             "catalog": "default_catalog",
             "database": "analytics_db",
@@ -56,7 +56,7 @@ def test_object_privileges(client, auth_header):
 
 def test_object_privileges_no_filter(client, auth_header):
     """No filter params → returns all grants."""
-    resp = client.get("/api/privileges/object", headers=auth_header)
+    resp = client.get("/api/admin/privileges/object", headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)

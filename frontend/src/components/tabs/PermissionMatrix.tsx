@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getObjectPrivileges } from "../../api/privileges";
+import { getObjectPrivileges } from "../../api/user";
 import type { PrivilegeGrant } from "../../types";
 import InlineIcon from "../common/InlineIcon";
 import { C, PRIV_BY_TYPE, PRIV_KEY_MAP, matrixTh } from "../../utils/inventory-helpers";
@@ -30,49 +30,39 @@ export function GranteeName({ name, grants }: { name: string; grants: PrivilegeG
   );
 }
 
-/* ── ObjectPrivilegesPane (Permission Matrix) ── */
-export function ObjectPrivilegesPane({ catalog, database, name, objectType }: {
-  catalog: string; database: string; name: string; objectType: string;
+/* ── PermissionMatrixView — pure render, no API calls ── */
+export function PermissionMatrixView({ grants, objectType, filterGrantees }: {
+  grants: PrivilegeGrant[];
+  objectType: string;
+  filterGrantees?: Set<string>;
 }) {
-  const [state, setState] = useState<{ grants: PrivilegeGrant[]; loading: boolean }>({ grants: [], loading: true });
-
-  useEffect(() => {
-    const ac = new AbortController();
-    const catArg = objectType === "CATALOG" ? name : catalog;
-    const dbArg = objectType === "DATABASE" ? name : (objectType === "CATALOG" ? undefined : database);
-    const objName = (objectType === "DATABASE" || objectType === "CATALOG") ? undefined : (name || undefined);
-    getObjectPrivileges(catArg, dbArg, objName, objectType)
-      .then((grants) => setState({ grants, loading: false }))
-      .catch(() => setState({ grants: [], loading: false }));
-    return () => { ac.abort(); };
-  }, [catalog, database, name, objectType]);
-
-  if (state.loading) return <Loader />;
-
   const privKey = PRIV_KEY_MAP[objectType] || "table";
   const columns = PRIV_BY_TYPE[privKey] || [];
 
   /* Group grants by grantee */
   const granteeMap: Record<string, PrivilegeGrant[]> = {};
-  for (const g of state.grants) {
+  for (const g of grants) {
     (granteeMap[g.grantee] ??= []).push(g);
   }
 
-  // Detect privileges inherited from 'public' role (all users/roles have these)
+  // Detect privileges inherited from 'public' role
   const publicPrivs = new Set(
     (granteeMap["public"] || []).map((g) => g.privilege_type.toUpperCase())
   );
 
-  // Build display rows: public privs -> "All Roles" + "All Users" summary, others show individually
   // Filter out grantees who ONLY have public-inherited privileges
-  const filteredGrantees = Object.keys(granteeMap).filter((grantee) => {
-    if (grantee === "public") return false; // replaced by summary rows
+  let filteredGrantees2 = Object.keys(granteeMap).filter((grantee) => {
+    if (grantee === "public") return false;
     const gg = granteeMap[grantee];
-    const hasNonPublic = gg.some((g) => !publicPrivs.has(g.privilege_type.toUpperCase()));
-    return hasNonPublic;
+    return gg.some((g) => !publicPrivs.has(g.privilege_type.toUpperCase()));
   });
 
-  if (filteredGrantees.length === 0 && publicPrivs.size === 0) {
+  // Apply DAG scope filter if provided
+  if (filterGrantees) {
+    filteredGrantees2 = filteredGrantees2.filter((g) => filterGrantees.has(g));
+  }
+
+  if (filteredGrantees2.length === 0 && publicPrivs.size === 0) {
     return <div style={{ padding: 16, color: C.text3, fontSize: 12, textAlign: "center" }}>No privilege grants found</div>;
   }
 
@@ -104,15 +94,13 @@ export function ObjectPrivilegesPane({ catalog, database, name, objectType }: {
           </tr>
         </thead>
         <tbody>
-          {/* Public role summary rows */}
           {publicPrivs.size > 0 && (
             <>
               {renderRow("All Roles", publicPrivs, false, false, { color: "#f59e0b", fontStyle: "italic" })}
               {renderRow("All Users", publicPrivs, false, false, { color: "#38bdf8", fontStyle: "italic" })}
             </>
           )}
-          {/* Individual grantees with non-public privileges */}
-          {filteredGrantees.map((grantee) => {
+          {filteredGrantees2.map((grantee) => {
             const gg = granteeMap[grantee];
             const privSet = new Set(gg.map((g) => g.privilege_type.toUpperCase()));
             const hasAll = privSet.has("ALL") || privSet.has("ALL PRIVILEGES");
@@ -140,4 +128,26 @@ export function ObjectPrivilegesPane({ catalog, database, name, objectType }: {
       </table>
     </div>
   );
+}
+
+/* ── ObjectPrivilegesPane (fetches + renders) ── */
+export function ObjectPrivilegesPane({ catalog, database, name, objectType }: {
+  catalog: string; database: string; name: string; objectType: string;
+}) {
+  const [state, setState] = useState<{ grants: PrivilegeGrant[]; loading: boolean }>({ grants: [], loading: true });
+
+  useEffect(() => {
+    const ac = new AbortController();
+    const catArg = objectType === "CATALOG" ? name : catalog;
+    const dbArg = objectType === "DATABASE" ? name : (objectType === "CATALOG" ? undefined : database);
+    const objName = (objectType === "DATABASE" || objectType === "CATALOG") ? undefined : (name || undefined);
+    getObjectPrivileges(catArg, dbArg, objName, objectType)
+      .then((grants) => setState({ grants, loading: false }))
+      .catch(() => setState({ grants: [], loading: false }));
+    return () => { ac.abort(); };
+  }, [catalog, database, name, objectType]);
+
+  if (state.loading) return <Loader />;
+
+  return <PermissionMatrixView grants={state.grants} objectType={objectType} />;
 }

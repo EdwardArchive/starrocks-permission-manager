@@ -14,12 +14,9 @@ export interface SelectedItem {
   objectType?: string; // "TABLE" | "VIEW" | "MATERIALIZED VIEW" | "FUNCTION" | "DATABASE" | "ROLE"
 }
 
-/* ── Palette ── */
-export const C = {
-  bg: "#0f172a", card: "#1e293b", border: "#334155", borderLight: "#475569",
-  text1: "#e2e8f0", text2: "#94a3b8", text3: "#64748b",
-  accent: "#3b82f6", green: "#22c55e", blue: "#3b82f6",
-};
+/* ── Palette (re-exported from shared colors) ── */
+import { C } from "./colors";
+export { C };
 
 /* ── Constants ── */
 export const SUB_TAB_META: { key: AllTab; label: string; future?: boolean }[] = [

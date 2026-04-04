@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   getMyPermissions,
+  getRoles as userGetRoles,
+  getRoleHierarchy as userGetRoleHierarchy,
   type MyPermissionsResponse,
-} from "../../api/privileges";
+} from "../../api/user";
+import { getRoles as adminGetRoles, getRoleHierarchy as adminGetRoleHierarchy } from "../../api/admin";
 import { useAuthStore } from "../../stores/authStore";
-import { getRoles } from "../../api/dag";
 import {
   C, SUB_TAB_META, OBJECT_TYPE_MAP, formatBytes,
   type SubTab, type AllTab, type RoleRow, type SelectedItem,
@@ -74,16 +76,17 @@ export default function InventoryTab() {
     return () => { ac.abort(); };
   }, []);
 
-  /* Admin: load all roles + users */
+  /* Admin: load all roles + users; Non-admin: load own roles */
   useEffect(() => {
-    if (!isAdmin) return;
+    const getRoles = isAdmin ? adminGetRoles : userGetRoles;
+    const getRoleHierarchy = isAdmin ? adminGetRoleHierarchy : userGetRoleHierarchy;
     getRoles().then(setAllRoles).catch(() => {});
-    import("../../api/dag").then(({ getRoleHierarchy }) =>
+    if (isAdmin) {
       getRoleHierarchy().then((dag) => {
         const users = dag.nodes.filter((n) => n.type === "user").map((n) => n.label);
         setAllUsers(users);
-      }).catch(() => {})
-    );
+      }).catch(() => {});
+    }
   }, [isAdmin]);
 
   const { data, loading, error } = state;

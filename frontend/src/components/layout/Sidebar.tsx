@@ -1,10 +1,10 @@
 import { useEffect, useState, useRef } from "react";
-import { getCatalogs, getDatabases, getTables } from "../../api/objects";
-import { getRoles } from "../../api/dag";
-import { searchAll, type SearchResult } from "../../api/search";
+import { getCatalogs, getDatabases, getTables, getRoles as userGetRoles, searchAll as userSearchAll, type SearchResult } from "../../api/user";
+import { getRoles as adminGetRoles, searchAll as adminSearchAll } from "../../api/admin";
 import { useDagStore } from "../../stores/dagStore";
 import { useAuthStore } from "../../stores/authStore";
 import { colorizedSvg, NODE_COLORS } from "../dag/nodeIcons";
+import { C } from "../../utils/colors";
 import type { CatalogItem, DatabaseItem, ObjectItem, RoleItem } from "../../types";
 
 /* ── Inline SVG icon (same as mockup: 16x16) ── */
@@ -26,31 +26,31 @@ function Icon({ type, size = 16 }: { type: string; size?: number }) {
 const S = {
   aside: {
     width: 300, flexShrink: 0, display: "flex" as const, flexDirection: "column" as const,
-    borderRight: "1px solid #475569", background: "#1e293b", overflow: "hidden",
+    borderRight: `1px solid ${C.borderLight}`, background: C.card, overflow: "hidden",
   },
-  searchWrap: { padding: "12px 16px", borderBottom: "1px solid #475569" },
+  searchWrap: { padding: "12px 16px", borderBottom: `1px solid ${C.borderLight}` },
   searchInput: {
-    width: "100%", padding: "8px 12px", background: "#0f172a", border: "1px solid #475569",
-    borderRadius: 6, color: "#e2e8f0", fontSize: 13, outline: "none", fontFamily: "inherit",
+    width: "100%", padding: "8px 12px", background: C.bg, border: `1px solid ${C.borderLight}`,
+    borderRadius: 6, color: C.text1, fontSize: 13, outline: "none", fontFamily: "inherit",
   },
   content: { flex: 1, overflowY: "auto" as const, padding: "8px 0" },
   sectionTitle: {
     padding: "8px 16px", fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const,
-    letterSpacing: "0.05em", color: "#94a3b8",
+    letterSpacing: "0.05em", color: C.text2,
   },
   item: (indent: number, isGroup?: boolean): React.CSSProperties => ({
     display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
     padding: `6px 16px 6px ${24 + indent * 16}px`,
     fontSize: isGroup ? 12 : 13, fontWeight: isGroup ? 600 : 400,
-    color: isGroup ? "#94a3b8" : "#e2e8f0",
+    color: isGroup ? C.text2 : C.text1,
     border: "none", background: "transparent", width: "100%", textAlign: "left",
     fontFamily: "inherit",
   }),
   badge: (color?: string): React.CSSProperties => ({
-    marginLeft: "auto", background: color || "#334155", padding: "1px 6px",
-    borderRadius: 10, fontSize: 11, color: color ? undefined : "#94a3b8",
+    marginLeft: "auto", background: color || C.border, padding: "1px 6px",
+    borderRadius: 10, fontSize: 11, color: color ? undefined : C.text2,
   }),
-  expand: { fontSize: 10, marginRight: 2, color: "#94a3b8", flexShrink: 0 } as React.CSSProperties,
+  expand: { fontSize: 10, marginRight: 2, color: C.text2, flexShrink: 0 } as React.CSSProperties,
 };
 
 /* ── Eye toggle for hide/show ── */
@@ -63,7 +63,7 @@ function EyeToggle({ label, hidden, onToggle }: { label: string; hidden: boolean
       title={hidden ? `Show ${label}` : `Hide ${label}`}
       style={{
         background: "none", border: "none", cursor: "pointer", padding: 2,
-        color: hidden ? "#475569" : "#64748b", flexShrink: 0,
+        color: hidden ? C.borderLight : C.text3, flexShrink: 0,
         display: "inline-flex", alignItems: "center", justifyContent: "center",
         opacity: hidden ? 0.5 : 0.7,
       }}
@@ -89,6 +89,7 @@ function EyeToggle({ label, hidden, onToggle }: { label: string; hidden: boolean
 export default function Sidebar() {
   const { activeTab, searchQuery, setSearchQuery, setSelectedNode, setPanelMode, activeCatalog, setActiveCatalog, setActiveTab, hiddenNodes, toggleNodeVisibility } = useDagStore();
   const { user } = useAuthStore();
+  const isAdmin = user?.is_user_admin ?? false;
 
   const [catalogs, setCatalogs] = useState<CatalogItem[]>([]);
   const [dbMap, setDbMap] = useState<Record<string, DatabaseItem[]>>({});
@@ -104,8 +105,9 @@ export default function Sidebar() {
 
   useEffect(() => {
     getCatalogs().then(setCatalogs).catch(() => {});
+    const getRoles = isAdmin ? adminGetRoles : userGetRoles;
     getRoles().then(setRoles).catch(() => {});
-  }, []);
+  }, [isAdmin]);
 
   // Debounced search: trigger after 300ms of no typing, min 2 chars
   useEffect(() => {
@@ -118,13 +120,14 @@ export default function Sidebar() {
     }
     setSearching(true);
     debounceRef.current = setTimeout(() => {
+      const searchAll = isAdmin ? adminSearchAll : userSearchAll;
       searchAll(trimmed)
         .then(setSearchResults)
         .catch(() => setSearchResults([]))
         .finally(() => setSearching(false));
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [searchQuery]);
+  }, [searchQuery, isAdmin]);
 
   const toggleCat = async (cat: string) => {
     const next = new Set(expandedCats);
@@ -168,7 +171,7 @@ export default function Sidebar() {
 
   const hoverIn = (e: React.MouseEvent) => {
     const el = e.currentTarget as HTMLElement;
-    if (!el.dataset.active) el.style.background = "#334155";
+    if (!el.dataset.active) el.style.background = C.border;
   };
   const hoverOut = (e: React.MouseEvent) => {
     const el = e.currentTarget as HTMLElement;
@@ -190,16 +193,16 @@ export default function Sidebar() {
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search objects, users, roles..."
           style={{ ...S.searchInput, paddingRight: searchQuery ? 28 : 12 }}
-          onFocus={(e) => (e.target.style.borderColor = "#3b82f6")}
-          onBlur={(e) => (e.target.style.borderColor = "#475569")}
+          onFocus={(e) => (e.target.style.borderColor = C.accent)}
+          onBlur={(e) => (e.target.style.borderColor = C.borderLight)}
         />
         {searchQuery && (
           <button
             onClick={() => { setSearchQuery(""); setSearchResults(null); }}
             style={{
               position: "absolute", right: 20, top: "50%", transform: "translateY(-50%)",
-              width: 18, height: 18, border: "none", background: "#475569", borderRadius: "50%",
-              color: "#e2e8f0", fontSize: 11, cursor: "pointer", display: "flex",
+              width: 18, height: 18, border: "none", background: C.borderLight, borderRadius: "50%",
+              color: C.text1, fontSize: 11, cursor: "pointer", display: "flex",
               alignItems: "center", justifyContent: "center", fontFamily: "inherit", padding: 0,
             }}
           >
@@ -216,9 +219,9 @@ export default function Sidebar() {
               Search Results {searching ? "" : `(${searchResults?.length ?? 0})`}
             </div>
             {searching && (
-              <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#94a3b8" }}>
+              <div style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.text2 }}>
                 <span style={{
-                  width: 14, height: 14, border: "2px solid #475569", borderTop: "2px solid #3b82f6",
+                  width: 14, height: 14, border: `2px solid ${C.borderLight}`, borderTop: `2px solid ${C.accent}`,
                   borderRadius: "50%", display: "inline-block",
                   animation: "spin 0.8s linear infinite",
                 }} />
@@ -227,7 +230,7 @@ export default function Sidebar() {
               </div>
             )}
             {!searching && searchResults?.length === 0 && (
-              <div style={{ padding: "8px 16px", fontSize: 12, color: "#94a3b8", fontStyle: "italic" }}>No results found</div>
+              <div style={{ padding: "8px 16px", fontSize: 12, color: C.text2, fontStyle: "italic" }}>No results found</div>
             )}
             {(searchResults || []).map((r, i) => (
               <button
@@ -242,7 +245,7 @@ export default function Sidebar() {
               >
                 <Icon type={r.type} size={14} />
                 <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
-                <span style={{ fontSize: 10, color: "#64748b", flexShrink: 0, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <span style={{ fontSize: 10, color: C.text3, flexShrink: 0, maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {r.catalog && r.database ? `${r.catalog}.${r.database}` : r.catalog || ""}
                 </span>
               </button>
@@ -319,7 +322,7 @@ export default function Sidebar() {
         {user?.is_user_admin && (
           <>
             <div style={{ ...S.sectionTitle, marginTop: 8 }}>Users</div>
-            <div style={{ padding: "4px 16px", fontSize: 11, color: "#94a3b8", fontStyle: "italic" }}>
+            <div style={{ padding: "4px 16px", fontSize: 11, color: C.text2, fontStyle: "italic" }}>
               Loaded from role hierarchy
             </div>
           </>

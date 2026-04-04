@@ -12,7 +12,10 @@ from app.models.schemas import PrivilegeGrant
 # Module-level constants
 # ══════════════════════════════════════════════════════════════════════
 
-_BUILTIN_ROLES = frozenset({"root", "db_admin", "user_admin", "cluster_admin", "security_admin", "public"})
+from app.services.shared.constants import BUILTIN_ROLES
+from app.services.shared.name_utils import normalize_fn_name
+
+_BUILTIN_ROLES = BUILTIN_ROLES
 
 _NON_OBJECT_TYPES = frozenset(
     {
@@ -138,9 +141,19 @@ def classify_grant(g: PrivilegeGrant, q: ObjectQuery) -> Relevance:
     if otype == "SYSTEM" or priv_upper in _SYSTEM_ONLY_PRIVS:
         return Relevance.IRRELEVANT
 
-    # ── Non-object types (USER, RESOURCE GROUP, etc.) ──
+    # ── Non-object types (USER, RESOURCE GROUP, STORAGE VOLUME, etc.) ──
     if otype in _NON_OBJECT_TYPES:
-        return Relevance.EXACT if q.type_upper == otype else Relevance.IRRELEVANT
+        if q.type_upper != otype:
+            return Relevance.IRRELEVANT
+        # Type matches — check name if both grant and query specify one
+        # Normalize function signatures: "fn(VARCHAR)" matches "fn"
+        if gn and q.name:
+            gn_base = normalize_fn_name(gn)
+            qn_base = normalize_fn_name(q.name)
+            if gn_base != qn_base:
+                return Relevance.IRRELEVANT
+        # Wildcard grant (no name) → PARENT_SCOPE, exact name match → EXACT
+        return Relevance.EXACT if gn or not q.name else Relevance.PARENT_SCOPE
 
     # ── Scope query (DATABASE/CATALOG without name): child grants → USAGE ──
     if q.is_scope_query and otype in q.child_types and _scope_matches(gc, gd, gn, q):

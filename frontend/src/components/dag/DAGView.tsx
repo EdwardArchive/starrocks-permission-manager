@@ -16,7 +16,8 @@ import "@xyflow/react/dist/style.css";
 import CustomNode from "./CustomNode";
 import GroupNode from "./GroupNode";
 import { applyDagreLayout } from "./dagLayout";
-import { EDGE_COLORS, NODE_COLORS } from "./nodeIcons";
+import { EDGE_COLORS, NODE_COLORS, ROLE_CATEGORY_COLORS } from "./nodeIcons";
+import { C } from "../../utils/colors";
 import { useDagStore } from "../../stores/dagStore";
 import type { DAGGraph } from "../../types";
 
@@ -114,7 +115,7 @@ export default function DAGView({ data, direction = "TB", loading, hiddenNodes }
         label: n.label,
         nodeType: n.type,
         nodeRole: n.node_role,
-        color: n.color || NODE_COLORS[n.type],
+        color: n.color || (n.type === "role" && n.metadata?.role_category ? ROLE_CATEGORY_COLORS[n.metadata.role_category as string] : undefined) || NODE_COLORS[n.type],
       },
     }));
 
@@ -133,11 +134,11 @@ export default function DAGView({ data, direction = "TB", loading, hiddenNodes }
         animated: false,
         hidden: isGroupChild,
         style: {
-          stroke: EDGE_COLORS[e.edge_type] || "#475569",
+          stroke: EDGE_COLORS[e.edge_type] || C.borderLight,
           strokeWidth: 2,
           strokeDasharray: e.edge_type === "hierarchy" || e.edge_type === "usage" ? "6 4" : undefined,
         },
-        markerEnd: isGroupChild ? undefined : { type: "arrowclosed" as const, color: EDGE_COLORS[e.edge_type] || "#475569", width: 12, height: 12 },
+        markerEnd: isGroupChild ? undefined : { type: "arrowclosed" as const, color: EDGE_COLORS[e.edge_type] || C.borderLight, width: 12, height: 12 },
       };
     });
 
@@ -224,7 +225,7 @@ export default function DAGView({ data, direction = "TB", loading, hiddenNodes }
 
   if (loading || (!data && nodes.length === 0)) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#94a3b8", fontSize: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: C.text2, fontSize: 14 }}>
         Loading DAG...
       </div>
     );
@@ -246,14 +247,14 @@ export default function DAGView({ data, direction = "TB", loading, hiddenNodes }
         maxZoom={3}
         proOptions={{ hideAttribution: true }}
       >
-        <Background color="#334155" gap={24} size={1} />
+        <Background color={C.border} gap={24} size={1} />
         <MiniMap
           nodeColor={(n) => {
             const d = n.data as { color?: string };
-            return d.color || "#475569";
+            return d.color || C.borderLight;
           }}
           maskColor="rgba(15,23,42,0.8)"
-          style={{ background: "#1e293b", border: "1px solid #475569", borderRadius: 8 }}
+          style={{ background: C.card, border: `1px solid ${C.borderLight}`, borderRadius: 8 }}
         />
         <Panel position="bottom-left">
           <DagControls onRelayout={handleRelayout} />
@@ -265,12 +266,12 @@ export default function DAGView({ data, direction = "TB", loading, hiddenNodes }
 
 /* ── Custom control bar ── */
 const ctrlBar: React.CSSProperties = {
-  display: "flex", gap: 2, background: "#1e293b", border: "1px solid #475569",
+  display: "flex", gap: 2, background: C.card, border: `1px solid ${C.borderLight}`,
   borderRadius: 8, padding: 3,
 };
 const ctrlBtn: React.CSSProperties = {
   width: 32, height: 32, border: "none", background: "transparent",
-  color: "#94a3b8", borderRadius: 6, fontSize: 16, cursor: "pointer",
+  color: C.text2, borderRadius: 6, fontSize: 16, cursor: "pointer",
   display: "flex", alignItems: "center", justifyContent: "center",
   fontFamily: "inherit",
 };
@@ -279,12 +280,12 @@ function DagControls({ onRelayout }: { onRelayout: () => void }) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
 
   const hover = (e: React.MouseEvent) => {
-    (e.currentTarget as HTMLElement).style.background = "#334155";
-    (e.currentTarget as HTMLElement).style.color = "#e2e8f0";
+    (e.currentTarget as HTMLElement).style.background = C.border;
+    (e.currentTarget as HTMLElement).style.color = C.text1;
   };
   const leave = (e: React.MouseEvent) => {
     (e.currentTarget as HTMLElement).style.background = "transparent";
-    (e.currentTarget as HTMLElement).style.color = "#94a3b8";
+    (e.currentTarget as HTMLElement).style.color = C.text2;
   };
 
   return (
@@ -298,7 +299,7 @@ function DagControls({ onRelayout }: { onRelayout: () => void }) {
       <button style={ctrlBtn} title="Fit View" onClick={() => fitView({ padding: 0.1 })} onMouseEnter={hover} onMouseLeave={leave}>
         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
       </button>
-      <div style={{ width: 1, height: 20, background: "#475569", alignSelf: "center" }} />
+      <div style={{ width: 1, height: 20, background: C.borderLight, alignSelf: "center" }} />
       <button style={ctrlBtn} title="Re-layout" onClick={onRelayout} onMouseEnter={hover} onMouseLeave={leave}>
         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
       </button>

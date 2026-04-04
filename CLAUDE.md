@@ -25,20 +25,38 @@ When code or project structure changes, run a sub-agent after completing the tas
 ├── backend/
 │   ├── requirements.txt       # Python dependencies
 │   ├── pytest.ini             # Test config
+│   ├── API.md                 # Detailed API documentation
 │   ├── app/
 │   │   ├── main.py            # FastAPI entry, CORS, router registration, lifespan
 │   │   ├── config.py          # pydantic-settings (env: SRPM_*)
-│   │   ├── dependencies.py    # JWT auth + DB connection DI (includes is_admin in credentials)
+│   │   ├── dependencies.py    # JWT auth + DB connection DI + require_admin guard
 │   │   ├── routers/
-│   │   │   ├── auth.py        # POST /api/auth/login|logout, GET /api/auth/me
-│   │   │   ├── objects.py     # GET /api/objects/catalogs|databases|tables|table-detail
-│   │   │   ├── privileges.py  # GET /api/privileges/* (refactored: ObjectQuery + classify_grant pipeline)
-│   │   │   ├── roles.py       # GET /api/roles|hierarchy|{name}/users|inheritance-dag
-│   │   │   ├── dag.py         # GET /api/dag/object-hierarchy|role-hierarchy|full
-│   │   │   └── search.py      # GET /api/search|search/users-roles
+│   │   │   ├── auth.py              # POST /api/auth/login|logout, GET /api/auth/me
+│   │   │   ├── user_objects.py      # GET /api/user/objects/* (Layer 1, all users)
+│   │   │   ├── user_permissions.py  # GET /api/user/my-permissions (Layer 1, all users)
+│   │   │   ├── user_roles.py        # GET /api/user/roles/* (Layer 1, all users)
+│   │   │   ├── user_dag.py          # GET /api/user/dag/* (Layer 1, all users)
+│   │   │   ├── user_search.py       # GET /api/user/search (Layer 1, all users)
+│   │   │   ├── admin_privileges.py  # GET /api/admin/privileges/* (Layer 1+2, admin only)
+│   │   │   ├── admin_roles.py       # GET /api/admin/roles/* (Layer 1+2, admin only)
+│   │   │   ├── admin_dag.py         # GET /api/admin/dag/* (Layer 1+2, admin only)
+│   │   │   └── admin_search.py      # GET /api/admin/search/* (Layer 1+2, admin only)
 │   │   ├── services/
-│   │   │   ├── starrocks_client.py  # MySQL connector wrapper + parallel_queries
-│   │   │   └── user_service.py      # get_all_users (cached)
+│   │   │   ├── starrocks_client.py        # MySQL connector wrapper + parallel_queries
+│   │   │   ├── grant_collector.py         # Facade: delegates to common or admin collector
+│   │   │   ├── shared/                    # Shared constants and utilities
+│   │   │   │   ├── constants.py           # BUILTIN_ROLES, BFS_MAX_DEPTH
+│   │   │   │   ├── name_utils.py          # normalize_fn_name()
+│   │   │   │   └── role_graph.py          # fetch_role_child_map()
+│   │   │   ├── common/                    # Layer 1: SHOW + INFORMATION_SCHEMA only
+│   │   │   │   ├── grant_parser.py        # SHOW GRANTS parsing → PrivilegeGrant objects
+│   │   │   │   ├── grant_classifier.py    # ObjectQuery + Relevance + classify_grant()
+│   │   │   │   ├── grant_resolver.py      # Resolve grants for user/role/object queries
+│   │   │   │   └── show_grants_collector.py # Non-admin grant collection
+│   │   │   ├── admin/                     # Layer 2: sys.* tables (admin only)
+│   │   │   │   ├── sys_collector.py       # Admin grant collection via sys.*
+│   │   │   │   ├── bfs_resolver.py        # BFS traversal: child roles, user privs, ancestors
+│   │   │   │   └── user_service.py        # get_all_users (cached)
 │   │   ├── models/
 │   │   │   └── schemas.py     # Pydantic request/response models
 │   │   └── utils/
@@ -49,9 +67,10 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │       ├── sys_access.py  # can_access_sys() — checks sys.role_edges access
 │   │       └── role_helpers.py # Shared: get_user_roles, get_parent_roles, parse_role_assignments
 │   └── tests/
-│       ├── conftest.py        # FakeConnection mock + fixtures
-│       ├── test_*.py          # Unit tests (57+)
-│       └── test_integration.py # Integration tests (26, requires real SR)
+│       ├── conftest.py           # FakeConnection mock + fixtures
+│       ├── test_*.py             # Unit tests (57 original)
+│       ├── test_admin_guard.py   # Admin route 403 guard tests (14 parametrized cases)
+│       └── test_integration.py   # Integration tests (26, requires real SR)
 └── frontend/
     ├── package.json
     ├── vite.config.ts          # Tailwind + API proxy → localhost:8001
@@ -60,18 +79,23 @@ When code or project structure changes, run a sub-agent after completing the tas
     │   └── README.md
     └── src/
         ├── main.tsx / index.css
-        ├── App.tsx              # Main layout (tabs + filter + DAG + panel)
+        ├── App.tsx              # Main layout (tabs + filter + DAG + panel, isAdmin-conditional API)
         ├── types/index.ts       # All TypeScript types
-        ├── api/                 # API clients (client, auth, objects, privileges, dag, search)
+        ├── api/
+        │   ├── client.ts            # Axios instance + interceptors
+        │   ├── auth.ts              # Auth API
+        │   ├── user.ts              # /api/user/* endpoints (all users)
+        │   └── admin.ts             # /api/admin/* endpoints (admin only)
         ├── stores/              # Zustand (authStore, dagStore)
         ├── utils/
-        │   ├── grantDisplay.ts  # buildGrantDisplay() — unified grant grouping + implicit USAGE
-        │   ├── privColors.ts    # Privilege tag color map
-        │   ├── scopeConfig.ts   # SCOPE_ORDER, SCOPE_ICONS
-        │   └── toast.ts         # Deduplicating toast
+        │   ├── grantDisplay.ts      # buildGrantDisplay() — unified grant grouping + implicit USAGE
+        │   ├── inventory-helpers.ts  # SubTab/AllTab types, SUB_TAB_META, formatSQL/Bytes
+        │   ├── privColors.ts        # Privilege tag color map
+        │   ├── scopeConfig.ts       # SCOPE_ORDER, SCOPE_ICONS
+        │   └── toast.ts             # Deduplicating toast
         └── components/
             ├── auth/LoginForm.tsx
-            ├── layout/Header.tsx, Sidebar.tsx
+            ├── layout/Header.tsx, Sidebar.tsx  # Sidebar uses isAdmin-conditional APIs
             ├── common/
             │   ├── InlineIcon.tsx     # SVG icon renderer
             │   ├── GrantTreeView.tsx  # Unified privilege display (scope-grouped)
@@ -83,8 +107,11 @@ When code or project structure changes, run a sub-agent after completing the tas
             │   ├── dagLayout.ts     # dagre layout (3-col grid, cluster overlap correction)
             │   └── nodeIcons.ts     # SVG import + colorizedSvg()
             ├── tabs/
-            │   ├── PermissionDetailTab.tsx  # Permission Focus (admin only)
-            │   └── InventoryTab.tsx         # My Inventory (sub-tabs + list + detail panel)
+            │   ├── PermissionDetailTab.tsx  # Permission Focus (admin API only)
+            │   ├── PermissionMatrix.tsx     # GranteeName, PermissionMatrixView, ObjectPrivilegesPane
+            │   ├── InventoryTab.tsx         # My Inventory (isAdmin-conditional API for roles/users)
+            │   ├── InventoryDetailPanel.tsx # Detail panel for inventory items (privs, members, objects)
+            │   └── inventory-ui.tsx         # Shared UI: SearchInput, Chip, Badge, SortTH, etc.
             └── panels/
                 ├── ObjectDetailPanel.tsx  # Permission matrix + Details
                 ├── UserDetailPanel.tsx    # GrantTreeView effective privileges
@@ -93,25 +120,86 @@ When code or project structure changes, run a sub-agent after completing the tas
 
 ## Tech Stack
 - **Backend**: Python 3.10+, FastAPI, mysql-connector-python, PyJWT, pydantic-settings
-- **Frontend**: React 18, Vite, TypeScript, React Flow (@xyflow/react), @dagrejs/dagre, Tailwind CSS, Zustand
+- **Frontend**: React 19, Vite, TypeScript, React Flow (@xyflow/react), @dagrejs/dagre, Tailwind CSS, Zustand
 - **Linting**: Ruff (backend), ESLint (frontend), Bandit (security)
 
 ## Key Design Decisions
+
 - **Auth**: StarRocks credentials → server-side session + JWT token. `is_admin` determined at login via `can_access_sys()` and stored in session.
-- **Admin vs Non-Admin**: Backend detects `credentials["is_admin"]` on each request. Admin path uses `sys.*` tables. Non-admin falls back to `SHOW GRANTS` parsing with BFS role chain traversal.
-- **Privilege Resolution**: 6-step pipeline in `get_object_privileges()`:
-  1. `_collect_sys_grants()` — query sys.grants_to_users/roles
-  2. `_supplement_builtins()` — SHOW GRANTS for builtin roles
-  3. `classify_grant()` — single-pass relevance classification (EXACT/PARENT_SCOPE/IMPLICIT_USAGE/IRRELEVANT)
-  4. `_bfs_child_roles()` — downward BFS for inheriting roles
-  5. `_bfs_user_privs()` — find users with inherited access
-  6. `_finalize()` — USAGE conversion + dedup
-- **Implicit USAGE**: TABLE-level grant → implicit DATABASE USAGE + CATALOG USAGE (StarRocks behavior)
-- **SHOW GRANTS Parsing**: Extracts catalog context from row's `Catalog` column. Handles `ON DATABASE X` (X=database, not catalog), comma-separated roles, wildcard patterns.
-- **Grant Display**: `buildGrantDisplay()` in `grantDisplay.ts` — single utility for all 4 privilege display locations. Consistent displayName rules + implicit USAGE injection.
-- **DAG**: 3 views (Object Hierarchy TB, Role Hierarchy TB, Full Permission Graph LR). `SET ROLE ALL` before object-hierarchy queries.
-- **Icons**: `frontend/icons/` is the single source. All SVGs are stroke-based 24x24 with `width`/`height` attributes.
-- **Scope v1**: Read-only (GRANT/REVOKE planned for v2).
+
+- **3-Tier Data Access Architecture**: ← CHANGED (replaces previous "Admin vs Non-Admin")
+  - **Common Tier**: `services/common/` — Uses only `INFORMATION_SCHEMA` and `SHOW` commands. StarRocks performs per-user permission filtering automatically, so no additional backend filtering is required. Used by all users, including admins.
+  - **Admin Tier**: `services/admin/` — Queries `sys.grants_to_users`, `sys.grants_to_roles`, `sys.role_edges`. Used exclusively for "viewing other users'/roles' permissions." May import Common Tier services for supplemental data.
+  - **Shared**: `services/shared/` — `grant_parser.py`, `constants.py`, and other code imported by both tiers.
+
+- **API Route Separation**: ← NEW
+  - `/api/auth/*`: Shared (login, session, logout)
+  - `/api/user/*`: Calls Common Tier only. Accessible by all users (including non-admin). Returns data scoped to the current user.
+  - `/api/admin/*`: Calls Common + Admin Tier. Requires `require_admin` middleware for authorization. Returns organization-wide data.
+
+- **Privilege Resolution Pipeline**: ← CHANGED (replaces previous "2-layer" description)
+  - **Admin path** (`services/admin/grant_collector.py`):
+    - Collects all grants from `sys.grants_to_users` + `sys.grants_to_roles`
+    - Maps full role hierarchy from `sys.role_edges`
+    - Supplements builtin role/user grants via `SHOW GRANTS`
+    - → `GrantResolver` interprets collected grants per query type (`for_user()`, `for_user_effective()`, `for_role()`, `for_object()`)
+  - **User path** (`services/common/grant_service.py`):
+    - Collects current user's grants via `SHOW GRANTS FOR {current_user}`
+    - Traverses role chain via `SHOW GRANTS FOR ROLE {role}` with BFS
+    - Enumerates accessible objects via `INFORMATION_SCHEMA`
+    - No additional permission checks needed — StarRocks handles filtering natively
+
+  - **classify_grant()** in `grant_classifier.py`: Single-pass relevance classification (EXACT/PARENT_SCOPE/IMPLICIT_USAGE/IRRELEVANT) via `ObjectQuery` dataclass. (unchanged)
+  - **BFS helpers** in `bfs_resolver.py`: `_bfs_child_roles()`, `_bfs_user_privs()`, `_find_ancestors_with_grants()`, `_finalize()` for role inheritance traversal. (unchanged, except `_fetch_role_child_map()` deduplication — now imported from a single location)
+
+- **Implicit USAGE**: TABLE-level grant → implicit DATABASE USAGE + CATALOG USAGE (StarRocks behavior). (unchanged)
+
+- **SHOW GRANTS Parsing**: Consolidated into a single parser at `services/shared/grant_parser.py`. ← CHANGED
+  - `_parse_show_grants()`: Converts `SHOW GRANTS` output → `PrivilegeGrant` objects
+  - `_row_to_grants()`: Converts `sys.*` table rows → `PrivilegeGrant` objects
+  - Handles catalog context extraction, comma-separated roles, and wildcard patterns
+  - Previously scattered grant parsing logic (in `my_permissions.py`, `roles.py`) is now consolidated here
+
+- **Grant Display**: `buildGrantDisplay()` in `grantDisplay.ts` — single utility for all privilege display locations. Consistent displayName rules + implicit USAGE injection. (unchanged)
+
+- **Centralized Constants**: ← NEW
+  - `services/shared/constants.py`:
+    - `BUILTIN_ROLES`: frozenset (previously hardcoded in 4 separate files → now single source)
+    - `BFS_MAX_DEPTH`: 100 (previously hardcoded in 2 files → now single source)
+  - `utils/normalize.py`:
+    - `normalize_fn_name()`: Function signature normalization (previously duplicated in 4 files → now single source)
+
+- **Frontend API Pattern**: ← NEW
+  - `api/user.ts`: Calls `/api/user/*` endpoints (all users)
+  - `api/admin.ts`: Calls `/api/admin/*` endpoints (admin only)
+  - Each tab selects the appropriate API module based on `isAdmin` flag
+  - Response schemas remain identical (`DAGGraph`, `PrivilegeGrant`, etc.) — only scope differs
+
+- **DAG**: 2 views (Object Hierarchy TB, Role Hierarchy TB). `SET ROLE ALL` before object-hierarchy queries. (unchanged)
+
+- **Icons**: `frontend/icons/` is the single source. All SVGs are stroke-based 24×24 with `width`/`height` attributes. (unchanged)
+
+- **Scope v1**: Read-only (GRANT/REVOKE planned for v2). (unchanged)
+
+## Refactoring Rules
+
+### Layer Architecture
+- Layer 1 (Common): INFORMATION_SCHEMA + SHOW commands only. No sys.* tables.
+- Layer 2 (Admin): sys.* tables. Must be in services/admin/ directory.
+- Shared: grant_parser.py, constants.py — importable by both layers.
+
+### API Route Rules
+- /api/user/* routes must ONLY call Layer 1 services
+- /api/admin/* routes may call Layer 1 + Layer 2 services
+- /api/admin/* routes must verify is_admin via middleware
+- /api/auth/* routes are shared (no layer restriction)
+
+### Code Quality
+- No duplicate grant parsing logic — use services/shared/grant_parser.py
+- No hardcoded builtin roles — use constants.BUILTIN_ROLES
+- No duplicate function name normalization — use utils/normalize.py
+- All new endpoints must have pytest tests
+- Router files must NOT contain business logic (delegate to services)
 
 ## Tabs
 | Tab | Description | Admin Only |
@@ -120,7 +208,6 @@ When code or project structure changes, run a sub-agent after completing the tas
 | Role Map | Role inheritance DAG with full BFS child traversal | No |
 | Permission Focus | Search user/role → inheritance DAG + privilege list | Yes |
 | My Inventory | Sub-tab browser: Roles/Users/Catalogs/DBs/Tables/MVs/Views/Functions + detail panel | No |
-| Full Permission Graph | Combined graph (coming soon) | - |
 
 ## My Inventory Sub-tabs
 | Sub-tab | Data Source | Detail Panel |
@@ -177,11 +264,22 @@ python -m pytest tests/test_integration.py -v -s               # Integration (ne
 | `SR_TEST_USER` | - | Integration test username |
 | `SR_TEST_PASS` | - | Integration test password |
 
-## API Endpoints (20)
-- Auth: login, logout, me
-- Objects: catalogs, databases, tables, table-detail
-- Privileges: user/{name}, user/{name}/effective, role/{name}, role/{name}/raw, object, my-permissions
-- Roles: list, hierarchy, {name}/users, inheritance-dag
-- DAG: object-hierarchy, role-hierarchy, full
-- Search: /api/search, /api/search/users-roles
-- Health: /api/health
+## API Endpoints
+
+### Shared
+- Auth: POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me
+- Health: GET /api/health
+
+### User Routes (`/api/user/*` — all users, Layer 1 only)
+- Objects: GET /api/user/objects/catalogs, databases, tables, table-detail
+- Permissions: GET /api/user/my-permissions
+- Roles: GET /api/user/roles, /api/user/roles/hierarchy
+- DAG: GET /api/user/dag/object-hierarchy, /api/user/dag/role-hierarchy
+- Search: GET /api/user/search
+
+### Admin Routes (`/api/admin/*` — admin only, Layer 1+2, `require_admin` enforced)
+- Privileges: GET /api/admin/privileges/user/{name}, user/{name}/effective, role/{name}, role/{name}/raw, object
+- Roles: GET /api/admin/roles, hierarchy, inheritance-dag, {name}/users
+- DAG: GET /api/admin/dag/object-hierarchy, role-hierarchy, full
+- Search: GET /api/admin/search, /api/admin/search/users-roles
+

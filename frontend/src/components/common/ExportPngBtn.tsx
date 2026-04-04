@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { C } from "../../utils/colors";
 
 export default function ExportPngBtn() {
   const [exporting, setExporting] = useState(false);
@@ -9,7 +10,7 @@ export default function ExportPngBtn() {
     try {
       const { toPng } = await import("html-to-image");
       const dataUrl = await toPng(el, {
-        backgroundColor: "#0f172a",
+        backgroundColor: C.bg,
         pixelRatio: 2,
         filter: (node) => {
           if (node instanceof HTMLElement) {
@@ -34,13 +35,13 @@ export default function ExportPngBtn() {
       onClick={handleExport}
       disabled={exporting}
       style={{
-        padding: "6px 12px", background: "#1e293b", border: "1px solid #475569",
-        borderRadius: 6, fontSize: 12, color: "#94a3b8", cursor: exporting ? "wait" : "pointer", fontFamily: "inherit",
+        padding: "6px 12px", background: C.card, border: `1px solid ${C.borderLight}`,
+        borderRadius: 6, fontSize: 12, color: C.text2, cursor: exporting ? "wait" : "pointer", fontFamily: "inherit",
         display: "flex", alignItems: "center", gap: 4,
         opacity: exporting ? 0.6 : 1,
       }}
-      onMouseEnter={(e) => { if (!exporting) { e.currentTarget.style.borderColor = "#3b82f6"; e.currentTarget.style.color = "#3b82f6"; } }}
-      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "#475569"; e.currentTarget.style.color = "#94a3b8"; }}
+      onMouseEnter={(e) => { if (!exporting) { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; } }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.borderLight; e.currentTarget.style.color = C.text2; }}
     >
       {exporting ? "Exporting..." : "PNG"}
     </button>

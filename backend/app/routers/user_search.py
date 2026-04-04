@@ -1,3 +1,8 @@
+"""Router for /api/user/search/* endpoints.
+
+Non-admin search using only INFORMATION_SCHEMA + SHOW commands (no sys.* tables).
+"""
+
 from __future__ import annotations
 
 import logging
@@ -8,73 +13,13 @@ from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_credentials, get_db
 from app.services.starrocks_client import execute_query, parallel_queries
+from app.utils.role_helpers import collect_all_roles_via_grants
 
 router = APIRouter()
 logger = logging.getLogger("search")
 
 # Track catalogs that failed (connection timeout etc.) — skip for 5 min
 _failed_catalogs: TTLCache = TTLCache(maxsize=64, ttl=300)
-
-
-@router.get("/users-roles")
-def search_users_roles(
-    q: str = Query(..., min_length=1),
-    limit: int = Query(50, ge=1, le=200),
-    conn=Depends(get_db),
-):
-    """Fast search for users and roles only (no catalog traversal)."""
-    keyword = f"%{q}%"
-    results = []
-    seen_users: set[str] = set()
-
-    # sys.* queries — silently skip if not accessible (non-admin)
-    try:
-        rows = execute_query(
-            conn,
-            "SELECT DISTINCT TO_USER FROM sys.role_edges "
-            "WHERE TO_USER LIKE %s AND TO_USER IS NOT NULL AND TO_USER != '' LIMIT %s",
-            (keyword, limit),
-        )
-        for r in rows:
-            name = r.get("TO_USER") or ""
-            if name and name not in seen_users:
-                seen_users.add(name)
-                results.append({"name": name, "type": "user", "catalog": "", "database": "", "path": f"user:{name}"})
-    except Exception:
-        logger.debug("Query failed, skipping")
-
-    try:
-        rows = execute_query(
-            conn,
-            "SELECT DISTINCT GRANTEE FROM sys.grants_to_users WHERE GRANTEE LIKE %s LIMIT %s",
-            (keyword, limit),
-        )
-        for r in rows:
-            name = r.get("GRANTEE") or r.get("grantee") or ""
-            if name and name not in seen_users:
-                seen_users.add(name)
-                results.append({"name": name, "type": "user", "catalog": "", "database": "", "path": f"user:{name}"})
-    except Exception:
-        logger.debug("Query failed, skipping")
-
-    try:
-        rows = execute_query(conn, "SHOW ROLES")
-        for r in rows:
-            name = r.get("Name") or r.get("name") or ""
-            if q.lower() in name.lower():
-                results.append({"name": name, "type": "role", "catalog": "", "database": "", "path": f"role:{name}"})
-    except Exception:
-        logger.debug("Query failed, skipping")
-
-    seen = set()
-    unique = []
-    for r in results:
-        if r["path"] not in seen:
-            seen.add(r["path"])
-            unique.append(r)
-        if len(unique) >= limit:
-            break
-    return unique
 
 
 @router.get("")
@@ -86,52 +31,21 @@ def search(
 ):
     """
     Search across all catalogs: tables, views, databases, roles.
-    Uses parallel connections per catalog for speed.
+    Uses only INFORMATION_SCHEMA + SHOW commands (no sys.* tables).
+    Roles are filtered to only the current user's own roles via SHOW GRANTS.
     """
+    username = credentials["username"]
     keyword = f"%{q}%"
     results = []
 
-    # 0. Search users and roles FIRST (before SET CATALOG changes context)
-    seen_users: set[str] = set()
-    # 0a. From role_edges
+    # 0. Search user's own roles (via SHOW GRANTS recursive traversal)
     try:
-        rows = execute_query(
-            conn,
-            "SELECT DISTINCT TO_USER FROM sys.role_edges "
-            "WHERE TO_USER LIKE %s AND TO_USER IS NOT NULL AND TO_USER != '' "
-            "LIMIT %s",
-            (keyword, limit),
-        )
-        for r in rows:
-            name = r.get("TO_USER") or ""
-            if name and name not in seen_users:
-                seen_users.add(name)
-                results.append({"name": name, "type": "user", "catalog": "", "database": "", "path": f"user:{name}"})
-    except Exception:
-        logger.debug("Failed to search users from sys.role_edges in full search")
-    # 0b. From grants_to_users
-    try:
-        rows = execute_query(
-            conn,
-            "SELECT DISTINCT GRANTEE FROM sys.grants_to_users WHERE GRANTEE LIKE %s LIMIT %s",
-            (keyword, limit),
-        )
-        for r in rows:
-            name = r.get("GRANTEE") or r.get("grantee") or ""
-            if name and name not in seen_users:
-                seen_users.add(name)
-                results.append({"name": name, "type": "user", "catalog": "", "database": "", "path": f"user:{name}"})
-    except Exception:
-        logger.debug("Failed to search users from sys.grants_to_users in full search")
-    # 0c. Roles
-    try:
-        rows = execute_query(conn, "SHOW ROLES")
-        for r in rows:
-            name = r.get("Name") or r.get("name") or ""
+        user_roles = collect_all_roles_via_grants(conn, username)
+        for name in sorted(user_roles):
             if q.lower() in name.lower():
                 results.append({"name": name, "type": "role", "catalog": "", "database": "", "path": f"role:{name}"})
     except Exception:
-        logger.debug("Failed to search roles via SHOW ROLES in full search")
+        logger.debug("Failed to collect roles for user %s", username)
 
     # 1. Get catalog list
     catalogs = []
@@ -144,10 +58,11 @@ def search(
     except Exception as e:
         logger.warning(f"SHOW CATALOGS failed: {e}")
 
-    # 2. Helper: search one catalog
+    # 2. Helper: search one catalog using INFORMATION_SCHEMA
     def _search_catalog(c, cat: str, kw: str, lim: int) -> list[dict]:
         cat_results = []
         execute_query(c, f"SET CATALOG `{cat}`")
+        # Search tables and views
         try:
             rows = execute_query(
                 c,
@@ -168,6 +83,7 @@ def search(
                 )
         except Exception:
             logger.debug("Failed to search tables in catalog %s", cat)
+        # Search databases
         try:
             rows = execute_query(
                 c,
@@ -191,7 +107,7 @@ def search(
             results.extend(_search_catalog(conn, "default_catalog", keyword, limit))
         except Exception:
             logger.debug("Failed to search default_catalog")
-        # Restore for subsequent sys.* queries
+        # Restore for subsequent queries
         try:
             execute_query(conn, "SET CATALOG `default_catalog`")
         except Exception:

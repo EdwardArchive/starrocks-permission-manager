@@ -1,5 +1,5 @@
 def test_search(client, auth_header):
-    resp = client.get("/api/search", params={"q": "user"}, headers=auth_header)
+    resp = client.get("/api/admin/search", params={"q": "user"}, headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -11,19 +11,19 @@ def test_search(client, auth_header):
 
 
 def test_search_min_length(client, auth_header):
-    resp = client.get("/api/search", params={"q": ""}, headers=auth_header)
+    resp = client.get("/api/admin/search", params={"q": ""}, headers=auth_header)
     assert resp.status_code == 422  # min_length=1 validation
 
 
 def test_search_limit(client, auth_header):
-    resp = client.get("/api/search", params={"q": "test", "limit": 5}, headers=auth_header)
+    resp = client.get("/api/admin/search", params={"q": "test", "limit": 5}, headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) <= 5
 
 
 def test_search_roles(client, auth_header):
-    resp = client.get("/api/search", params={"q": "admin"}, headers=auth_header)
+    resp = client.get("/api/admin/search", params={"q": "admin"}, headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
     role_results = [r for r in data if r["type"] == "role"]
@@ -33,7 +33,7 @@ def test_search_roles(client, auth_header):
 
 
 def test_search_tables(client, auth_header):
-    resp = client.get("/api/search", params={"q": "events"}, headers=auth_header)
+    resp = client.get("/api/admin/search", params={"q": "events"}, headers=auth_header)
     assert resp.status_code == 200
     data = resp.json()
     table_results = [r for r in data if r["type"] == "table"]
