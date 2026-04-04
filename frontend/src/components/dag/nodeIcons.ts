@@ -42,6 +42,13 @@ export const NODE_COLORS: Record<string, string> = {
   role: "#f97316",
 };
 
+/** Role sub-type colors — used when backend sends metadata.role_category */
+export const ROLE_CATEGORY_COLORS: Record<string, string> = {
+  root: "#ef4444",
+  builtin: "#6366f1",
+  custom: "#f97316",
+};
+
 export const EDGE_COLORS: Record<string, string> = {
   hierarchy: "#475569",
   assignment: "#0ea5e9",
@@ -52,6 +59,7 @@ export const EDGE_COLORS: Record<string, string> = {
   alter: "#a855f7",
   drop: "#dc2626",
   usage: "#64748b",
+  update: "#f59e0b",
 };
 
 // Helper: replace stroke/fill color in raw SVG to match node type color

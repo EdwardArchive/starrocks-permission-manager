@@ -8,6 +8,7 @@ import { buildGrantDisplay } from "../../utils/grantDisplay";
 import DAGView from "../dag/DAGView";
 import ExportPngBtn from "../common/ExportPngBtn";
 import { useDagStore } from "../../stores/dagStore";
+import { C, ENTITY_BADGE } from "../../utils/colors";
 import type { DAGGraph, DAGNode, PrivilegeGrant } from "../../types";
 
 interface SelectedEntity {
@@ -105,9 +106,9 @@ export default function PermissionDetailTab() {
   return (
     <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
       {/* Left sidebar: search + privilege list */}
-      <div style={{ width: 320, flexShrink: 0, borderRight: "1px solid #475569", display: "flex", flexDirection: "column", overflow: "hidden", background: "#1e293b" }}>
+      <div style={{ width: 320, flexShrink: 0, borderRight: `1px solid ${C.borderLight}`, display: "flex", flexDirection: "column", overflow: "hidden", background: C.card }}>
         {/* Search */}
-        <div style={{ padding: 12, borderBottom: "1px solid #475569" }}>
+        <div style={{ padding: 12, borderBottom: `1px solid ${C.borderLight}` }}>
           <div style={{ position: "relative" }}>
             <input
               type="text"
@@ -116,25 +117,25 @@ export default function PermissionDetailTab() {
               onChange={(e) => setSearchText(e.target.value)}
               style={{
                 width: "100%", padding: "8px 30px 8px 10px", fontSize: 13,
-                background: "#0f172a", border: "1px solid #475569", borderRadius: 6,
-                color: "#e2e8f0", outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+                background: C.bg, border: `1px solid ${C.borderLight}`, borderRadius: 6,
+                color: C.text1, outline: "none", fontFamily: "inherit", boxSizing: "border-box",
               }}
             />
             {searchText && (
               <button
                 onClick={() => { setSearchText(""); setSearch({ results: [], searching: false }); }}
-                style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 16 }}
+                style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: C.text2, cursor: "pointer", fontSize: 16 }}
               >
                 &times;
               </button>
             )}
           </div>
-          {search.searching && <p style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>Searching...</p>}
+          {search.searching && <p style={{ fontSize: 11, color: C.text3, marginTop: 4 }}>Searching...</p>}
         </div>
 
         {/* Search results dropdown */}
         {search.results.length > 0 && (
-          <div style={{ maxHeight: 200, overflowY: "auto", borderBottom: "1px solid #475569" }}>
+          <div style={{ maxHeight: 200, overflowY: "auto", borderBottom: `1px solid ${C.borderLight}` }}>
             {search.results.map((r, i) => (
               <button
                 key={`${r.type}-${r.name}-${i}`}
@@ -142,15 +143,15 @@ export default function PermissionDetailTab() {
                 style={{
                   display: "flex", alignItems: "center", gap: 8, width: "100%",
                   padding: "8px 12px", border: "none", background: "none",
-                  color: "#e2e8f0", cursor: "pointer", fontSize: 12, fontFamily: "inherit",
+                  color: C.text1, cursor: "pointer", fontSize: 12, fontFamily: "inherit",
                   textAlign: "left", borderBottom: "1px solid rgba(71,85,105,0.2)",
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = "#334155"}
+                onMouseEnter={(e) => e.currentTarget.style.background = C.border}
                 onMouseLeave={(e) => e.currentTarget.style.background = "none"}
               >
                 <InlineIcon type={r.type} size={14} />
                 <span>{r.name}</span>
-                <span style={{ fontSize: 10, color: "#64748b", marginLeft: "auto" }}>{r.type.toUpperCase()}</span>
+                <span style={{ fontSize: 10, color: C.text3, marginLeft: "auto" }}>{r.type.toUpperCase()}</span>
               </button>
             ))}
           </div>
@@ -158,16 +159,16 @@ export default function PermissionDetailTab() {
 
         {/* Selected entity header */}
         {selected && (
-          <div style={{ padding: "12px 12px 8px", borderBottom: "1px solid #475569" }}>
+          <div style={{ padding: "12px 12px 8px", borderBottom: `1px solid ${C.borderLight}` }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
               <InlineIcon type={selected.type} size={18} />
-              <span style={{ fontSize: 14, fontWeight: 600, color: "#e2e8f0" }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: C.text1 }}>
                 <FormattedName name={selected.name} />
               </span>
               <span style={{
                 fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 600,
-                background: selected.type === "user" ? "rgba(14,165,233,0.18)" : "rgba(249,115,22,0.18)",
-                color: selected.type === "user" ? "#38bdf8" : "#fb923c",
+                background: ENTITY_BADGE[selected.type].bg,
+                color: ENTITY_BADGE[selected.type].fg,
               }}>
                 {selected.type.toUpperCase()}
               </span>
@@ -180,8 +181,8 @@ export default function PermissionDetailTab() {
               onChange={(e) => setFilterText(e.target.value)}
               style={{
                 width: "100%", padding: "6px 8px", fontSize: 12, marginTop: 6,
-                background: "#0f172a", border: "1px solid #334155", borderRadius: 4,
-                color: "#e2e8f0", outline: "none", fontFamily: "inherit", boxSizing: "border-box",
+                background: C.bg, border: `1px solid ${C.border}`, borderRadius: 4,
+                color: C.text1, outline: "none", fontFamily: "inherit", boxSizing: "border-box",
               }}
             />
           </div>
@@ -190,11 +191,11 @@ export default function PermissionDetailTab() {
         {/* Privilege list */}
         <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
           {!selected ? (
-            <p style={{ padding: 16, fontSize: 13, color: "#64748b", textAlign: "center" }}>
+            <p style={{ padding: 16, fontSize: 13, color: C.text3, textAlign: "center" }}>
               Search and select a user or role to view permissions
             </p>
           ) : entity.grantsLoading ? (
-            <p style={{ padding: 16, fontSize: 13, color: "#94a3b8", fontStyle: "italic", textAlign: "center" }}>Loading privileges...</p>
+            <p style={{ padding: 16, fontSize: 13, color: C.text2, fontStyle: "italic", textAlign: "center" }}>Loading privileges...</p>
           ) : (
             <div style={{ padding: "0 12px" }}>
               <GrantTreeView groups={grouped} />
@@ -204,13 +205,13 @@ export default function PermissionDetailTab() {
       </div>
 
       {/* Center: DAG view */}
-      <div style={{ flex: 1, position: "relative", background: "#0f172a" }}>
+      <div style={{ flex: 1, position: "relative", background: C.bg }}>
         {!selected ? (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#475569", fontSize: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: C.borderLight, fontSize: 14 }}>
             Select a user or role to view inheritance DAG
           </div>
         ) : entity.dagLoading ? (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#94a3b8", fontSize: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: C.text2, fontSize: 14 }}>
             Loading inheritance graph...
           </div>
         ) : (
@@ -227,25 +228,25 @@ export default function PermissionDetailTab() {
 
       {/* Right: Clicked node detail panel */}
       {clicked.node && (
-        <div style={{ width: 320, flexShrink: 0, borderLeft: "1px solid #475569", display: "flex", flexDirection: "column", overflow: "hidden", background: "#1e293b" }}>
+        <div style={{ width: 320, flexShrink: 0, borderLeft: `1px solid ${C.borderLight}`, display: "flex", flexDirection: "column", overflow: "hidden", background: C.card }}>
           {/* Header */}
-          <div style={{ padding: 12, borderBottom: "1px solid #475569", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ padding: 12, borderBottom: `1px solid ${C.borderLight}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <InlineIcon type={clicked.node!.type} size={18} />
-              <span style={{ fontSize: 14, fontWeight: 600, color: "#e2e8f0" }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: C.text1 }}>
                 <FormattedName name={clicked.node!.label} />
               </span>
               <span style={{
                 fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 600,
-                background: clicked.node!.type === "user" ? "rgba(14,165,233,0.18)" : "rgba(249,115,22,0.18)",
-                color: clicked.node!.type === "user" ? "#38bdf8" : "#fb923c",
+                background: ENTITY_BADGE[clicked.node!.type as "user" | "role"].bg,
+                color: ENTITY_BADGE[clicked.node!.type as "user" | "role"].fg,
               }}>
                 {clicked.node!.type.toUpperCase()}
               </span>
             </div>
             <button
               onClick={() => setClicked({ node: null, grants: [], loading: false })}
-              style={{ background: "none", border: "none", color: "#94a3b8", cursor: "pointer", fontSize: 18, lineHeight: 1 }}
+              style={{ background: "none", border: "none", color: C.text2, cursor: "pointer", fontSize: 18, lineHeight: 1 }}
             >
               &times;
             </button>
@@ -254,7 +255,7 @@ export default function PermissionDetailTab() {
           {/* Grants */}
           <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
             {clicked.loading ? (
-              <p style={{ padding: 16, fontSize: 13, color: "#94a3b8", fontStyle: "italic", textAlign: "center" }}>Loading privileges...</p>
+              <p style={{ padding: 16, fontSize: 13, color: C.text2, fontStyle: "italic", textAlign: "center" }}>Loading privileges...</p>
             ) : (
               <div style={{ padding: "0 12px" }}>
                 <GrantTreeView groups={buildGrantDisplay(clicked.grants)} />
@@ -276,7 +277,7 @@ function FormattedName({ name }: { name: string }) {
     const hostLabel = !host || host === "%" ? "ALL CIDR" : host.includes("/") ? host : host + "/32";
     return (
       <>
-        {uname} <span style={{ fontSize: 10, color: "#64748b", fontWeight: 400 }}>({hostLabel})</span>
+        {uname} <span style={{ fontSize: 10, color: C.text3, fontWeight: 400 }}>({hostLabel})</span>
       </>
     );
   }

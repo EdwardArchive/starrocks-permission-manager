@@ -50,7 +50,7 @@ export default function DetailPanel({ item, onClose, myData }: { item: SelectedI
         <div style={{ fontSize: 12, color: C.text2, marginBottom: 10, wordBreak: "break-all", lineHeight: 1.6 }}>
           {pathParts.map((p, i) => (
             <span key={i}>
-              {i > 0 && <span style={{ color: "#475569", margin: "0 3px" }}>/</span>}
+              {i > 0 && <span style={{ color: C.borderLight, margin: "0 3px" }}>/</span>}
               <span style={i === pathParts.length - 1 ? { color: C.text1, fontWeight: 500 } : undefined}>{p}</span>
             </span>
           ))}

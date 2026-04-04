@@ -24,18 +24,6 @@ router = APIRouter(dependencies=[Depends(require_admin)])
 # Server-side TTL cache for admin DAG results
 _dag_cache: TTLCache = TTLCache(maxsize=64, ttl=settings.cache_ttl_seconds)
 
-NODE_COLORS = {
-    "system": "#6b7280",
-    "catalog": "#3b82f6",
-    "database": "#22c55e",
-    "table": "#6366f1",
-    "view": "#a855f7",
-    "mv": "#f59e0b",
-    "function": "#14b8a6",
-    "user": "#0ea5e9",
-    "role": "#f97316",
-}
-
 PRIV_EDGE_TYPES = {
     "SELECT": "select",
     "INSERT": "insert",
@@ -71,7 +59,7 @@ def get_object_hierarchy(
         if database:
             meta["database"] = database
         nodes.append(
-            DAGNode(id=nid, label=label, type=ntype, color=NODE_COLORS.get(ntype), metadata=meta or None, **kw)
+            DAGNode(id=nid, label=label, type=ntype, color=None, metadata=meta or None, **kw)
         )
 
     def _edge(src, tgt, etype="hierarchy"):
@@ -257,7 +245,7 @@ def get_full_graph(catalog: str = Query(None), conn=Depends(get_db)):
 
     def _add(nid, label, ntype, **kw):
         if nid not in node_ids:
-            nodes.append(DAGNode(id=nid, label=label, type=ntype, color=NODE_COLORS.get(ntype), **kw))
+            nodes.append(DAGNode(id=nid, label=label, type=ntype, color=None, **kw))
             node_ids.add(nid)
 
     def _edge(src, tgt, etype):

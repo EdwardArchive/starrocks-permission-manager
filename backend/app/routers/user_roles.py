@@ -70,9 +70,12 @@ def get_inheritance_dag(name: str = Query(""), type: str = Query("user"), conn=D
     node_ids: set[str] = set()
     edge_idx = 0
 
-    def add_node(nid: str, label: str, ntype: str, color: str, highlight: bool = False):
+    def add_node(nid: str, label: str, ntype: str, highlight: bool = False, metadata_extra: dict | None = None):
         if nid not in node_ids:
-            nodes.append(DAGNode(id=nid, label=label, type=ntype, color=color, metadata={"highlight": highlight}))
+            meta = {"highlight": highlight}
+            if metadata_extra:
+                meta.update(metadata_extra)
+            nodes.append(DAGNode(id=nid, label=label, type=ntype, color=None, metadata=meta))
             node_ids.add(nid)
 
     def add_edge(src: str, tgt: str, etype: str):
@@ -81,13 +84,13 @@ def get_inheritance_dag(name: str = Query(""), type: str = Query("user"), conn=D
         edge_idx += 1
 
     if type == "user":
-        add_node(f"u_{name}", name, "user", "#0ea5e9", highlight=True)
+        add_node(f"u_{name}", name, "user", highlight=True)
         direct_roles = get_user_roles(conn, name)
         if not direct_roles:
             direct_roles = ["public"]
         for role in direct_roles:
-            color = "#ef4444" if role == "root" else "#6366f1" if role in BUILTIN_ROLES else "#f97316"
-            add_node(f"r_{role}", role, "role", color)
+            rc = "root" if role == "root" else "builtin" if role in BUILTIN_ROLES else "custom"
+            add_node(f"r_{role}", role, "role", metadata_extra={"role_category": rc})
             add_edge(f"r_{role}", f"u_{name}", "assignment")
         # BFS upward only
         queue = list(direct_roles)
@@ -99,14 +102,15 @@ def get_inheritance_dag(name: str = Query(""), type: str = Query("user"), conn=D
                 if p not in visited:
                     visited.add(p)
                     queue.append(p)
-                color = "#ef4444" if p == "root" else "#6366f1" if p in BUILTIN_ROLES else "#f97316"
-                add_node(f"r_{p}", p, "role", color)
+                rc = "root" if p == "root" else "builtin" if p in BUILTIN_ROLES else "custom"
+                add_node(f"r_{p}", p, "role", metadata_extra={"role_category": rc})
                 add_edge(f"r_{p}", f"r_{current}", "inheritance")
     else:
+        rc = "root" if name == "root" else "builtin" if name in BUILTIN_ROLES else "custom"
         add_node(
             f"r_{name}", name, "role",
-            "#ef4444" if name == "root" else "#6366f1" if name in BUILTIN_ROLES else "#f97316",
             highlight=True,
+            metadata_extra={"role_category": rc},
         )
         # BFS upward only (no downward — requires sys.role_edges)
         queue = [name]
@@ -118,8 +122,8 @@ def get_inheritance_dag(name: str = Query(""), type: str = Query("user"), conn=D
                 if p not in visited_up:
                     visited_up.add(p)
                     queue.append(p)
-                color = "#ef4444" if p == "root" else "#6366f1" if p in BUILTIN_ROLES else "#f97316"
-                add_node(f"r_{p}", p, "role", color)
+                rc = "root" if p == "root" else "builtin" if p in BUILTIN_ROLES else "custom"
+                add_node(f"r_{p}", p, "role", metadata_extra={"role_category": rc})
                 add_edge(f"r_{p}", f"r_{current}", "inheritance")
 
     return DAGGraph(nodes=nodes, edges=edges)
@@ -132,9 +136,9 @@ def _build_role_hierarchy_from_grants(conn, username: str) -> DAGGraph:
     node_ids: set[str] = set()
     edge_idx = 0
 
-    def add_node(nid: str, label: str, ntype: str, color: str):
+    def add_node(nid: str, label: str, ntype: str, metadata: dict | None = None):
         if nid not in node_ids:
-            nodes.append(DAGNode(id=nid, label=label, type=ntype, color=color))
+            nodes.append(DAGNode(id=nid, label=label, type=ntype, color=None, metadata=metadata))
             node_ids.add(nid)
 
     def add_edge(src: str, tgt: str, etype: str):
@@ -143,13 +147,13 @@ def _build_role_hierarchy_from_grants(conn, username: str) -> DAGGraph:
         edge_idx += 1
 
     # User node
-    add_node(f"u_{username}", username, "user", "#0ea5e9")
+    add_node(f"u_{username}", username, "user")
 
     # BFS through role chain
     direct_roles = parse_role_assignments(conn, username, "USER")
     for role in direct_roles:
-        color = "#ef4444" if role == "root" else "#6366f1" if role in BUILTIN_ROLES else "#f97316"
-        add_node(f"r_{role}", role, "role", color)
+        rc = "root" if role == "root" else "builtin" if role in BUILTIN_ROLES else "custom"
+        add_node(f"r_{role}", role, "role", metadata={"role_category": rc})
         add_edge(f"r_{role}", f"u_{username}", "assignment")
 
     visited: set[str] = set()
@@ -163,8 +167,8 @@ def _build_role_hierarchy_from_grants(conn, username: str) -> DAGGraph:
         for parent in parent_roles:
             if parent not in visited:
                 queue.append(parent)
-            color = "#ef4444" if parent == "root" else "#6366f1" if parent in BUILTIN_ROLES else "#f97316"
-            add_node(f"r_{parent}", parent, "role", color)
+            rc = "root" if parent == "root" else "builtin" if parent in BUILTIN_ROLES else "custom"
+            add_node(f"r_{parent}", parent, "role", metadata={"role_category": rc})
             add_edge(f"r_{parent}", f"r_{role}", "inheritance")
 
     return DAGGraph(nodes=nodes, edges=edges)

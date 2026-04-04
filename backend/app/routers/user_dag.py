@@ -23,19 +23,6 @@ logger = logging.getLogger(__name__)
 # Server-side TTL cache for DAG results
 _dag_cache: TTLCache = TTLCache(maxsize=64, ttl=settings.cache_ttl_seconds)
 
-NODE_COLORS = {
-    "system": "#6b7280",
-    "catalog": "#3b82f6",
-    "database": "#22c55e",
-    "table": "#6366f1",
-    "view": "#a855f7",
-    "mv": "#f59e0b",
-    "function": "#14b8a6",
-    "user": "#0ea5e9",
-    "role": "#f97316",
-}
-
-
 @router.get("/object-hierarchy", response_model=DAGGraph)
 def get_object_hierarchy(
     catalog: str = Query("default_catalog", description="Catalog to load (default: default_catalog)"),
@@ -60,7 +47,7 @@ def get_object_hierarchy(
         if database:
             meta["database"] = database
         nodes.append(
-            DAGNode(id=nid, label=label, type=ntype, color=NODE_COLORS.get(ntype), metadata=meta or None, **kw)
+            DAGNode(id=nid, label=label, type=ntype, color=None, metadata=meta or None, **kw)
         )
 
     def _edge(src, tgt, etype="hierarchy"):

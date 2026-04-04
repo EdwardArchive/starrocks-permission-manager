@@ -5,6 +5,7 @@ import GrantTreeView from "../common/GrantTreeView";
 import { buildGrantDisplay, extractSourceRoles } from "../../utils/grantDisplay";
 import { PermissionMatrixView } from "../tabs/PermissionMatrix";
 import { formatBytes } from "../../utils/inventory-helpers";
+import { C } from "../../utils/colors";
 import type { PrivilegeGrant, TableDetail } from "../../types";
 
 // Extract catalog/database from DAG node metadata
@@ -83,7 +84,7 @@ export default function ObjectDetailPanel() {
   if (!selectedNode) return null;
 
   const { grants, detail, loadedNodeId, loadingPrivs, loadingDetail } = data;
-  const color = selectedNode.color || "#94a3b8";
+  const color = selectedNode.color || C.text2;
   const isRole = selectedNode.type.toLowerCase() === "role";
   const nodeType = selectedNode.type.toLowerCase();
   const srObjectType = nodeType === "mv" ? "MATERIALIZED VIEW" : nodeType.toUpperCase();
@@ -98,11 +99,11 @@ export default function ObjectDetailPanel() {
   return (
     <div>
       {/* Object path */}
-      <div style={{ fontSize: 12, color: "#94a3b8", marginBottom: 12, wordBreak: "break-all", lineHeight: 1.6 }}>
+      <div style={{ fontSize: 12, color: C.text2, marginBottom: 12, wordBreak: "break-all", lineHeight: 1.6 }}>
         {pathParts.map((p, i) => (
           <span key={i}>
-            {i > 0 && <span style={{ color: "#475569", margin: "0 3px" }}>/</span>}
-            <span style={i === pathParts.length - 1 ? { color: "#e2e8f0", fontWeight: 500 } : undefined}>{p}</span>
+            {i > 0 && <span style={{ color: C.borderLight, margin: "0 3px" }}>/</span>}
+            <span style={i === pathParts.length - 1 ? { color: C.text1, fontWeight: 500 } : undefined}>{p}</span>
           </span>
         ))}
       </div>
@@ -113,15 +114,15 @@ export default function ObjectDetailPanel() {
       </span>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #475569", marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 0, borderBottom: `1px solid ${C.borderLight}`, marginBottom: 16 }}>
         {(["privileges", "details"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             style={{
               padding: "8px 14px", fontSize: 12, fontWeight: 500, cursor: "pointer",
-              color: tab === t ? "#3b82f6" : "#94a3b8",
-              border: "none", borderBottom: `2px solid ${tab === t ? "#3b82f6" : "transparent"}`,
+              color: tab === t ? C.accent : C.text2,
+              border: "none", borderBottom: `2px solid ${tab === t ? C.accent : "transparent"}`,
               background: "none", fontFamily: "inherit", textTransform: "capitalize",
             }}
           >
@@ -133,9 +134,9 @@ export default function ObjectDetailPanel() {
       {tab === "privileges" && (
         <div>
           {(loadingPrivs || loadedNodeId !== selectedNode?.id) ? (
-            <p style={{ fontSize: 13, color: "#94a3b8", fontStyle: "italic" }}>Loading...</p>
+            <p style={{ fontSize: 13, color: C.text2, fontStyle: "italic" }}>Loading...</p>
           ) : grants.length === 0 ? (
-            <p style={{ fontSize: 13, color: "#94a3b8", fontStyle: "italic" }}>No grants found</p>
+            <p style={{ fontSize: 13, color: C.text2, fontStyle: "italic" }}>No grants found</p>
           ) : isRole ? (
             <GrantTreeView
               groups={buildGrantDisplay(grants)}
@@ -155,9 +156,9 @@ export default function ObjectDetailPanel() {
       {tab === "details" && (
         <div style={{ fontSize: 13 }}>
           {loadingDetail ? (
-            <p style={{ color: "#94a3b8", fontStyle: "italic" }}>Loading details...</p>
+            <p style={{ color: C.text2, fontStyle: "italic" }}>Loading details...</p>
           ) : !detail ? (
-            <p style={{ color: "#94a3b8", fontStyle: "italic" }}>
+            <p style={{ color: C.text2, fontStyle: "italic" }}>
               {parsed.name ? "Could not load details" : "Select a table/view to see details"}
             </p>
           ) : (
@@ -180,23 +181,23 @@ export default function ObjectDetailPanel() {
 
               {detail.columns.length > 0 && (
                 <>
-                  <p style={{ fontWeight: 600, color: "#94a3b8", marginTop: 16, marginBottom: 8 }}>
+                  <p style={{ fontWeight: 600, color: C.text2, marginTop: 16, marginBottom: 8 }}>
                     Columns ({detail.columns.length})
                   </p>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                     <thead>
-                      <tr style={{ borderBottom: "1px solid #475569" }}>
-                        <th style={{ textAlign: "left", padding: 4, color: "#94a3b8" }}>Name</th>
-                        <th style={{ textAlign: "left", padding: 4, color: "#94a3b8" }}>Type</th>
-                        <th style={{ textAlign: "center", padding: 4, color: "#94a3b8" }}>Key</th>
-                        <th style={{ textAlign: "center", padding: 4, color: "#94a3b8" }}>Null</th>
+                      <tr style={{ borderBottom: `1px solid ${C.borderLight}` }}>
+                        <th style={{ textAlign: "left", padding: 4, color: C.text2 }}>Name</th>
+                        <th style={{ textAlign: "left", padding: 4, color: C.text2 }}>Type</th>
+                        <th style={{ textAlign: "center", padding: 4, color: C.text2 }}>Key</th>
+                        <th style={{ textAlign: "center", padding: 4, color: C.text2 }}>Null</th>
                       </tr>
                     </thead>
                     <tbody>
                       {detail.columns.map((c) => (
                         <tr key={c.name} style={{ borderBottom: "1px solid rgba(71,85,105,0.2)" }}>
                           <td style={{ padding: 4 }}>{c.name}</td>
-                          <td style={{ padding: 4, color: "#94a3b8" }}>{c.column_type}</td>
+                          <td style={{ padding: 4, color: C.text2 }}>{c.column_type}</td>
                           <td style={{ padding: 4, textAlign: "center", color: "#f59e0b", fontSize: 10, fontWeight: 700 }}>{c.column_key || ""}</td>
                           <td style={{ padding: 4, textAlign: "center", color: "#22c55e", fontSize: 10 }}>{c.is_nullable === "YES" ? "Y" : ""}</td>
                         </tr>
@@ -218,8 +219,8 @@ export default function ObjectDetailPanel() {
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: "flex", padding: "8px 0", borderBottom: "1px solid rgba(71,85,105,0.2)", fontSize: 13 }}>
-      <span style={{ width: 110, flexShrink: 0, color: "#94a3b8", fontWeight: 500 }}>{label}</span>
-      <span style={{ color: "#e2e8f0", wordBreak: "break-word", lineHeight: 1.5 }}>{value}</span>
+      <span style={{ width: 110, flexShrink: 0, color: C.text2, fontWeight: 500 }}>{label}</span>
+      <span style={{ color: C.text1, wordBreak: "break-word", lineHeight: 1.5 }}>{value}</span>
     </div>
   );
 }
@@ -230,15 +231,15 @@ function DDLBlock({ ddl }: { ddl: string }) {
     <div style={{ marginTop: 16 }}>
       <button
         onClick={() => setOpen(!open)}
-        style={{ fontSize: 12, color: "#3b82f6", cursor: "pointer", background: "none", border: "none", padding: "4px 0", fontFamily: "inherit" }}
+        style={{ fontSize: 12, color: C.accent, cursor: "pointer", background: "none", border: "none", padding: "4px 0", fontFamily: "inherit" }}
       >
         {open ? "▼ Hide DDL" : "▶ Show DDL"}
       </button>
       {open && (
         <pre style={{
-          background: "#0f172a", border: "1px solid #475569", borderRadius: 8, padding: 12,
+          background: C.bg, border: `1px solid ${C.borderLight}`, borderRadius: 8, padding: 12,
           fontFamily: "'JetBrains Mono','Fira Code',monospace", fontSize: 11, lineHeight: 1.6,
-          overflowX: "auto", whiteSpace: "pre", color: "#94a3b8", maxHeight: 200, overflowY: "auto", marginTop: 8,
+          overflowX: "auto", whiteSpace: "pre", color: C.text2, maxHeight: 200, overflowY: "auto", marginTop: 8,
         }}>
           {ddl}
         </pre>

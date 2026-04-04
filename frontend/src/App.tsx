@@ -16,6 +16,7 @@ import ObjectDetailPanel from "./components/panels/ObjectDetailPanel";
 import UserDetailPanel from "./components/panels/UserDetailPanel";
 import GroupDetailPanel from "./components/panels/GroupDetailPanel";
 import { NODE_COLORS } from "./components/dag/nodeIcons";
+import { C } from "./utils/colors";
 import ExportPngBtn from "./components/common/ExportPngBtn";
 import PermissionDetailTab from "./components/tabs/PermissionDetailTab";
 import InventoryTab from "./components/tabs/InventoryTab";
@@ -122,7 +123,7 @@ export default function App() {
         {/* Main content */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {/* Tab bar */}
-          <div style={{ display: "flex", gap: 0, borderBottom: "1px solid #475569", background: "#1e293b", padding: "0 16px", flexShrink: 0 }}>
+          <div style={{ display: "flex", gap: 0, borderBottom: `1px solid ${C.borderLight}`, background: C.card, padding: "0 16px", flexShrink: 0 }}>
             {visibleTabs.map((t) => {
               const active = activeTab === t.id;
               return (
@@ -133,16 +134,16 @@ export default function App() {
                   style={{
                     padding: "12px 20px", fontSize: 13, fontWeight: 500,
                     cursor: t.disabled ? "not-allowed" : "pointer",
-                    color: t.disabled ? "#475569" : active ? "#3b82f6" : "#94a3b8",
+                    color: t.disabled ? C.borderLight : active ? C.accent : C.text2,
                     opacity: t.disabled ? 0.5 : 1,
-                    border: "none", borderBottom: `2px solid ${active && !t.disabled ? "#3b82f6" : "transparent"}`,
+                    border: "none", borderBottom: `2px solid ${active && !t.disabled ? C.accent : "transparent"}`,
                     background: "none", fontFamily: "inherit",
                     display: "flex", alignItems: "center", gap: 6,
                   }}
                 >
                   <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: "block" }} dangerouslySetInnerHTML={{ __html: t.icon }} />
                   <span style={{ whiteSpace: "nowrap", lineHeight: 1 }}>{t.label}</span>
-                  {t.disabled && <span style={{ fontSize: 9, color: "#64748b", fontWeight: 400 }}>Coming Soon</span>}
+                  {t.disabled && <span style={{ fontSize: 9, color: C.text3, fontWeight: 400 }}>Coming Soon</span>}
                 </button>
               );
             })}
@@ -154,22 +155,22 @@ export default function App() {
           ) : activeTab === "perm" ? (
             <PermissionDetailTab />
           ) : (
-            <div style={{ flex: 1, position: "relative", background: "#0f172a" }}>
+            <div style={{ flex: 1, position: "relative", background: C.bg }}>
               {/* Toolbar: tab-specific checkbox filters + export */}
               <div style={{ position: "absolute", top: 12, left: 12, right: 12, zIndex: 10, display: "flex", alignItems: "center", gap: 12 }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   {(activeTab === "obj" ? OBJ_FILTERS : ROLE_FILTERS).map((f) => (
-                    <label key={f.type} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#94a3b8", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}>
-                      <input type="checkbox" checked={visibleTypes[f.type]} onChange={() => toggleType(f.type)} style={{ accentColor: "#3b82f6", width: 14, height: 14, cursor: "pointer" }} />
+                    <label key={f.type} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: C.text2, cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}>
+                      <input type="checkbox" checked={visibleTypes[f.type]} onChange={() => toggleType(f.type)} style={{ accentColor: C.accent, width: 14, height: 14, cursor: "pointer" }} />
                       <span style={{ width: 10, height: 10, borderRadius: 3, background: NODE_COLORS[f.type], flexShrink: 0 }} />
                       {f.label}
                     </label>
                   ))}
                   {activeTab === "obj" && (
                     <>
-                      <span style={{ width: 1, height: 20, background: "#475569" }} />
-                      <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "#94a3b8", cursor: "pointer", whiteSpace: "nowrap" }}>
-                        <input type="checkbox" checked={groupsOnly} onChange={(e) => setGroupsOnly(e.target.checked)} style={{ accentColor: "#3b82f6", width: 14, height: 14, cursor: "pointer" }} />
+                      <span style={{ width: 1, height: 20, background: C.borderLight }} />
+                      <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: C.text2, cursor: "pointer", whiteSpace: "nowrap" }}>
+                        <input type="checkbox" checked={groupsOnly} onChange={(e) => setGroupsOnly(e.target.checked)} style={{ accentColor: C.accent, width: 14, height: 14, cursor: "pointer" }} />
                         Groups Only
                       </label>
                     </>
@@ -193,19 +194,19 @@ export default function App() {
             style={{
               width: panelMode ? 380 : 0,
               flexShrink: 0,
-              borderLeft: panelMode ? "1px solid #475569" : "none",
+              borderLeft: panelMode ? `1px solid ${C.borderLight}` : "none",
               overflowY: "auto", overflowX: "hidden",
-              background: "#1e293b",
+              background: C.card,
               transition: "width 0.3s ease",
             }}
           >
             {panelMode && (
               <div style={{ width: 380 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid #475569" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: `1px solid ${C.borderLight}` }}>
                   <span style={{ fontSize: 15, fontWeight: 600 }}>Details</span>
                   <button
                     onClick={() => setPanelMode(null)}
-                    style={{ width: 28, height: 28, border: "none", background: "transparent", color: "#94a3b8", borderRadius: 6, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                    style={{ width: 28, height: 28, border: "none", background: "transparent", color: C.text2, borderRadius: 6, fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
                   >
                     &times;
                   </button>
