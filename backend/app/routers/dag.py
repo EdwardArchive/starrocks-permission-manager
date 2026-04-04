@@ -224,7 +224,8 @@ def get_object_hierarchy(
 
 @router.get("/role-hierarchy", response_model=DAGGraph)
 def get_role_hierarchy(conn=Depends(get_db), credentials: dict = Depends(get_credentials)):
-    cache_key = "role_hier"
+    is_admin = credentials.get("is_admin", False)
+    cache_key = f"role_hier_{is_admin}"
     if cache_key in _dag_cache:
         return _dag_cache[cache_key]
     from app.routers.roles import get_role_hierarchy as _get

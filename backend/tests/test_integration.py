@@ -63,7 +63,7 @@ def real_client():
 
 @pytest.fixture()
 def real_token():
-    session_id = session_store.create(SR_HOST, SR_PORT, SR_USER, SR_PASS)
+    session_id = session_store.create(SR_HOST, SR_PORT, SR_USER, SR_PASS, is_admin=True)
     return create_token(session_id, SR_USER)
 
 

@@ -135,8 +135,12 @@ export default function ObjectDetailPanel() {
     return { name, type: rowType, row };
   });
 
-  // Path display
-  const pathParts = [parsed.catalog, parsed.database, parsed.name || selectedNode.label].filter(Boolean);
+  // Path display — avoid duplicates for catalog/database nodes
+  const _nt = selectedNode.type.toLowerCase();
+  const pathParts = _nt === "catalog" ? [selectedNode.label]
+    : _nt === "database" ? [parsed.catalog, selectedNode.label].filter(Boolean)
+    : _nt === "system" ? ["SYSTEM"]
+    : [parsed.catalog, parsed.database, parsed.name || selectedNode.label].filter(Boolean);
 
   return (
     <div>

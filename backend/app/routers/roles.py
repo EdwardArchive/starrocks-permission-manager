@@ -25,11 +25,12 @@ _role_cache_lock = threading.Lock()
 
 @router.get("", response_model=list[RoleItem])
 def list_roles(conn=Depends(get_db), credentials: dict = Depends(get_credentials)):
-    cache_key = "roles"
+    is_admin = credentials.get("is_admin", False)
+    cache_key = f"roles_{is_admin}"
     with _role_cache_lock:
         if cache_key in _role_cache:
             return _role_cache[cache_key]
-    if credentials.get("is_admin", False):
+    if is_admin:
         rows = execute_query(conn, "SHOW ROLES")
         result = []
         for r in rows:
