@@ -95,7 +95,7 @@ def _merge_show_grants_scope(conn, sys_grants: list[PrivilegeGrant]) -> list[Pri
                     sys_grants.append(g)
                     existing.add(key)
         except Exception:
-            logger.debug("SHOW GRANTS failed for builtin role %s", role)
+            logger.debug("SHOW GRANTS failed for %s %s", gtype, grantee)
 
     return sys_grants
 
