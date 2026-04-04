@@ -88,8 +88,9 @@ export default function DAGView({ data, direction = "TB", loading, hiddenNodes }
     if (!data) return null;
 
     const visibleDataNodes = data.nodes.filter((n) => {
-      // Group containers always pass type filter (they contain children of that type)
-      if (!visibleTypes[n.type] && n.node_role !== "group") return false;
+      // Type filter: group nodes follow their type's visibility
+      if (!visibleTypes[n.type]) return false;
+      // Groups Only: keep structural nodes + group nodes only
       if (groupsOnly && n.node_role !== "group" && !["system", "catalog", "database"].includes(n.type)) return false;
       // hiddenNodes filtering (by label and parent catalog/database)
       if (hiddenNodes && hiddenNodes.size > 0) {
@@ -112,12 +113,12 @@ export default function DAGView({ data, direction = "TB", loading, hiddenNodes }
       data: {
         label: n.label,
         nodeType: n.type,
-        nodeRole: groupsOnly ? undefined : n.node_role,
+        nodeRole: n.node_role,
         color: n.color || NODE_COLORS[n.type],
       },
     }));
 
-    const groupNodeIds = new Set(visibleDataNodes.filter((n) => !groupsOnly && n.node_role === "group").map((n) => n.id));
+    const groupNodeIds = new Set(visibleDataNodes.filter((n) => n.node_role === "group").map((n) => n.id));
     const groupChildEdges = new Set(
       visibleDataEdges.filter((e) => groupNodeIds.has(e.source)).map((e) => e.id)
     );

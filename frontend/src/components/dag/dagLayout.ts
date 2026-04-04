@@ -2,7 +2,7 @@ import Dagre from "@dagrejs/dagre";
 import type { Node, Edge } from "@xyflow/react";
 
 // Must match CustomNode FIXED_W
-const CHILD_W = 148;
+const CHILD_W = 168;
 const CHILD_H = 34;
 
 export function applyDagreLayout(
@@ -21,7 +21,7 @@ export function applyDagreLayout(
   // cellW/cellH must be >= rendered node size (CHILD_W=148 + border 4 + gap)
   const cellW = CHILD_W + 16;
   const cellH = CHILD_H + 16;
-  const maxCols = 4;
+  const maxCols = 3;
   const headerH = 32;
   const padX = 14;
   const padBottom = 20;

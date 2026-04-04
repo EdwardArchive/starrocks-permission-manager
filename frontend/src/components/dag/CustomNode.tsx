@@ -11,7 +11,7 @@ interface CustomData {
 }
 
 // Fixed width for all nodes (text truncated with ellipsis)
-const FIXED_W = 148;
+const FIXED_W = 168;
 
 export default function CustomNode({ data }: NodeProps) {
   const d = data as CustomData;
@@ -19,7 +19,7 @@ export default function CustomNode({ data }: NodeProps) {
   const svgHtml = useMemo(() => {
     const raw = colorizedSvg(d.nodeType, color);
     if (!raw) return "";
-    return raw.replace(/width="[^"]*"/, 'width="16"').replace(/height="[^"]*"/, 'height="16"');
+    return raw.replace(/width="[^"]*"/, 'width="20"').replace(/height="[^"]*"/, 'height="20"');
   }, [d.nodeType, color]);
 
   return (
@@ -41,7 +41,7 @@ export default function CustomNode({ data }: NodeProps) {
       >
         {svgHtml && (
           <span
-            style={{ flexShrink: 0, width: 16, height: 16, display: "inline-flex", alignItems: "center" }}
+            style={{ flexShrink: 0, width: 20, height: 20, display: "inline-flex", alignItems: "center" }}
             dangerouslySetInnerHTML={{ __html: svgHtml }}
           />
         )}

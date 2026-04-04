@@ -27,6 +27,7 @@ def search_users_roles(
     results = []
     seen_users: set[str] = set()
 
+    # sys.* queries — silently skip if not accessible (non-admin)
     try:
         rows = execute_query(
             conn,
@@ -40,7 +41,7 @@ def search_users_roles(
                 seen_users.add(name)
                 results.append({"name": name, "type": "user", "catalog": "", "database": "", "path": f"user:{name}"})
     except Exception:
-        logger.debug("Failed to search users from sys.role_edges")
+        logger.debug("Query failed, skipping")
 
     try:
         rows = execute_query(
@@ -54,7 +55,7 @@ def search_users_roles(
                 seen_users.add(name)
                 results.append({"name": name, "type": "user", "catalog": "", "database": "", "path": f"user:{name}"})
     except Exception:
-        logger.debug("Failed to search users from sys.grants_to_users")
+        logger.debug("Query failed, skipping")
 
     try:
         rows = execute_query(conn, "SHOW ROLES")
@@ -63,7 +64,7 @@ def search_users_roles(
             if q.lower() in name.lower():
                 results.append({"name": name, "type": "role", "catalog": "", "database": "", "path": f"role:{name}"})
     except Exception:
-        logger.debug("Failed to search roles via SHOW ROLES")
+        logger.debug("Query failed, skipping")
 
     seen = set()
     unique = []

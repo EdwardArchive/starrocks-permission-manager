@@ -14,8 +14,10 @@
     "@tailwindcss/vite": "^4.2.2",
     "@xyflow/react": "^12.10.2",
     "html-to-image": "^1.11.13",
+    "nearley": "^2.20.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "sql-formatter": "^15.7.3",
     "tailwindcss": "^4.2.2",
     "zustand": "^5.0.12"
   },

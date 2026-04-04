@@ -99,11 +99,14 @@ def list_tables(
     # Functions
     try:
         fn_rows = execute_query(conn, f"SHOW FUNCTIONS FROM `{safe_identifier(database)}`")
+        seen_fns: set[str] = set()
         for r in fn_rows:
-            name = r.get("Signature") or r.get("signature") or ""
+            name = r.get("Signature") or r.get("signature") or r.get("Function Name") or ""
             if "(" in name:
                 name = name.split("(")[0]
-            result.append(ObjectItem(name=name, object_type="FUNCTION", catalog=catalog, database=database))
+            if name and name not in seen_fns:
+                seen_fns.add(name)
+                result.append(ObjectItem(name=name, object_type="FUNCTION", catalog=catalog, database=database))
     except Exception:
         logger.debug("Failed to list functions for %s.%s", catalog, database)
 

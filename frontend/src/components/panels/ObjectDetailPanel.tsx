@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useDagStore } from "../../stores/dagStore";
 import { getObjectPrivileges, getRolePrivileges } from "../../api/privileges";
 import { getTableDetail } from "../../api/objects";
 import InlineIcon from "../common/InlineIcon";
-import { getPrivColor } from "../../utils/privColors";
-import { SCOPE_ORDER, SCOPE_ICONS } from "../../utils/scopeConfig";
+import GrantTreeView from "../common/GrantTreeView";
+import { buildGrantDisplay, extractSourceRoles } from "../../utils/grantDisplay";
+import { PRIV_BY_TYPE, formatBytes } from "../../utils/inventory-helpers";
 import type { PrivilegeGrant, TableDetail } from "../../types";
-
-const PRIV_TYPES = ["SELECT", "INSERT", "UPDATE", "DELETE", "ALTER", "DROP"];
+const DEFAULT_PRIVS = ["SELECT", "INSERT", "UPDATE", "DELETE", "ALTER", "DROP"];
 // "ALL" or "ALL PRIVILEGES" should expand to all individual privilege types
 const ALL_ALIASES = new Set(["ALL", "ALL PRIVILEGES"]);
 
@@ -45,9 +45,30 @@ export default function ObjectDetailPanel() {
 
     const nodeId = selectedNode.id;
     const nodeType = selectedNode.type.toLowerCase();
+    // Map DAG node type to StarRocks object type for API filtering
+    const srObjectType = nodeType === "mv" ? "MATERIALIZED VIEW" : nodeType.toUpperCase();
+
+    // For database/catalog nodes: query at that scope level, not as object name
+    let fetchCatalog = parsed.catalog;
+    let fetchDatabase = parsed.database;
+    let fetchName: string | undefined = parsed.name || selectedNode.label;
+    if (nodeType === "database") {
+      fetchCatalog = parsed.catalog;
+      fetchDatabase = selectedNode.label;
+      fetchName = undefined;
+    } else if (nodeType === "catalog") {
+      fetchCatalog = selectedNode.label;
+      fetchDatabase = undefined;
+      fetchName = undefined;
+    } else if (nodeType === "system") {
+      fetchCatalog = undefined;
+      fetchDatabase = undefined;
+      fetchName = undefined;
+    }
+
     const fetcher = nodeType === "role"
       ? getRolePrivileges(selectedNode.label)
-      : getObjectPrivileges(parsed.catalog, parsed.database, parsed.name || selectedNode.label);
+      : getObjectPrivileges(fetchCatalog, fetchDatabase, fetchName, srObjectType);
     fetcher
       .then((grants) => setData((prev) => ({ ...prev, grants, loadedNodeId: nodeId, loadingPrivs: false })))
       .catch(() => setData((prev) => ({ ...prev, loadedNodeId: nodeId, loadingPrivs: false })));
@@ -72,28 +93,36 @@ export default function ObjectDetailPanel() {
 
   const isRole = selectedNode.type.toLowerCase() === "role";
 
-  // Determine privilege columns dynamically for roles, fixed for objects
+  // Determine privilege columns: dynamic for roles, type-specific for objects
+  const nodeType = selectedNode.type.toLowerCase();
   const privColumns = isRole
     ? [...new Set(grants.map((g) => g.privilege_type.toUpperCase()))].sort()
-    : PRIV_TYPES;
+    : (PRIV_BY_TYPE[nodeType] || DEFAULT_PRIVS);
 
   // For objects: rows = grantees (users/roles). For roles: rows = objects the role can access
-  const rowKeys = [...new Set(grants.map((g) => isRole
-    ? (g.object_name || g.object_database || g.object_type || "SYSTEM")
-    : g.grantee
-  ))];
+  // Helper: derive display label and scope type for role grant rows
+  function grantRowKey(g: PrivilegeGrant): string {
+    if (g.object_name) return g.object_name;
+    if (g.object_database) return `ALL ${g.object_type}S IN ${g.object_database}`;
+    if (g.object_catalog) return `ALL IN ${g.object_catalog}`;
+    return g.object_type || "SYSTEM";
+  }
+  function grantScopeType(g: PrivilegeGrant): string {
+    if (g.object_name) return g.object_type || "";
+    if (g.object_database) return "DATABASE";
+    if (g.object_catalog) return "CATALOG";
+    return g.object_type || "SYSTEM";
+  }
+
+  const rowKeys = [...new Set(grants.map((g) => isRole ? grantRowKey(g) : g.grantee))];
   const matrix = rowKeys.map((name) => {
     const row: Record<string, "D" | "I" | "-"> = {};
     privColumns.forEach((p) => (row[p] = "-"));
-    const matching = grants.filter((g) => isRole
-      ? (g.object_name || g.object_database || g.object_type || "SYSTEM") === name
-      : g.grantee === name
-    );
+    const matching = grants.filter((g) => isRole ? grantRowKey(g) === name : g.grantee === name);
     matching.forEach((g) => {
       const p = g.privilege_type.toUpperCase();
       const badge = g.source === "direct" ? "D" as const : "I" as const;
       if (ALL_ALIASES.has(p)) {
-        // "ALL" expands to all privilege types
         privColumns.forEach((col) => {
           if (row[col] === "-" || (row[col] === "I" && badge === "D")) row[col] = badge;
         });
@@ -102,17 +131,12 @@ export default function ObjectDetailPanel() {
       }
     });
     const sample = matching[0];
-    const rowType = isRole ? (sample?.object_type || "") : (sample?.grantee_type || "");
+    const rowType = isRole ? grantScopeType(sample) : (sample?.grantee_type || "");
     return { name, type: rowType, row };
   });
 
-  // Path display — avoid duplicating label when node IS the catalog/database itself
-  const nodeType = selectedNode.type.toLowerCase();
-  const pathParts = nodeType === "catalog"
-    ? [selectedNode.label]
-    : nodeType === "database"
-      ? [parsed.catalog, selectedNode.label].filter(Boolean)
-      : [parsed.catalog, parsed.database, parsed.name || selectedNode.label].filter(Boolean);
+  // Path display
+  const pathParts = [parsed.catalog, parsed.database, parsed.name || selectedNode.label].filter(Boolean);
 
   return (
     <div>
@@ -156,8 +180,13 @@ export default function ObjectDetailPanel() {
           ) : grants.length === 0 ? (
             <p style={{ fontSize: 13, color: "#94a3b8", fontStyle: "italic" }}>No grants found</p>
           ) : isRole ? (
-            /* ── Role: grouped list view (object → privileges) ── */
-            <RolePrivilegeList grants={grants} />
+            /* ── Role: scope-grouped privilege view ── */
+            <GrantTreeView
+              groups={buildGrantDisplay(grants)}
+              title="Role Privileges"
+              totalGrants={grants.length}
+              sourceRoles={extractSourceRoles(grants)}
+            />
           ) : (
             /* ── Object: matrix view (grantee × privilege type) ── */
             <>
@@ -167,8 +196,8 @@ export default function ObjectDetailPanel() {
                 <thead>
                   <tr style={{ borderBottom: "1px solid #475569" }}>
                     <th style={{ textAlign: "left", padding: "8px 6px", fontWeight: 600, color: "#94a3b8", fontSize: 11, whiteSpace: "nowrap" }}>User/Role</th>
-                    {PRIV_TYPES.map((p) => (
-                      <th key={p} style={{ textAlign: "center", padding: "8px 3px", fontWeight: 600, color: "#94a3b8", fontSize: 10, whiteSpace: "nowrap" }}>{p}</th>
+                    {privColumns.map((p) => (
+                      <th key={p} style={{ textAlign: "center", padding: "8px 3px", fontWeight: 600, color: "#94a3b8", fontSize: 10, whiteSpace: "nowrap" }}>{p.startsWith("CREATE") ? "CREATE" : p}</th>
                     ))}
                   </tr>
                 </thead>
@@ -179,7 +208,7 @@ export default function ObjectDetailPanel() {
                         <InlineIcon type={m.type === "ROLE" ? "role" : "user"} size={18} />
                         <UserName name={m.name} />
                       </td>
-                      {PRIV_TYPES.map((p) => (
+                      {privColumns.map((p) => (
                         <td key={p} style={{ textAlign: "center", padding: "8px 4px" }}>
                           <Badge v={m.row[p]} />
                         </td>
@@ -306,92 +335,6 @@ function DDLBlock({ ddl }: { ddl: string }) {
   );
 }
 
-/* ── Role Privilege List: grouped by scope (SYSTEM → CATALOG → DATABASE → TABLE) ── */
-
-function RolePrivilegeList({ grants }: { grants: PrivilegeGrant[] }) {
-  // Group by object_type → object path → privileges (memoized)
-  const { groups, sortedScopes } = useMemo(() => {
-    const g: Record<string, { path: string; catalog?: string; database?: string; name?: string; privs: string[] }[]> = {};
-
-    for (const grant of grants) {
-      const scope = grant.object_type?.toUpperCase() || "SYSTEM";
-      const path = [grant.object_catalog, grant.object_database, grant.object_name].filter(Boolean).join(".") || scope;
-      (g[scope] ??= []);
-      const existing = g[scope].find((x) => x.path === path);
-      if (existing) {
-        if (!existing.privs.includes(grant.privilege_type)) existing.privs.push(grant.privilege_type);
-      } else {
-        g[scope].push({
-          path,
-          catalog: grant.object_catalog || undefined,
-          database: grant.object_database || undefined,
-          name: grant.object_name || undefined,
-          privs: [grant.privilege_type],
-        });
-      }
-    }
-
-    const scopes = SCOPE_ORDER.filter((s) => g[s]?.length);
-    // Add any scopes not in SCOPE_ORDER
-    Object.keys(g).forEach((s) => { if (!scopes.includes(s)) scopes.push(s); });
-
-    return { groups: g, sortedScopes: scopes };
-  }, [grants]);
-
-  return (
-    <div style={{ minWidth: 0, overflow: "hidden" }}>
-      <p style={{ fontSize: 13, fontWeight: 600, color: "#94a3b8", marginBottom: 10, whiteSpace: "nowrap" }}>
-        Role Privileges ({grants.length} grants)
-      </p>
-      {sortedScopes.map((scope) => (
-        <div key={scope} style={{ marginBottom: 14, minWidth: 0 }}>
-          {/* Scope header */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, fontSize: 12, fontWeight: 600, color: "#94a3b8", whiteSpace: "nowrap" }}>
-            <InlineIcon type={SCOPE_ICONS[scope] || "system"} size={14} />
-            {scope}
-            <span style={{ fontSize: 10, color: "#64748b" }}>({groups[scope].length})</span>
-          </div>
-          {/* Objects in this scope */}
-          {groups[scope].map((obj) => (
-            <div
-              key={obj.path}
-              style={{
-                padding: "8px 10px 8px 22px", borderBottom: "1px solid rgba(71,85,105,0.15)",
-                fontSize: 12, minWidth: 0,
-              }}
-            >
-              {/* Object name + path */}
-              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, minWidth: 0 }}>
-                <span style={{ color: "#e2e8f0", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.4 }}>
-                  {obj.name || obj.database || obj.path}
-                </span>
-                {obj.name && obj.database && (
-                  <span style={{ fontSize: 10, color: "#64748b", flexShrink: 0, whiteSpace: "nowrap" }}>
-                    {obj.catalog}.{obj.database}
-                  </span>
-                )}
-              </div>
-              {/* Privilege tags - always left-aligned, wrapping */}
-              <div style={{ display: "flex", gap: 4, flexWrap: "wrap", minWidth: 0 }}>
-                {obj.privs.map((p) => {
-                  const c = getPrivColor(p);
-                  return (
-                    <span key={p} style={{
-                      padding: "2px 6px", borderRadius: 4, fontSize: 10, fontWeight: 600,
-                      background: c.bg, color: c.fg, whiteSpace: "nowrap", lineHeight: 1.4,
-                    }}>
-                      {p}
-                    </span>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
 
 /** Display user/role name. Parses 'name'@'host' format for readability. */
 function UserName({ name }: { name: string }) {
@@ -409,9 +352,3 @@ function UserName({ name }: { name: string }) {
   return <span style={{ fontSize: 13, fontWeight: 600, color: "#e2e8f0" }}>{name}</span>;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return bytes + " B";
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB";
-}
