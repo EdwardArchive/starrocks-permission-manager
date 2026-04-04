@@ -150,7 +150,7 @@ def test_real_logout():
 
 @skip_no_sr
 def test_real_catalogs(real_client, real_header):
-    resp = real_client.get("/api/objects/catalogs", headers=real_header)
+    resp = real_client.get("/api/user/objects/catalogs", headers=real_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -162,7 +162,7 @@ def test_real_catalogs(real_client, real_header):
 
 @skip_no_sr
 def test_real_databases(real_client, real_header):
-    resp = real_client.get("/api/objects/databases", params={"catalog": "default_catalog"}, headers=real_header)
+    resp = real_client.get("/api/user/objects/databases", params={"catalog": "default_catalog"}, headers=real_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -175,12 +175,12 @@ def test_real_databases(real_client, real_header):
 
 @skip_no_sr
 def test_real_tables(real_client, real_header):
-    dbs = real_client.get("/api/objects/databases", params={"catalog": "default_catalog"}, headers=real_header).json()
+    dbs = real_client.get("/api/user/objects/databases", params={"catalog": "default_catalog"}, headers=real_header).json()
     if not dbs:
         pytest.skip("No databases found")
     db_name = dbs[0]["name"]
     resp = real_client.get(
-        "/api/objects/tables", params={"catalog": "default_catalog", "database": db_name}, headers=real_header
+        "/api/user/objects/tables", params={"catalog": "default_catalog", "database": db_name}, headers=real_header
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -195,13 +195,13 @@ def test_real_tables(real_client, real_header):
 
 @skip_no_sr
 def test_real_table_detail(real_client, real_header):
-    dbs = real_client.get("/api/objects/databases", params={"catalog": "default_catalog"}, headers=real_header).json()
+    dbs = real_client.get("/api/user/objects/databases", params={"catalog": "default_catalog"}, headers=real_header).json()
     if not dbs:
         pytest.skip("No databases found")
 
     for db in dbs:
         tables = real_client.get(
-            "/api/objects/tables",
+            "/api/user/objects/tables",
             params={"catalog": "default_catalog", "database": db["name"]},
             headers=real_header,
         ).json()
@@ -209,7 +209,7 @@ def test_real_table_detail(real_client, real_header):
         if base_tables:
             tbl = base_tables[0]
             resp = real_client.get(
-                "/api/objects/table-detail",
+                "/api/user/objects/table-detail",
                 params={"catalog": "default_catalog", "database": db["name"], "table": tbl["name"]},
                 headers=real_header,
             )
@@ -232,7 +232,7 @@ def test_real_table_detail(real_client, real_header):
 
 @skip_no_sr
 def test_real_user_privileges(real_client, real_header):
-    resp = real_client.get(f"/api/privileges/user/{SR_USER}", headers=real_header)
+    resp = real_client.get(f"/api/admin/privileges/user/{SR_USER}", headers=real_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -241,7 +241,7 @@ def test_real_user_privileges(real_client, real_header):
 
 @skip_no_sr
 def test_real_effective_privileges(real_client, real_header):
-    resp = real_client.get(f"/api/privileges/user/{SR_USER}/effective", headers=real_header)
+    resp = real_client.get(f"/api/admin/privileges/user/{SR_USER}/effective", headers=real_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -253,10 +253,10 @@ def test_real_effective_privileges(real_client, real_header):
 def test_real_object_privileges(real_client, real_header):
     """Test object privilege matrix — should include inherited roles and users."""
     # Find a table to test
-    dbs = real_client.get("/api/objects/databases", params={"catalog": "default_catalog"}, headers=real_header).json()
+    dbs = real_client.get("/api/user/objects/databases", params={"catalog": "default_catalog"}, headers=real_header).json()
     for db in dbs:
         tables = real_client.get(
-            "/api/objects/tables",
+            "/api/user/objects/tables",
             params={"catalog": "default_catalog", "database": db["name"]},
             headers=real_header,
         ).json()
@@ -264,7 +264,7 @@ def test_real_object_privileges(real_client, real_header):
         if base_tables:
             tbl = base_tables[0]
             resp = real_client.get(
-                "/api/privileges/object",
+                "/api/admin/privileges/object",
                 params={"catalog": "default_catalog", "database": db["name"], "name": tbl["name"]},
                 headers=real_header,
             )
@@ -289,10 +289,10 @@ def test_real_object_privileges(real_client, real_header):
 @skip_no_sr
 def test_real_object_privileges_inheritance(real_client, real_header):
     """Verify inherited roles appear in object privilege results."""
-    dbs = real_client.get("/api/objects/databases", params={"catalog": "default_catalog"}, headers=real_header).json()
+    dbs = real_client.get("/api/user/objects/databases", params={"catalog": "default_catalog"}, headers=real_header).json()
     for db in dbs:
         tables = real_client.get(
-            "/api/objects/tables",
+            "/api/user/objects/tables",
             params={"catalog": "default_catalog", "database": db["name"]},
             headers=real_header,
         ).json()
@@ -300,7 +300,7 @@ def test_real_object_privileges_inheritance(real_client, real_header):
         if base_tables:
             tbl = base_tables[0]
             resp = real_client.get(
-                "/api/privileges/object",
+                "/api/admin/privileges/object",
                 params={"catalog": "default_catalog", "database": db["name"], "name": tbl["name"]},
                 headers=real_header,
             )
@@ -323,7 +323,7 @@ def test_real_object_privileges_inheritance(real_client, real_header):
 @skip_no_sr
 def test_real_role_privileges(real_client, real_header):
     """Test role privilege endpoint including inherited grants."""
-    resp = real_client.get("/api/privileges/role/root", headers=real_header)
+    resp = real_client.get("/api/admin/privileges/role/root", headers=real_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -337,7 +337,7 @@ def test_real_role_privileges(real_client, real_header):
 
 @skip_no_sr
 def test_real_roles(real_client, real_header):
-    resp = real_client.get("/api/roles", headers=real_header)
+    resp = real_client.get("/api/admin/roles", headers=real_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -353,7 +353,7 @@ def test_real_roles(real_client, real_header):
 
 @skip_no_sr
 def test_real_role_hierarchy(real_client, real_header):
-    resp = real_client.get("/api/roles/hierarchy", headers=real_header)
+    resp = real_client.get("/api/admin/roles/hierarchy", headers=real_header)
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["nodes"]) > 0
@@ -375,7 +375,7 @@ def test_real_role_hierarchy(real_client, real_header):
 @skip_no_sr
 def test_real_role_users(real_client, real_header):
     """Test getting users assigned to a specific role."""
-    resp = real_client.get("/api/roles/public/users", headers=real_header)
+    resp = real_client.get("/api/admin/roles/public/users", headers=real_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -388,7 +388,7 @@ def test_real_role_users(real_client, real_header):
 @skip_no_sr
 def test_real_object_hierarchy(real_client, real_header):
     resp = real_client.get(
-        "/api/dag/object-hierarchy", params={"catalog": "default_catalog"}, headers=real_header
+        "/api/user/dag/object-hierarchy", params={"catalog": "default_catalog"}, headers=real_header
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -411,7 +411,7 @@ def test_real_object_hierarchy(real_client, real_header):
 def test_real_object_hierarchy_shallow(real_client, real_header):
     """Test shallow mode (catalogs + DBs only, no tables)."""
     resp = real_client.get(
-        "/api/dag/object-hierarchy",
+        "/api/user/dag/object-hierarchy",
         params={"catalog": "default_catalog", "depth": "shallow"},
         headers=real_header,
     )
@@ -428,7 +428,7 @@ def test_real_object_hierarchy_shallow(real_client, real_header):
 
 @skip_no_sr
 def test_real_search(real_client, real_header):
-    resp = real_client.get("/api/search", params={"q": "root"}, headers=real_header)
+    resp = real_client.get("/api/admin/search", params={"q": "root"}, headers=real_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -441,14 +441,14 @@ def test_real_search(real_client, real_header):
 @skip_no_sr
 def test_real_search_empty_query(real_client, real_header):
     """Search with empty query should return 422 validation error."""
-    resp = real_client.get("/api/search", params={"q": ""}, headers=real_header)
+    resp = real_client.get("/api/admin/search", params={"q": ""}, headers=real_header)
     assert resp.status_code == 422
 
 
 @skip_no_sr
 def test_real_search_single_char(real_client, real_header):
     """Search with single char returns results (server has no min length)."""
-    resp = real_client.get("/api/search", params={"q": "a"}, headers=real_header)
+    resp = real_client.get("/api/admin/search", params={"q": "a"}, headers=real_header)
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -459,16 +459,16 @@ def test_real_search_single_char(real_client, real_header):
 def test_real_search_tables(real_client, real_header):
     """Search should find tables."""
     # Get a table name first
-    dbs = real_client.get("/api/objects/databases", params={"catalog": "default_catalog"}, headers=real_header).json()
+    dbs = real_client.get("/api/user/objects/databases", params={"catalog": "default_catalog"}, headers=real_header).json()
     for db in dbs:
         tables = real_client.get(
-            "/api/objects/tables",
+            "/api/user/objects/tables",
             params={"catalog": "default_catalog", "database": db["name"]},
             headers=real_header,
         ).json()
         if tables:
             tbl_name = tables[0]["name"]
-            resp = real_client.get("/api/search", params={"q": tbl_name[:4]}, headers=real_header)
+            resp = real_client.get("/api/admin/search", params={"q": tbl_name[:4]}, headers=real_header)
             assert resp.status_code == 200
             print(f"\n  Search '{tbl_name[:4]}': {len(resp.json())} results")
             return
@@ -482,7 +482,7 @@ def test_real_search_tables(real_client, real_header):
 def test_real_inheritance_dag_user(real_client, real_header):
     """Test inheritance DAG for a user."""
     resp = real_client.get(
-        "/api/roles/inheritance-dag", params={"name": SR_USER, "type": "user"}, headers=real_header
+        "/api/admin/roles/inheritance-dag", params={"name": SR_USER, "type": "user"}, headers=real_header
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -497,7 +497,7 @@ def test_real_inheritance_dag_user(real_client, real_header):
 def test_real_inheritance_dag_role(real_client, real_header):
     """Test inheritance DAG for a role."""
     resp = real_client.get(
-        "/api/roles/inheritance-dag", params={"name": "public", "type": "role"}, headers=real_header
+        "/api/admin/roles/inheritance-dag", params={"name": "public", "type": "role"}, headers=real_header
     )
     assert resp.status_code == 200
     data = resp.json()
