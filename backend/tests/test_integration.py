@@ -40,12 +40,19 @@ skip_no_sr = pytest.mark.skipif(
 def real_client():
     """TestClient that connects to a real StarRocks cluster."""
 
+    # Detect admin status once
+    from app.utils.sys_access import can_access_sys
+
+    with get_connection(SR_HOST, SR_PORT, SR_USER, SR_PASS) as _probe:
+        _is_admin = can_access_sys(_probe)
+
     def _real_credentials():
         return {
             "host": SR_HOST,
             "port": SR_PORT,
             "username": SR_USER,
             "password": SR_PASS,
+            "is_admin": _is_admin,
         }
 
     def _real_db():

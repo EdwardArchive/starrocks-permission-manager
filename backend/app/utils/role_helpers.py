@@ -79,4 +79,6 @@ def collect_all_roles_via_grants(conn, username: str) -> set[str]:
         visited.add(role)
         child_roles = parse_role_assignments(conn, role, "ROLE")
         queue.extend(r for r in child_roles if r not in visited)
+    # public role is implicitly assigned to all users but not in SHOW GRANTS
+    visited.add("public")
     return visited
