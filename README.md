@@ -11,7 +11,6 @@ A web UI for visually exploring user, role, and object permission structures acr
   - **Role Map**: root → built-in roles → custom roles → users (top-to-bottom DAG with full inheritance chain)
   - **Permission Focus**: Search a user or role → view inheritance DAG + privilege list (admin only)
   - **My Inventory**: Browse all accessible objects by type with detail side panel (Roles, Users, Catalogs, Databases, Tables, MVs, Views, Functions)
-  - **Full Permission Graph**: Users → Roles → Objects unified view (coming soon)
 - **Admin & Non-Admin Support** — Admin users see all roles/users/objects via `/api/admin/*` routes (sys.* tables). Non-admin users see only their accessible objects and role chain via `/api/user/*` routes (SHOW GRANTS + INFORMATION_SCHEMA). Admin routes enforce `require_admin` (403 for non-admin).
 - **Object Permission Matrix** — Click an object to see a grantee × privilege matrix (Direct/Inherited indicators), with type-specific columns per object type
 - **Implicit USAGE** — TABLE-level grants automatically show implicit DATABASE/CATALOG USAGE access
@@ -160,7 +159,6 @@ server {
 | **Role Map** | Shows role inheritance with full BFS child traversal. Clicking a role shows the complete inheritance chain (parents + children + users). | No |
 | **Permission Focus** | Search for a user or role to view their inheritance DAG and full privilege list side-by-side. | Yes |
 | **My Inventory** | Browse all accessible objects organized by sub-tabs (Roles, Users, Catalogs, Databases, Tables, MVs, Views, Functions) with a detail side panel. | No |
-| **Full Permission Graph** | Combined users → roles → objects graph with privilege-colored edges. | Coming soon |
 
 ### My Inventory Sub-tabs
 
@@ -345,7 +343,6 @@ npx eslint src/ --max-warnings 0
 | GET | `/api/admin/roles/{name}/users` | Users assigned to a role |
 | GET | `/api/admin/dag/object-hierarchy?catalog=X` | Object hierarchy DAG (all objects) |
 | GET | `/api/admin/dag/role-hierarchy` | Role hierarchy DAG (all roles) |
-| GET | `/api/admin/dag/full?catalog=X` | Full permission DAG |
 | GET | `/api/admin/search?q=keyword&limit=50` | Unified search (all objects/users/roles) |
 | GET | `/api/admin/search/users-roles?q=keyword` | Fast user/role search |
 
@@ -362,7 +359,7 @@ Uses `information_schema.tables` and `columns` as the primary data source, makin
 | Version | Feature |
 |---------|---------|
 | v1.0 | Read-only permission exploration & visualization (current) |
-| v1.1 | 3-layer service architecture, layered API routes (`/api/user/*` + `/api/admin/*`), Full Permission Graph tab, Resource Group/Storage Volume/Resource support |
+| v1.1 | 3-layer service architecture, layered API routes (`/api/user/*` + `/api/admin/*`), Resource Group/Storage Volume/Resource support |
 | v1.2 | SQL Privilege Checker — Permission Focus 탭에서 SQL 쿼리 입력 시 선택된 유저/역할의 실행 권한 검증 (SELECT, INSERT, CREATE TABLE 등 → 필요 권한 ✅/❌ 표시) |
 | v2.0 | GRANT/REVOKE UI, Bulk Operations |
 | v2.1 | Audit Log, Permission Diff |

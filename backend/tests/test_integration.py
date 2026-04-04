@@ -423,20 +423,6 @@ def test_real_object_hierarchy_shallow(real_client, real_header):
     print(f"\n  Shallow DAG: {len(data['nodes'])} nodes, types: {types}")
 
 
-@skip_no_sr
-def test_real_full_graph(real_client, real_header):
-    resp = real_client.get("/api/dag/full", headers=real_header)
-    assert resp.status_code == 200
-    data = resp.json()
-    types = {n["type"] for n in data["nodes"]}
-    edge_types = {e["edge_type"] for e in data["edges"]}
-    # Should have users, roles, and privilege edges
-    assert "user" in types or "role" in types
-    print(f"\n  Full graph: {len(data['nodes'])} nodes, {len(data['edges'])} edges")
-    print(f"    Node types: {types}")
-    print(f"    Edge types: {edge_types}")
-
-
 # ── Search ──
 
 

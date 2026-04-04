@@ -16,7 +16,7 @@ Provides a web UI for **visually querying** the privilege relationships between 
 ### 1.4 Scope (v1.0)
 - **Read-only**: Only permission querying/visualization is provided (GRANT/REVOKE deferred to v2.0)
 - **Authentication**: Uses StarRocks native user credentials
-- **3 DAG Views**: Object Hierarchy, Role Hierarchy, Full Permission Graph
+- **2 DAG Views**: Object Hierarchy, Role Hierarchy
 
 ---
 
@@ -128,15 +128,7 @@ SHOW MATERIALIZED VIEWS [FROM database];
 | DAG-ROLE-04 | Show the number of assigned users on role nodes |
 | DAG-ROLE-05 | Clicking a role displays detailed privileges for that role |
 
-#### 3.2.3 Full Permission Graph View(Will Be)
-| ID | Requirement |
-|----|------------|
-| DAG-FULL-01 | Display users → roles → objects in a single unified graph |
-| DAG-FULL-02 | Edge colors distinguish privilege types (SELECT=green, INSERT=blue, DROP=red, etc.) |
-| DAG-FULL-03 | Filters: filter by specific user, role, object type, or privilege type |
-| DAG-FULL-04 | Large cluster support: virtualization + viewport culling |
-
-#### 3.2.4 Common DAG Features
+#### 3.2.3 Common DAG Features
 | ID | Requirement |
 |----|------------|
 | DAG-COM-01 | Zoom in/out, Pan, Fit-to-view controls |
@@ -430,8 +422,7 @@ GROUP BY TABLE_TYPE;
 ```
 Login → Main Dashboard
   ├── Tab: Object Hierarchy → Click Object → Right Panel (Permission Matrix)
-  ├── Tab: Role Map → Click Role → Right Panel (Role Details + Privileges)
-  └── Tab: Full Graph → Click User/Object → Right Panel (Context-specific)
+  └── Tab: Role Map → Click Role → Right Panel (Role Details + Privileges)
 
 Sidebar:
   ├── Catalog Tree → Click Item → Highlight in DAG + Open Detail Panel
@@ -506,7 +497,6 @@ Sidebar:
 ### DAG
 - `GET /dag/object-hierarchy?catalog=X` → `{nodes, edges}`
 - `GET /dag/role-hierarchy` → `{nodes, edges}`
-- `GET /dag/full?catalog=X` → `{nodes, edges}`
 
 ---
 

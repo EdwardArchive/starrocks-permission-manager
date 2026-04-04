@@ -56,7 +56,6 @@ ADMIN_ROUTES = [
     "/api/admin/roles/analyst_role/users",
     "/api/admin/dag/object-hierarchy",
     "/api/admin/dag/role-hierarchy",
-    "/api/admin/dag/full",
     "/api/admin/search?q=test",
     "/api/admin/search/users-roles?q=test",
 ]

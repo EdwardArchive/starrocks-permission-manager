@@ -175,7 +175,7 @@ When code or project structure changes, run a sub-agent after completing the tas
   - Each tab selects the appropriate API module based on `isAdmin` flag
   - Response schemas remain identical (`DAGGraph`, `PrivilegeGrant`, etc.) — only scope differs
 
-- **DAG**: 3 views (Object Hierarchy TB, Role Hierarchy TB, Full Permission Graph LR). `SET ROLE ALL` before object-hierarchy queries. (unchanged)
+- **DAG**: 2 views (Object Hierarchy TB, Role Hierarchy TB). `SET ROLE ALL` before object-hierarchy queries. (unchanged)
 
 - **Icons**: `frontend/icons/` is the single source. All SVGs are stroke-based 24×24 with `width`/`height` attributes. (unchanged)
 
@@ -208,7 +208,6 @@ When code or project structure changes, run a sub-agent after completing the tas
 | Role Map | Role inheritance DAG with full BFS child traversal | No |
 | Permission Focus | Search user/role → inheritance DAG + privilege list | Yes |
 | My Inventory | Sub-tab browser: Roles/Users/Catalogs/DBs/Tables/MVs/Views/Functions + detail panel | No |
-| Full Permission Graph | Combined graph (coming soon) | - |
 
 ## My Inventory Sub-tabs
 | Sub-tab | Data Source | Detail Panel |

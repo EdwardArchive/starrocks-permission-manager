@@ -39,11 +39,6 @@ export const getObjectHierarchy = (catalog?: string, signal?: AbortSignal) => {
   return apiFetch<DAGGraph>(`/admin/dag/object-hierarchy${q}`, { signal });
 };
 
-export const getFullGraph = (catalog?: string, signal?: AbortSignal) => {
-  const q = catalog ? `?catalog=${encodeURIComponent(catalog)}` : "";
-  return apiFetch<DAGGraph>(`/admin/dag/full${q}`, { signal });
-};
-
 // ── Search ──
 export interface SearchResult {
   name: string;

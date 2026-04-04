@@ -15,7 +15,6 @@ from app.dependencies import get_credentials, get_db, require_admin
 from app.models.schemas import DAGEdge, DAGGraph, DAGNode
 from app.services.shared.name_utils import normalize_fn_name
 from app.services.starrocks_client import execute_query, parallel_queries
-from app.services.admin.user_service import get_all_users
 from app.utils.sql_safety import safe_identifier
 
 logger = logging.getLogger("admin_dag")
@@ -23,18 +22,6 @@ router = APIRouter(dependencies=[Depends(require_admin)])
 
 # Server-side TTL cache for admin DAG results
 _dag_cache: TTLCache = TTLCache(maxsize=64, ttl=settings.cache_ttl_seconds)
-
-PRIV_EDGE_TYPES = {
-    "SELECT": "select",
-    "INSERT": "insert",
-    "DELETE": "delete",
-    "ALTER": "alter",
-    "DROP": "drop",
-    "UPDATE": "update",
-    "USAGE": "usage",
-    "ALL": "select",
-}
-
 
 @router.get("/object-hierarchy", response_model=DAGGraph)
 def get_object_hierarchy(
@@ -228,126 +215,3 @@ def get_role_hierarchy(conn=Depends(get_db)):
     return result
 
 
-@router.get("/full", response_model=DAGGraph)
-def get_full_graph(catalog: str = Query(None), conn=Depends(get_db)):
-    """Combined: users -> roles -> objects with privilege edges (admin only).
-
-    Uses sys.role_edges + sys.grants_to_users + sys.grants_to_roles.
-    """
-    cache_key = f"admin_full_{catalog}"
-    if cache_key in _dag_cache:
-        return _dag_cache[cache_key]
-
-    nodes = []
-    edges = []
-    node_ids = set()
-    edge_idx = [0]
-
-    def _add(nid, label, ntype, **kw):
-        if nid not in node_ids:
-            nodes.append(DAGNode(id=nid, label=label, type=ntype, color=None, **kw))
-            node_ids.add(nid)
-
-    def _edge(src, tgt, etype):
-        if src in node_ids and tgt in node_ids:
-            edges.append(DAGEdge(id=f"e{edge_idx[0]}", source=src, target=tgt, edge_type=etype))
-            edge_idx[0] += 1
-
-    # 1. Get all users and roles from role_edges + grants_to_users
-    role_rows = execute_query(conn, "SELECT * FROM sys.role_edges")
-
-    roles_set = set()
-    users_set = set()
-    user_roles_map: dict[str, set[str]] = {}
-    for r in role_rows:
-        parent = r.get("FROM_ROLE") or r.get("PARENT_ROLE_NAME") or ""
-        child = r.get("TO_ROLE") or r.get("ROLE_NAME") or ""
-        user = r.get("TO_USER") or r.get("USER_NAME") or ""
-        if parent:
-            roles_set.add(parent)
-        if child:
-            roles_set.add(child)
-        if user:
-            users_set.add(user)
-            user_roles_map.setdefault(user, set()).add(parent)
-
-    # Supplement users from grants_to_users via shared service
-    users_set.update(get_all_users(conn))
-
-    for u in users_set:
-        _add(f"u_{u}", u, "user")
-    for r in roles_set:
-        _add(f"r_{r}", r, "role")
-
-    # Role->Role edges
-    for r in role_rows:
-        parent = r.get("FROM_ROLE") or r.get("PARENT_ROLE_NAME") or ""
-        child = r.get("TO_ROLE") or r.get("ROLE_NAME") or ""
-        user = r.get("TO_USER") or r.get("USER_NAME") or ""
-        if user and parent:
-            _edge(f"r_{parent}", f"u_{user}", "assignment")
-        elif parent and child:
-            _edge(f"r_{parent}", f"r_{child}", "inheritance")
-
-    # Users not in role_edges -> connect to public
-    all_roles_rows = execute_query(conn, "SHOW ROLES")
-    all_role_names = {r.get("Name") or r.get("name") or "" for r in all_roles_rows}
-    if "public" in all_role_names:
-        _add("r_public", "public", "role")
-        for u in users_set:
-            if u not in user_roles_map:
-                _edge("r_public", f"u_{u}", "assignment")
-
-    # 2. Get privilege grants -> create object nodes + privilege edges
-    for table in ("sys.grants_to_users", "sys.grants_to_roles"):
-        grant_rows = execute_query(conn, f"SELECT * FROM {table}")
-
-        for g in grant_rows:
-            grantee = g.get("GRANTEE") or g.get("grantee") or ""
-            obj_cat = g.get("OBJECT_CATALOG") or g.get("object_catalog") or ""
-            obj_db = g.get("OBJECT_DATABASE") or g.get("object_database") or ""
-            obj_name = g.get("OBJECT_NAME") or g.get("object_name") or ""
-            obj_type = (g.get("OBJECT_TYPE") or g.get("object_type") or "").upper()
-            priv = (g.get("PRIVILEGE_TYPE") or g.get("privilege_type") or "").upper()
-
-            if catalog and obj_cat and obj_cat != catalog:
-                continue
-
-            # Map object type to node type
-            type_map = {
-                "TABLE": "table",
-                "VIEW": "view",
-                "MATERIALIZED VIEW": "mv",
-                "DATABASE": "database",
-                "CATALOG": "catalog",
-                "FUNCTION": "function",
-                "SYSTEM": "system",
-                "RESOURCE GROUP": "system",
-                "RESOURCE": "system",
-                "USER": "user",
-                "STORAGE VOLUME": "system",
-                "GLOBAL FUNCTION": "function",
-            }
-            ntype = type_map.get(obj_type, "system")
-
-            # Create object node
-            label = obj_name or obj_db or obj_cat or obj_type
-            # Build unique ID avoiding empty segments
-            parts = [p for p in [obj_cat, obj_db, obj_name] if p]
-            oid = f"o_{'_'.join(parts)}" if parts else f"o_{obj_type}"
-            _add(oid, label, ntype)
-
-            # Ensure grantee node exists (may not be in role_edges)
-            grantee_prefix = "u_" if "grants_to_users" in table else "r_"
-            grantee_id = f"{grantee_prefix}{grantee}"
-            if grantee_id not in node_ids:
-                gtype = "user" if "grants_to_users" in table else "role"
-                _add(grantee_id, grantee, gtype)
-
-            # Privilege edge
-            edge_type = PRIV_EDGE_TYPES.get(priv, "select")
-            _edge(grantee_id, oid, edge_type)
-
-    result = DAGGraph(nodes=nodes, edges=edges)
-    _dag_cache[cache_key] = result
-    return result

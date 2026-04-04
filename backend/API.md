@@ -485,19 +485,6 @@ Returns the role hierarchy DAG. Structure: root (top) → built-in roles → cus
 
 ---
 
-### GET `/api/dag/full`
-
-Returns the full permission graph. Users → Roles → Objects with privilege edges.
-
-**Query Parameters**
-| Param | Type | Required | Description |
-|-------|------|----------|-------------|
-| catalog | string | No | Filter to a specific catalog |
-
-**Response** `200 OK` - `DAGGraph`
-
----
-
 ## 6. Health Check
 
 ### GET `/api/health`

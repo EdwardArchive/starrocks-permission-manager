@@ -5,7 +5,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useDagStore, type TabId } from "./stores/dagStore";
 import { getMe } from "./api/auth";
 import { getObjectHierarchy as userGetObjectHierarchy, getRoleHierarchy as userGetRoleHierarchy } from "./api/user";
-import { getObjectHierarchy as adminGetObjectHierarchy, getRoleHierarchy as adminGetRoleHierarchy, getFullGraph } from "./api/admin";
+import { getObjectHierarchy as adminGetObjectHierarchy, getRoleHierarchy as adminGetRoleHierarchy } from "./api/admin";
 import type { DAGGraph } from "./types";
 
 import LoginForm from "./components/auth/LoginForm";
@@ -26,7 +26,6 @@ const TAB_CONFIG: { id: TabId; label: string; icon: string; disabled?: boolean; 
   { id: "role", label: "Role Map", icon: '<circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="17" r="2.5"/><circle cx="19" cy="17" r="2.5"/><path d="M12 7.5v3"/><path d="M12 10.5L5 14.5"/><path d="M12 10.5L19 14.5"/>' },
   { id: "perm", label: "Permission Focus", icon: '<circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/>', adminOnly: true },
   { id: "myperm", label: "My Inventory Search", icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>' },
-  { id: "full", label: "Full Permission Graph", icon: '<circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="6" r="2.5"/><circle cx="5" cy="18" r="2.5"/><circle cx="19" cy="18" r="2.5"/><line x1="7.5" y1="6" x2="16.5" y2="6"/><line x1="5" y1="8.5" x2="5" y2="15.5"/><line x1="7" y1="7.5" x2="17" y2="16.5"/>', disabled: true },
 ];
 
 const OBJ_FILTERS = [
@@ -93,8 +92,7 @@ export default function App() {
     const getRoleHierarchy = isAdmin ? adminGetRoleHierarchy : userGetRoleHierarchy;
     const fetcher =
       activeTab === "obj" ? () => getObjectHierarchy(activeCatalog, controller.signal) :
-      activeTab === "role" ? () => getRoleHierarchy(controller.signal) :
-      () => getFullGraph(activeCatalog, controller.signal);
+      () => getRoleHierarchy(controller.signal);
     fetcher()
       .then((data) => setDagState((prev) => ({ cache: { ...prev.cache, [dagKey]: data }, loading: false })))
       .catch(() => setDagState((prev) => ({ ...prev, loading: false })));
@@ -111,7 +109,7 @@ export default function App() {
 
   if (!isLoggedIn) return <LoginForm />;
 
-  const direction = activeTab === "full" ? "LR" : "TB";
+  const direction = "TB";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
