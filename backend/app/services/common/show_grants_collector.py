@@ -82,9 +82,9 @@ def _probe_public_defaults(conn) -> list[PrivilegeGrant]:
                     )
                 )
             except Exception:
-                pass
+                logger.debug("DESC STORAGE VOLUME failed for %s", sv_name)
     except Exception:
-        pass
+        logger.debug("SHOW STORAGE VOLUMES not supported on this cluster")
 
     # Warehouses — default_warehouse is implicitly available to all users
     try:
@@ -106,6 +106,6 @@ def _probe_public_defaults(conn) -> list[PrivilegeGrant]:
                     )
                 )
     except Exception:
-        pass
+        logger.debug("SHOW WAREHOUSES not supported on this cluster")
 
     return results

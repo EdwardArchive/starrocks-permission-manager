@@ -17,7 +17,12 @@ from fastapi import Query
 from app.dependencies import get_credentials, get_db
 from app.models.schemas import DAGEdge, DAGGraph, DAGNode, RoleItem
 from app.services.shared.constants import BUILTIN_ROLES
-from app.utils.role_helpers import collect_all_roles_via_grants, get_parent_roles, get_user_roles, parse_role_assignments
+from app.utils.role_helpers import (
+    collect_all_roles_via_grants,
+    get_parent_roles,
+    get_user_roles,
+    parse_role_assignments,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -108,7 +113,9 @@ def get_inheritance_dag(name: str = Query(""), type: str = Query("user"), conn=D
     else:
         rc = "root" if name == "root" else "builtin" if name in BUILTIN_ROLES else "custom"
         add_node(
-            f"r_{name}", name, "role",
+            f"r_{name}",
+            name,
+            "role",
             highlight=True,
             metadata_extra={"role_category": rc},
         )

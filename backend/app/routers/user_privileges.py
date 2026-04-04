@@ -29,17 +29,13 @@ def _collect(conn, credentials: dict) -> GrantCollector:
 
 
 @router.get("/user/{username}/effective", response_model=list[PrivilegeGrant])
-def get_user_effective_privileges(
-    username: str, credentials: dict = Depends(get_credentials), conn=Depends(get_db)
-):
+def get_user_effective_privileges(username: str, credentials: dict = Depends(get_credentials), conn=Depends(get_db)):
     collected = _collect(conn, credentials).collect()
     return GrantResolver(collected, conn).for_user_effective(username)
 
 
 @router.get("/role/{rolename}", response_model=list[PrivilegeGrant])
-def get_role_privileges(
-    rolename: str, credentials: dict = Depends(get_credentials), conn=Depends(get_db)
-):
+def get_role_privileges(rolename: str, credentials: dict = Depends(get_credentials), conn=Depends(get_db)):
     collected = _collect(conn, credentials).collect()
     return GrantResolver(collected, conn).for_role(rolename)
 

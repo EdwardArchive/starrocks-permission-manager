@@ -23,6 +23,7 @@ router = APIRouter(dependencies=[Depends(require_admin)])
 # Server-side TTL cache for admin DAG results
 _dag_cache: TTLCache = TTLCache(maxsize=64, ttl=settings.cache_ttl_seconds)
 
+
 @router.get("/object-hierarchy", response_model=DAGGraph)
 def get_object_hierarchy(
     catalog: str = Query("default_catalog", description="Catalog to load (default: default_catalog)"),
@@ -45,9 +46,7 @@ def get_object_hierarchy(
             meta["catalog"] = catalog
         if database:
             meta["database"] = database
-        nodes.append(
-            DAGNode(id=nid, label=label, type=ntype, color=None, metadata=meta or None, **kw)
-        )
+        nodes.append(DAGNode(id=nid, label=label, type=ntype, color=None, metadata=meta or None, **kw))
 
     def _edge(src, tgt, etype="hierarchy"):
         edges.append(DAGEdge(id=f"e{edge_idx[0]}", source=src, target=tgt, edge_type=etype))
@@ -213,5 +212,3 @@ def get_role_hierarchy(conn=Depends(get_db)):
     result = _get(conn=conn)
     _dag_cache[cache_key] = result
     return result
-
-
