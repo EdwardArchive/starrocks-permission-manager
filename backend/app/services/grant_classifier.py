@@ -138,9 +138,15 @@ def classify_grant(g: PrivilegeGrant, q: ObjectQuery) -> Relevance:
     if otype == "SYSTEM" or priv_upper in _SYSTEM_ONLY_PRIVS:
         return Relevance.IRRELEVANT
 
-    # ── Non-object types (USER, RESOURCE GROUP, etc.) ──
+    # ── Non-object types (USER, RESOURCE GROUP, STORAGE VOLUME, etc.) ──
     if otype in _NON_OBJECT_TYPES:
-        return Relevance.EXACT if q.type_upper == otype else Relevance.IRRELEVANT
+        if q.type_upper != otype:
+            return Relevance.IRRELEVANT
+        # Type matches — check name if both grant and query specify one
+        if gn and q.name and gn != q.name:
+            return Relevance.IRRELEVANT
+        # Wildcard grant (no name) → PARENT_SCOPE, exact name match → EXACT
+        return Relevance.EXACT if gn or not q.name else Relevance.PARENT_SCOPE
 
     # ── Scope query (DATABASE/CATALOG without name): child grants → USAGE ──
     if q.is_scope_query and otype in q.child_types and _scope_matches(gc, gd, gn, q):

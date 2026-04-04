@@ -273,9 +273,10 @@ def get_my_permissions(
     for name, info in _res_data.items():
         _add_sys(name, "RESOURCE", **{k: str(v) for k, v in info.items()})
 
-    # Warehouses
+    # Warehouses — try SHOW WAREHOUSES first (non-admin compatible), fallback to SHOW PROC
     try:
-        for r in execute_query(conn, "SHOW PROC '/warehouses'"):
+        wh_rows = execute_query(conn, "SHOW WAREHOUSES")
+        for r in wh_rows:
             _add_sys(
                 r.get("Name") or r.get("name") or "",
                 "WAREHOUSE",
@@ -285,7 +286,18 @@ def get_my_permissions(
                 queued_sql=str(r.get("QueuedSql") or "0"),
             )
     except Exception:
-        logger.debug("Query failed, skipping")
+        try:
+            for r in execute_query(conn, "SHOW PROC '/warehouses'"):
+                _add_sys(
+                    r.get("Name") or r.get("name") or "",
+                    "WAREHOUSE",
+                    state=str(r.get("State") or ""),
+                    node_count=str(r.get("NodeCount") or "0"),
+                    running_sql=str(r.get("RunningSql") or "0"),
+                    queued_sql=str(r.get("QueuedSql") or "0"),
+                )
+        except Exception:
+            logger.debug("Query failed, skipping")
 
     # Global Functions
     try:

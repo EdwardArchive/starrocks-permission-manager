@@ -66,6 +66,30 @@ DEFAULT_QUERY_MAP: dict[str, list[dict[str, Any]]] = {
         {"FROM_ROLE": "public", "TO_ROLE": None, "TO_USER": "test_admin"},
         {"FROM_ROLE": "public", "TO_ROLE": None, "TO_USER": "analyst_kim"},
     ],
+    # Full table scans (used by GrantCollector admin path)
+    "SELECT * FROM sys.grants_to_users": [
+        {
+            "GRANTEE": "test_admin",
+            "OBJECT_CATALOG": "default_catalog",
+            "OBJECT_DATABASE": "analytics_db",
+            "OBJECT_NAME": "user_events",
+            "OBJECT_TYPE": "TABLE",
+            "PRIVILEGE_TYPE": "SELECT",
+            "IS_GRANTABLE": "YES",
+        },
+    ],
+    "SELECT * FROM sys.grants_to_roles": [
+        {
+            "GRANTEE": "analyst_role",
+            "OBJECT_CATALOG": "default_catalog",
+            "OBJECT_DATABASE": "analytics_db",
+            "OBJECT_NAME": "user_events",
+            "OBJECT_TYPE": "TABLE",
+            "PRIVILEGE_TYPE": "SELECT",
+            "IS_GRANTABLE": "NO",
+        },
+    ],
+    # Per-grantee queries (used by _query_grants_merged)
     "SELECT * FROM sys.grants_to_users WHERE GRANTEE": [
         {
             "GRANTEE": "test_admin",
@@ -216,12 +240,14 @@ class FakeCursor:
 
     def execute(self, sql: str, params: tuple = ()):
         self._results = []
+        sql_upper = sql.strip().upper()
+        # Longest prefix match to avoid short prefixes shadowing longer ones
+        best_match = ""
         for prefix, rows in self._query_map.items():
-            if sql.strip().upper().startswith(prefix.upper()):
+            if sql_upper.startswith(prefix.upper()) and len(prefix) > len(best_match):
+                best_match = prefix
                 self._results = rows
-                return
         # No match → empty result
-        self._results = []
 
     def fetchall(self) -> list[dict]:
         return self._results
