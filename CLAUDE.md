@@ -32,13 +32,19 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   ├── routers/
 │   │   │   ├── auth.py        # POST /api/auth/login|logout, GET /api/auth/me
 │   │   │   ├── objects.py     # GET /api/objects/catalogs|databases|tables|table-detail
-│   │   │   ├── privileges.py  # GET /api/privileges/* (refactored: ObjectQuery + classify_grant pipeline)
+│   │   │   ├── privileges.py  # GET /api/privileges/* (uses GrantCollector + GrantResolver)
+│   │   │   ├── my_permissions.py # GET /api/privileges/my-permissions (non-admin SHOW GRANTS)
 │   │   │   ├── roles.py       # GET /api/roles|hierarchy|{name}/users|inheritance-dag
 │   │   │   ├── dag.py         # GET /api/dag/object-hierarchy|role-hierarchy|full
 │   │   │   └── search.py      # GET /api/search|search/users-roles
 │   │   ├── services/
 │   │   │   ├── starrocks_client.py  # MySQL connector wrapper + parallel_queries
-│   │   │   └── user_service.py      # get_all_users (cached)
+│   │   │   ├── user_service.py      # get_all_users (cached)
+│   │   │   ├── grant_classifier.py  # ObjectQuery dataclass + Relevance enum + classify_grant()
+│   │   │   ├── grant_collector.py   # Layer 1: unified grant collection (admin/non-admin paths)
+│   │   │   ├── grant_parser.py      # SHOW GRANTS parsing → PrivilegeGrant objects
+│   │   │   ├── grant_resolver.py    # Layer 2: resolve grants for user/role/object queries
+│   │   │   └── bfs_resolver.py      # BFS traversal: child roles, user privs, ancestors, finalize
 │   │   ├── models/
 │   │   │   └── schemas.py     # Pydantic request/response models
 │   │   └── utils/
@@ -65,10 +71,11 @@ When code or project structure changes, run a sub-agent after completing the tas
         ├── api/                 # API clients (client, auth, objects, privileges, dag, search)
         ├── stores/              # Zustand (authStore, dagStore)
         ├── utils/
-        │   ├── grantDisplay.ts  # buildGrantDisplay() — unified grant grouping + implicit USAGE
-        │   ├── privColors.ts    # Privilege tag color map
-        │   ├── scopeConfig.ts   # SCOPE_ORDER, SCOPE_ICONS
-        │   └── toast.ts         # Deduplicating toast
+        │   ├── grantDisplay.ts      # buildGrantDisplay() — unified grant grouping + implicit USAGE
+        │   ├── inventory-helpers.ts  # SubTab/AllTab types, SUB_TAB_META, formatSQL/Bytes
+        │   ├── privColors.ts        # Privilege tag color map
+        │   ├── scopeConfig.ts       # SCOPE_ORDER, SCOPE_ICONS
+        │   └── toast.ts             # Deduplicating toast
         └── components/
             ├── auth/LoginForm.tsx
             ├── layout/Header.tsx, Sidebar.tsx
@@ -84,7 +91,10 @@ When code or project structure changes, run a sub-agent after completing the tas
             │   └── nodeIcons.ts     # SVG import + colorizedSvg()
             ├── tabs/
             │   ├── PermissionDetailTab.tsx  # Permission Focus (admin only)
-            │   └── InventoryTab.tsx         # My Inventory (sub-tabs + list + detail panel)
+            │   ├── PermissionMatrix.tsx     # GranteeName, PermissionMatrixView, ObjectPrivilegesPane
+            │   ├── InventoryTab.tsx         # My Inventory (sub-tabs + list + detail panel)
+            │   ├── InventoryDetailPanel.tsx # Detail panel for inventory items (privs, members, objects)
+            │   └── inventory-ui.tsx         # Shared UI: SearchInput, Chip, Badge, SortTH, etc.
             └── panels/
                 ├── ObjectDetailPanel.tsx  # Permission matrix + Details
                 ├── UserDetailPanel.tsx    # GrantTreeView effective privileges
@@ -93,19 +103,17 @@ When code or project structure changes, run a sub-agent after completing the tas
 
 ## Tech Stack
 - **Backend**: Python 3.10+, FastAPI, mysql-connector-python, PyJWT, pydantic-settings
-- **Frontend**: React 18, Vite, TypeScript, React Flow (@xyflow/react), @dagrejs/dagre, Tailwind CSS, Zustand
+- **Frontend**: React 19, Vite, TypeScript, React Flow (@xyflow/react), @dagrejs/dagre, Tailwind CSS, Zustand
 - **Linting**: Ruff (backend), ESLint (frontend), Bandit (security)
 
 ## Key Design Decisions
 - **Auth**: StarRocks credentials → server-side session + JWT token. `is_admin` determined at login via `can_access_sys()` and stored in session.
 - **Admin vs Non-Admin**: Backend detects `credentials["is_admin"]` on each request. Admin path uses `sys.*` tables. Non-admin falls back to `SHOW GRANTS` parsing with BFS role chain traversal.
-- **Privilege Resolution**: 6-step pipeline in `get_object_privileges()`:
-  1. `_collect_sys_grants()` — query sys.grants_to_users/roles
-  2. `_supplement_builtins()` — SHOW GRANTS for builtin roles
-  3. `classify_grant()` — single-pass relevance classification (EXACT/PARENT_SCOPE/IMPLICIT_USAGE/IRRELEVANT)
-  4. `_bfs_child_roles()` — downward BFS for inheriting roles
-  5. `_bfs_user_privs()` — find users with inherited access
-  6. `_finalize()` — USAGE conversion + dedup
+- **Privilege Resolution**: 2-layer architecture:
+  - **Layer 1 — GrantCollector**: Collects all raw grants (admin: sys.* tables + SHOW GRANTS for builtins, non-admin: SHOW GRANTS with BFS role chain). Returns `CollectedGrants` (grants list + role chain + role child map).
+  - **Layer 2 — GrantResolver**: Resolves collected grants for specific queries (`for_user()`, `for_user_effective()`, `for_role()`, `for_object()`).
+  - **classify_grant()** in `grant_classifier.py`: Single-pass relevance classification (EXACT/PARENT_SCOPE/IMPLICIT_USAGE/IRRELEVANT) via `ObjectQuery` dataclass.
+  - **BFS helpers** in `bfs_resolver.py`: `_bfs_child_roles()`, `_bfs_user_privs()`, `_find_ancestors_with_grants()`, `_finalize()` for role inheritance traversal.
 - **Implicit USAGE**: TABLE-level grant → implicit DATABASE USAGE + CATALOG USAGE (StarRocks behavior)
 - **SHOW GRANTS Parsing**: Extracts catalog context from row's `Catalog` column. Handles `ON DATABASE X` (X=database, not catalog), comma-separated roles, wildcard patterns.
 - **Grant Display**: `buildGrantDisplay()` in `grantDisplay.ts` — single utility for all 4 privilege display locations. Consistent displayName rules + implicit USAGE injection.
@@ -177,7 +185,7 @@ python -m pytest tests/test_integration.py -v -s               # Integration (ne
 | `SR_TEST_USER` | - | Integration test username |
 | `SR_TEST_PASS` | - | Integration test password |
 
-## API Endpoints (20)
+## API Endpoints (23)
 - Auth: login, logout, me
 - Objects: catalogs, databases, tables, table-detail
 - Privileges: user/{name}, user/{name}/effective, role/{name}, role/{name}/raw, object, my-permissions

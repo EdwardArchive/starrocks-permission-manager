@@ -43,7 +43,7 @@ const ROLE_FILTERS = [
 
 export default function App() {
   const { isLoggedIn, user, setAuth } = useAuthStore();
-  const { activeTab, setActiveTab, activeCatalog, panelMode, setPanelMode, visibleTypes, toggleType, groupsOnly, setGroupsOnly, hiddenNodes } = useDagStore(
+  const { activeTab, setActiveTab, activeCatalog, panelMode, setPanelMode, visibleTypes, toggleType, groupsOnly, setGroupsOnly, hiddenNodes, setDagData } = useDagStore(
     useShallow((s) => ({
       activeTab: s.activeTab,
       setActiveTab: s.setActiveTab,
@@ -55,6 +55,7 @@ export default function App() {
       groupsOnly: s.groupsOnly,
       setGroupsOnly: s.setGroupsOnly,
       hiddenNodes: s.hiddenNodes,
+      setDagData: s.setDagData,
     }))
   );
 
@@ -97,12 +98,16 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only reload on tab/catalog change, dagState.cache checked inside
   }, [isLoggedIn, activeTab, activeCatalog]);
 
+  const rawDag = dagState.cache[dagKey] || null;
+  const loading = dagState.loading;
+
+  // Sync current DAG data to store for use by detail panels
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setDagData is stable, dagKey drives updates
+  useEffect(() => { setDagData(rawDag); }, [dagKey, dagState.cache]);
+
   if (!isLoggedIn) return <LoginForm />;
 
   const direction = activeTab === "full" ? "LR" : "TB";
-
-  const rawDag = dagState.cache[dagKey] || null;
-  const loading = dagState.loading;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>

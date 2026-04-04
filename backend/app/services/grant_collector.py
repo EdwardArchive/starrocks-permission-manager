@@ -98,6 +98,9 @@ class GrantCollector:
         # 4. Merge scope-level grants from SHOW GRANTS (sys expands wildcards)
         grants = self._merge_show_grants_scope(grants)
 
+        # 4b. Add implicit public defaults (default_warehouse etc.)
+        grants.extend(self._probe_public_defaults())
+
         # 5. Role hierarchy
         role_chain = build_role_chain(self._conn, self._username, include_public=True)
         role_child_map = self._fetch_role_child_map()
@@ -193,8 +196,14 @@ class GrantCollector:
         return sys_grants
 
     def _probe_public_defaults(self) -> list[PrivilegeGrant]:
-        """Probe storage volumes for public USAGE (DESC requires USAGE privilege)."""
+        """Probe implicit public access for system objects.
+
+        - STORAGE VOLUME: DESC requires USAGE → probe per volume
+        - WAREHOUSE: default_warehouse is implicitly available to all users
+        """
         results: list[PrivilegeGrant] = []
+
+        # Storage volumes — DESC requires USAGE
         try:
             sv_rows = execute_query(self._conn, "SHOW STORAGE VOLUMES")
             for r in sv_rows:
@@ -220,6 +229,29 @@ class GrantCollector:
                     pass
         except Exception:
             pass
+
+        # Warehouses — default_warehouse is implicitly available to all users
+        try:
+            wh_rows = execute_query(self._conn, "SHOW WAREHOUSES")
+            for r in wh_rows:
+                wh_name = r.get("Name") or r.get("name") or ""
+                if wh_name:
+                    results.append(
+                        PrivilegeGrant(
+                            grantee="public",
+                            grantee_type="ROLE",
+                            object_catalog=None,
+                            object_database=None,
+                            object_name=wh_name,
+                            object_type="WAREHOUSE",
+                            privilege_type="USAGE",
+                            is_grantable=False,
+                            source="public (inferred)",
+                        )
+                    )
+        except Exception:
+            pass
+
         return results
 
 

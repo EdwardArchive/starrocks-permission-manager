@@ -54,8 +54,8 @@ A web UI for visually exploring user, role, and object permission structures acr
 │       ├── main.py
 │       ├── config.py
 │       ├── dependencies.py     # JWT auth + DB connection DI
-│       ├── routers/            # auth, objects, privileges, roles, dag, search
-│       ├── services/           # starrocks_client, user_service
+│       ├── routers/            # auth, objects, privileges, my_permissions, roles, dag, search
+│       ├── services/           # starrocks_client, user_service, grant_classifier/collector/parser/resolver, bfs_resolver
 │       ├── models/             # Pydantic schemas
 │       └── utils/              # JWT session, session store, cache, role_helpers, sys_access
 └── frontend/            # React 18 + Vite + TypeScript
@@ -63,13 +63,13 @@ A web UI for visually exploring user, role, and object permission structures acr
     └── src/
         ├── api/         # API clients
         ├── stores/      # Zustand state management
-        ├── utils/       # grantDisplay, privColors, scopeConfig, toast
+        ├── utils/       # grantDisplay, inventory-helpers, privColors, scopeConfig, toast
         └── components/
             ├── auth/    # Login form
             ├── layout/  # Header, Sidebar
             ├── common/  # InlineIcon, GrantTreeView, ExportPngBtn
             ├── dag/     # React Flow + dagre layout
-            ├── tabs/    # PermissionDetailTab (Permission Focus), InventoryTab (My Inventory)
+            ├── tabs/    # PermissionDetailTab, PermissionMatrix, InventoryTab, InventoryDetailPanel, inventory-ui
             └── panels/  # Object / User / Group detail panels
 ```
 
@@ -287,11 +287,11 @@ npx eslint src/ --max-warnings 0
 | Layer | Technology |
 |-------|-----------|
 | Backend | Python 3.10+, FastAPI, mysql-connector-python, PyJWT, pydantic-settings |
-| Frontend | React 18, Vite, TypeScript, React Flow (@xyflow/react), dagre, Tailwind CSS, Zustand |
+| Frontend | React 19, Vite, TypeScript, React Flow (@xyflow/react), dagre, Tailwind CSS, Zustand |
 | Linting | Ruff, Bandit (backend), ESLint (frontend) |
 | Deployment | Docker (multi-stage build) |
 
-## API Endpoints (20)
+## API Endpoints (23)
 
 ### Authentication
 | Method | Path | Description |

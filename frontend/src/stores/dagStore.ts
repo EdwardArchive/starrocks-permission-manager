@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { DAGNode } from "../types";
+import type { DAGGraph, DAGNode } from "../types";
 
 export type TabId = "obj" | "role" | "full" | "perm" | "myperm";
 export type PanelMode = "object" | "user" | "group" | null;
@@ -10,6 +10,9 @@ interface DagState {
 
   activeCatalog: string;
   setActiveCatalog: (catalog: string) => void;
+
+  dagData: DAGGraph | null;
+  setDagData: (data: DAGGraph | null) => void;
 
   selectedNode: DAGNode | null;
   setSelectedNode: (node: DAGNode | null) => void;
@@ -47,6 +50,9 @@ export const useDagStore = create<DagState>((set) => ({
 
   activeCatalog: "default_catalog",
   setActiveCatalog: (catalog) => set({ activeCatalog: catalog }),
+
+  dagData: null,
+  setDagData: (data) => set({ dagData: data }),
 
   selectedNode: null,
   setSelectedNode: (node) => set({ selectedNode: node }),

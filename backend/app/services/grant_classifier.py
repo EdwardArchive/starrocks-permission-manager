@@ -143,8 +143,12 @@ def classify_grant(g: PrivilegeGrant, q: ObjectQuery) -> Relevance:
         if q.type_upper != otype:
             return Relevance.IRRELEVANT
         # Type matches — check name if both grant and query specify one
-        if gn and q.name and gn != q.name:
-            return Relevance.IRRELEVANT
+        # Normalize function signatures: "fn(VARCHAR)" matches "fn"
+        if gn and q.name:
+            gn_base = gn.split("(")[0] if "(" in gn else gn
+            qn_base = q.name.split("(")[0] if "(" in q.name else q.name
+            if gn_base != qn_base:
+                return Relevance.IRRELEVANT
         # Wildcard grant (no name) → PARENT_SCOPE, exact name match → EXACT
         return Relevance.EXACT if gn or not q.name else Relevance.PARENT_SCOPE
 
