@@ -142,7 +142,7 @@ export default function DetailPanel({ item, onClose, myData }: { item: SelectedI
                 </tr>
                 <tr style={{ borderBottom: `1px solid ${C.border}22` }}>
                   <td style={{ padding: "6px 8px", color: C.text1, fontWeight: 500 }}>DROP TASK</td>
-                  <td style={{ padding: "6px 8px" }}>No privilege check (any user can drop)</td>
+                  <td style={{ padding: "6px 8px" }}><span style={{ color: "#f59e0b" }}>&#9888;</span> No privilege restriction — use caution</td>
                 </tr>
                 <tr style={{ borderBottom: `1px solid ${C.border}22` }}>
                   <td style={{ padding: "6px 8px", color: C.text1, fontWeight: 500 }}>View Tasks</td>
