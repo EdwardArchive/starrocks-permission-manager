@@ -232,3 +232,17 @@ def test_resource_groups_empty_classifiers(client, auth_header, query_map):
     rg = next((o for o in sys_objs if o["type"] == "RESOURCE_GROUP" and o["name"] == "default_wg"), None)
     assert rg is not None
     assert _json.loads(rg["classifiers"]) == []
+
+
+def test_resource_groups_skips_empty_name(client, auth_header, query_map):
+    """Rows with empty name are skipped."""
+    query_map["SHOW RESOURCE GROUPS ALL"] = [
+        {"name": "", "cpu_weight": "1", "mem_limit": "10%", "concurrency_limit": "0", "classifiers": ""},
+        {"name": "rg_valid", "cpu_weight": "4", "mem_limit": "20%", "concurrency_limit": "5", "classifiers": ""},
+    ]
+    resp = client.get("/api/user/my-permissions", headers=auth_header)
+    assert resp.status_code == 200
+    sys_objs = resp.json()["system_objects"]
+    rg_names = [o["name"] for o in sys_objs if o["type"] == "RESOURCE_GROUP"]
+    assert "rg_valid" in rg_names
+    assert "" not in rg_names
