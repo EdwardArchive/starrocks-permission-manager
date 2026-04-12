@@ -96,6 +96,14 @@ jobs:
       - name: Run tests with coverage
         run: cd frontend && npm run test:coverage
 
+      - name: Upload frontend coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: frontend/coverage/lcov.info
+          flags: frontend
+          token: ${{ secrets.CODECOV_TOKEN }}
+
   tests:
     name: Backend Tests
     runs-on: self-hosted
@@ -113,10 +121,18 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r backend/requirements.txt
-          pip install pytest
+          pip install pytest pytest-cov
 
-      - name: Run unit tests
-        run: cd backend && python -m pytest tests/ -v --ignore=tests/test_integration.py
+      - name: Run unit tests with coverage
+        run: cd backend && python -m pytest tests/ -v --ignore=tests/test_integration.py --cov=app --cov-report=xml:coverage.xml
+
+      - name: Upload backend coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: backend/coverage.xml
+          flags: backend
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   integration:
     name: Integration Tests (StarRocks)
