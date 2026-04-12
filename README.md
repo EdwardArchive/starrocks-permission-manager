@@ -4,7 +4,7 @@
 
 A web UI for visually exploring user, role, and object permission structures across StarRocks clusters using DAG (Directed Acyclic Graph) visualization.
 
-![Login](docs/screenshots/login.png)
+![Permission](docs/screenshots/permission-details.png)
 
 ## Features
 
@@ -23,66 +23,6 @@ A web UI for visually exploring user, role, and object permission structures acr
 - **Filters** — Toggle node types via checkboxes, Groups Only mode
 - **Export** — Download DAG as high-resolution PNG
 
-## Screenshots
-
-### Object Hierarchy
-![Object Hierarchy](docs/screenshots/object-hierarchy.png)
-
-### Role Map
-![Role Map](docs/screenshots/role-map.png)
-
-### Permission Focus
-![Permission Focus](docs/screenshots/permission-details.png)
-
-### My Inventory
-![My Inventory](docs/screenshots/my-inventory.png)
-
-### Resource Groups
-![Resource Groups](docs/screenshots/resource-groups.png)
-
-### Object Detail — Permission Matrix
-![Permission Matrix](docs/screenshots/permission-matrix.png)
-
-### User Detail — Effective Privileges
-![User Detail](docs/screenshots/user-detail.png)
-
-## Architecture
-
-```
-├── Dockerfile           # Multi-stage build (frontend + backend)
-├── backend/             # Python FastAPI server
-│   ├── requirements.txt
-│   ├── API.md           # Detailed API documentation
-│   └── app/
-│       ├── main.py
-│       ├── config.py
-│       ├── dependencies.py     # JWT auth + DB connection DI + require_admin guard
-│       ├── routers/
-│       │   ├── auth.py              # /api/auth/* (shared)
-│       │   ├── user_*.py            # /api/user/* (all users, Layer 1 only)
-│       │   └── admin_*.py           # /api/admin/* (admin only, Layer 1+2)
-│       ├── services/
-│       │   ├── starrocks_client.py  # MySQL connector wrapper
-│       │   ├── grant_collector.py   # Facade (delegates to common or admin)
-│       │   ├── shared/              # Constants, name_utils, role_graph
-│       │   ├── common/              # Layer 1: SHOW + INFORMATION_SCHEMA
-│       │   └── admin/               # Layer 2: sys.* tables (admin only)
-│       ├── models/             # Pydantic schemas
-│       └── utils/              # JWT session, session store, cache, role_helpers, sys_access
-└── frontend/            # React 19 + Vite + TypeScript
-    ├── icons/           # Customizable SVG icons (single source of truth)
-    └── src/
-        ├── api/         # API clients (client.ts, auth.ts, user.ts, admin.ts)
-        ├── stores/      # Zustand state management
-        ├── utils/       # grantDisplay, inventory-helpers, privColors, scopeConfig, toast
-        └── components/
-            ├── auth/    # Login form
-            ├── layout/  # Header, Sidebar (isAdmin-conditional APIs)
-            ├── common/  # InlineIcon, GrantTreeView, ExportPngBtn
-            ├── dag/     # React Flow + dagre layout
-            ├── tabs/    # PermissionDetailTab, PermissionMatrix, InventoryTab, InventoryDetailPanel, inventory-ui
-            └── panels/  # Object / User / Group detail panels
-```
 
 ## Quick Start
 
@@ -155,6 +95,27 @@ server {
 
 ## UI Guide
 
+### Object Hierarchy
+![Object Hierarchy](docs/screenshots/object-hierarchy.png)
+
+### Role Map
+![Role Map](docs/screenshots/role-map.png)
+
+### Permission Focus
+![Permission Focus](docs/screenshots/permission-details.png)
+
+### My Inventory
+![My Inventory](docs/screenshots/my-inventory.png)
+
+### Resource Groups
+![Resource Groups](docs/screenshots/resource-groups.png)
+
+### Object Detail — Permission Matrix
+![Permission Matrix](docs/screenshots/permission-matrix.png)
+
+### User Detail — Effective Privileges
+![User Detail](docs/screenshots/user-detail.png)
+
 ### Tabs
 
 | Tab | Description | Admin Only |
@@ -217,89 +178,13 @@ Privilege columns are type-specific:
 | CATALOG | USAGE, CREATE DATABASE, ALTER, DROP |
 | SYSTEM | GRANT, NODE, OPERATE, REPOSITORY, ... |
 
-## API Usage
+## Documentation
 
-```bash
-# Login
-curl -X POST http://localhost:8001/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"host":"your-starrocks-host","port":9030,"username":"admin","password":"pwd"}'
-
-# Extract token from response
-TOKEN="eyJhbG..."
-
-# --- User routes (all users) ---
-
-# My permissions + accessible objects
-curl http://localhost:8001/api/user/my-permissions \
-  -H "Authorization: Bearer $TOKEN"
-
-# Object Hierarchy DAG (user-scoped)
-curl "http://localhost:8001/api/user/dag/object-hierarchy?catalog=default_catalog" \
-  -H "Authorization: Bearer $TOKEN"
-
-# --- Admin routes (admin only, returns 403 for non-admin) ---
-
-# Object privileges (permission matrix)
-curl "http://localhost:8001/api/admin/privileges/object?catalog=default_catalog&database=mydb&name=mytable&object_type=TABLE" \
-  -H "Authorization: Bearer $TOKEN"
-
-# All roles in cluster
-curl http://localhost:8001/api/admin/roles \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Full API documentation: [backend/API.md](backend/API.md)
-
-## Testing
-
-```bash
-cd backend
-source venv/bin/activate
-```
-
-**Unit tests** (71 tests — mock DB, no StarRocks connection required):
-```bash
-python -m pytest tests/ -v --ignore=tests/test_integration.py
-```
-
-**Integration tests** (requires a running StarRocks instance):
-```bash
-export SR_TEST_HOST=your-starrocks-host
-export SR_TEST_PORT=9030
-export SR_TEST_USER=admin
-export SR_TEST_PASS=your-password
-python -m pytest tests/test_integration.py -v -s
-```
-
-**Linting:**
-```bash
-# Backend
-ruff check backend/app/
-ruff format backend/app/ --check
-
-# Frontend
-cd frontend
-npx tsc --noEmit
-npx eslint src/ --max-warnings 0
-```
-
-## Environment Variables
-
-**Backend:**
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `SRPM_JWT_SECRET` | `change-me-...` | JWT signing key (**must change in production**) |
-| `SRPM_JWT_EXPIRE_MINUTES` | `60` | Token expiration time (minutes) |
-| `SRPM_CACHE_TTL_SECONDS` | `60` | Server-side cache TTL |
-
-**Integration tests:**
-| Variable | Description |
+| Document | Description |
 |----------|-------------|
-| `SR_TEST_HOST` | StarRocks FE host |
-| `SR_TEST_PORT` | MySQL protocol port (default 9030) |
-| `SR_TEST_USER` | Test username |
-| `SR_TEST_PASS` | Test password |
+| [API Reference](docs/API.md) | Endpoint details, request/response schemas, curl examples |
+| [Testing Guide](docs/TESTING.md) | Unit tests, integration tests, linting, environment variables |
+| [Contributing Guide](docs/CONTRIBUTING.md) | Architecture, development setup, code quality, PR guidelines |
 
 ## Tech Stack
 
@@ -309,47 +194,6 @@ npx eslint src/ --max-warnings 0
 | Frontend | React 19, Vite, TypeScript, React Flow (@xyflow/react), dagre, Tailwind CSS, Zustand |
 | Linting | Ruff, Bandit (backend), ESLint (frontend) |
 | Deployment | Docker (multi-stage build) |
-
-## API Endpoints
-
-### Authentication & Health
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/auth/login` | Login with StarRocks credentials → JWT |
-| POST | `/api/auth/logout` | Invalidate server-side session |
-| GET | `/api/auth/me` | Current user info + roles + is_user_admin |
-| GET | `/api/health` | Server health check (no auth required) |
-
-### User Routes (`/api/user/*` — all users, Layer 1 only)
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/user/objects/catalogs` | List accessible catalogs |
-| GET | `/api/user/objects/databases?catalog=X` | List accessible databases |
-| GET | `/api/user/objects/tables?catalog=X&database=Y` | List accessible tables/views/MVs/functions |
-| GET | `/api/user/objects/table-detail?catalog=X&database=Y&table=Z` | Detailed metadata |
-| GET | `/api/user/my-permissions` | Current user's permission tree + accessible objects |
-| GET | `/api/user/roles` | Current user's roles |
-| GET | `/api/user/roles/hierarchy` | Current user's role hierarchy DAG |
-| GET | `/api/user/dag/object-hierarchy?catalog=X` | Object hierarchy DAG (user-scoped) |
-| GET | `/api/user/dag/role-hierarchy` | Role hierarchy DAG (user-scoped) |
-| GET | `/api/user/search?q=keyword&limit=50` | Search accessible objects |
-
-### Admin Routes (`/api/admin/*` — admin only, requires `require_admin`)
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/admin/privileges/user/{name}` | User direct privileges |
-| GET | `/api/admin/privileges/user/{name}/effective` | Effective privileges (including inherited) |
-| GET | `/api/admin/privileges/role/{name}` | Role privileges (including inherited) |
-| GET | `/api/admin/privileges/role/{name}/raw` | Raw role grants |
-| GET | `/api/admin/privileges/object?catalog=X&database=Y&name=Z&object_type=T` | Privileges on an object |
-| GET | `/api/admin/roles` | All roles in cluster |
-| GET | `/api/admin/roles/hierarchy` | Full role inheritance DAG |
-| GET | `/api/admin/roles/inheritance-dag?name=X&type=role` | Focused inheritance DAG (BFS up + down) |
-| GET | `/api/admin/roles/{name}/users` | Users assigned to a role |
-| GET | `/api/admin/dag/object-hierarchy?catalog=X` | Object hierarchy DAG (all objects) |
-| GET | `/api/admin/dag/role-hierarchy` | Role hierarchy DAG (all roles) |
-| GET | `/api/admin/search?q=keyword&limit=50` | Unified search (all objects/users/roles) |
-| GET | `/api/admin/search/users-roles?q=keyword` | Fast user/role search |
 
 ## Icon Customization
 
@@ -361,69 +205,7 @@ Uses `information_schema.tables` and `columns` as the primary data source, makin
 
 ## Contributing
 
-### Prerequisites
-
-- Python 3.10+
-- Node.js 24+ (see `.nvmrc`)
-- A running StarRocks instance (for integration tests)
-
-### Development Setup
-
-```bash
-# Backend
-cd backend
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-
-# Frontend
-cd frontend
-npm install
-```
-
-### Running Tests
-
-```bash
-# Backend unit tests (with coverage)
-cd backend
-python -m pytest tests/ -v --ignore=tests/test_integration.py --cov=app
-
-# Frontend unit tests (with coverage)
-cd frontend
-npm test              # run once
-npm run test:watch    # watch mode
-npm run test:coverage # with coverage report
-```
-
-### Code Quality
-
-All checks must pass before merging:
-
-```bash
-# Backend linting
-ruff check backend/app/
-ruff format backend/app/ --check
-
-# Frontend linting
-cd frontend
-npx tsc --noEmit
-npx eslint src/ --max-warnings 0
-```
-
-### Pull Request Guidelines
-
-1. Create a feature branch from `main` (`feature/your-feature` or `fix/your-fix`)
-2. Write tests for new functionality (backend: pytest, frontend: Vitest)
-3. Ensure all CI checks pass (lint, type check, tests)
-4. Coverage for new code should be 80%+ (enforced by Codecov patch check)
-5. Keep PRs focused — one feature or fix per PR
-
-### Project Conventions
-
-- **Backend**: Router files must NOT contain business logic (delegate to services)
-- **Backend**: No duplicate grant parsing — use `services/shared/grant_parser.py`
-- **Backend**: No hardcoded builtin roles — use `constants.BUILTIN_ROLES`
-- **Frontend**: Use `api/user.ts` for user-scoped endpoints, `api/admin.ts` for admin endpoints
-- **Frontend**: Test pure utility functions first, then stores, then components
+See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for development setup, code quality requirements, PR guidelines, and project conventions.
 
 ## License
 
