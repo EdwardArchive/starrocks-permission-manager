@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatSQL, formatBytes, SUB_TAB_META, OBJECT_TYPE_MAP, PRIV_BY_TYPE } from "./inventory-helpers";
+import { formatSQL, formatBytes, SUB_TAB_META, OBJECT_TYPE_MAP, PRIV_BY_TYPE, PRIV_KEY_MAP } from "./inventory-helpers";
 
 // ── formatSQL ──
 
@@ -90,5 +90,29 @@ describe("constants", () => {
       expect(Array.isArray(PRIV_BY_TYPE[key])).toBe(true);
       expect(PRIV_BY_TYPE[key].length).toBeGreaterThan(0);
     }
+  });
+
+  it("PRIV_KEY_MAP maps all standard object types correctly", () => {
+    const expected: Record<string, string> = {
+      TABLE: "table", VIEW: "view", "MATERIALIZED VIEW": "mv", FUNCTION: "function",
+      DATABASE: "database", CATALOG: "catalog", SYSTEM: "system",
+      WAREHOUSE: "warehouse", RESOURCE: "resource", PIPE: "pipe", TASK: "task",
+      "GLOBAL FUNCTION": "global function",
+      "RESOURCE GROUP": "resource group",
+      "STORAGE VOLUME": "storage volume",
+    };
+    for (const [key, value] of Object.entries(expected)) {
+      expect(PRIV_KEY_MAP[key]).toBe(value);
+    }
+  });
+
+  it("PRIV_KEY_MAP maps underscore variants to same values as space variants", () => {
+    expect(PRIV_KEY_MAP["GLOBAL_FUNCTION"]).toBe(PRIV_KEY_MAP["GLOBAL FUNCTION"]);
+    expect(PRIV_KEY_MAP["RESOURCE_GROUP"]).toBe(PRIV_KEY_MAP["RESOURCE GROUP"]);
+    expect(PRIV_KEY_MAP["STORAGE_VOLUME"]).toBe(PRIV_KEY_MAP["STORAGE VOLUME"]);
+  });
+
+  it("PRIV_KEY_MAP has 17 total entries", () => {
+    expect(Object.keys(PRIV_KEY_MAP)).toHaveLength(17);
   });
 });

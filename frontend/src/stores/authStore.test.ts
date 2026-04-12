@@ -42,6 +42,29 @@ describe("useAuthStore", () => {
     });
   });
 
+  describe("cold start (localStorage pre-populated)", () => {
+    it("initializes with isLoggedIn true when sr_token exists in localStorage", async () => {
+      localStorage.setItem("sr_token", "persisted-jwt");
+
+      // Re-import the module to trigger store creation with pre-populated localStorage
+      vi.resetModules();
+      const { useAuthStore: freshStore } = await import("./authStore");
+
+      expect(freshStore.getState().token).toBe("persisted-jwt");
+      expect(freshStore.getState().isLoggedIn).toBe(true);
+    });
+
+    it("initializes with isLoggedIn false when localStorage is empty", async () => {
+      localStorage.clear();
+
+      vi.resetModules();
+      const { useAuthStore: freshStore } = await import("./authStore");
+
+      expect(freshStore.getState().token).toBeNull();
+      expect(freshStore.getState().isLoggedIn).toBe(false);
+    });
+  });
+
   describe("setAuth", () => {
     it("sets token, user, and isLoggedIn to true", () => {
       useAuthStore.getState().setAuth("jwt-123", mockUser);
