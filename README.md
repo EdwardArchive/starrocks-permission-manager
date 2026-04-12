@@ -1,5 +1,7 @@
 # StarRocks Permission Manager
 
+[![codecov](https://codecov.io/gh/EdwardArchive/starrocks-permission-manager/graph/badge.svg)](https://codecov.io/gh/EdwardArchive/starrocks-permission-manager)
+
 A web UI for visually exploring user, role, and object permission structures across StarRocks clusters using DAG (Directed Acyclic Graph) visualization.
 
 ![Login](docs/screenshots/login.png)
@@ -364,6 +366,72 @@ Uses `information_schema.tables` and `columns` as the primary data source, makin
 | v2.0 | GRANT/REVOKE UI, Bulk Operations |
 | v2.1 | Audit Log, Permission Diff |
 | v2.2 | Alert Rules, Export (CSV/PDF) |
+
+## Contributing
+
+### Prerequisites
+
+- Python 3.10+
+- Node.js 24+ (see `.nvmrc`)
+- A running StarRocks instance (for integration tests)
+
+### Development Setup
+
+```bash
+# Backend
+cd backend
+python -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
+
+# Frontend
+cd frontend
+npm install
+```
+
+### Running Tests
+
+```bash
+# Backend unit tests (with coverage)
+cd backend
+python -m pytest tests/ -v --ignore=tests/test_integration.py --cov=app
+
+# Frontend unit tests (with coverage)
+cd frontend
+npm test              # run once
+npm run test:watch    # watch mode
+npm run test:coverage # with coverage report
+```
+
+### Code Quality
+
+All checks must pass before merging:
+
+```bash
+# Backend linting
+ruff check backend/app/
+ruff format backend/app/ --check
+
+# Frontend linting
+cd frontend
+npx tsc --noEmit
+npx eslint src/ --max-warnings 0
+```
+
+### Pull Request Guidelines
+
+1. Create a feature branch from `main` (`feature/your-feature` or `fix/your-fix`)
+2. Write tests for new functionality (backend: pytest, frontend: Vitest)
+3. Ensure all CI checks pass (lint, type check, tests)
+4. Coverage for new code should be 80%+ (enforced by Codecov patch check)
+5. Keep PRs focused — one feature or fix per PR
+
+### Project Conventions
+
+- **Backend**: Router files must NOT contain business logic (delegate to services)
+- **Backend**: No duplicate grant parsing — use `services/shared/grant_parser.py`
+- **Backend**: No hardcoded builtin roles — use `constants.BUILTIN_ROLES`
+- **Frontend**: Use `api/user.ts` for user-scoped endpoints, `api/admin.ts` for admin endpoints
+- **Frontend**: Test pure utility functions first, then stores, then components
 
 ## License
 
