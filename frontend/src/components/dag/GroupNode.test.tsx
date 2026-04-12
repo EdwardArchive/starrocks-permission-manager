@@ -39,7 +39,7 @@ function makeNodeProps(data: Record<string, unknown>) {
     parentId: undefined,
     width: 200,
     height: 100,
-    // biome-ignore lint: needed for xyflow compat
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
 }
 
@@ -54,7 +54,6 @@ describe("GroupNode", () => {
       <GroupNode {...makeNodeProps({ label: "test_db", nodeType: "database" })} />,
     );
     // The outer div after handles should have dashed border
-    const groupDiv = container.querySelector("div[style]");
     // Find the div with border containing "dashed"
     const allDivs = container.querySelectorAll("div");
     let hasDashed = false;

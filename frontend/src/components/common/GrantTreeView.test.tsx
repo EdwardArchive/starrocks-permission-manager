@@ -58,10 +58,8 @@ describe("GrantTreeView", () => {
   });
 
   it("does not render title when not provided", () => {
-    const { container } = render(<GrantTreeView groups={sampleGroups} />);
-    // No p element with fontWeight 600 title style
-    const titleEl = container.querySelector("p");
-    // The first p would be scope content, not a title
+    render(<GrantTreeView groups={sampleGroups} />);
+    // No title rendered — only scope content
     expect(screen.queryByText(/grants\)/)).not.toBeInTheDocument();
   });
 

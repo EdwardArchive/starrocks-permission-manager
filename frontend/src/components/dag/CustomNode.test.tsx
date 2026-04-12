@@ -49,7 +49,7 @@ function makeNodeProps(data: Record<string, unknown>) {
     parentId: undefined,
     width: 168,
     height: 40,
-    // biome-ignore lint: needed for xyflow compat
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
 }
 
@@ -64,7 +64,6 @@ describe("CustomNode", () => {
       <CustomNode {...makeNodeProps({ label: "orders", nodeType: "table" })} />,
     );
     // The SVG is injected via dangerouslySetInnerHTML
-    const svgSpan = container.querySelector("span[dangerouslysetinnerhtml]") || container.querySelector("svg");
     // Check that the node renders svg content
     expect(container.querySelector("svg")).not.toBeNull();
   });
