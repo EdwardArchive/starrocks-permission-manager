@@ -159,7 +159,7 @@ export default function InventoryTab() {
       case "pipes": list = byName(pipes as { name: string }[]); break;
       case "tasks": list = byName(tasks as { name: string }[]); break;
       case "warehouses": list = byName(warehouses as { name: string }[]); break;
-      case "rgroups": list = byName(rgroups as { name: string }[]); break;
+      case "rgroups": list = (rgroups as { name: string }[]).filter((r) => !lf || r.name.toLowerCase().includes(lf) || ((r as Record<string, string>).classifiers || "").toLowerCase().includes(lf)); break;
       case "svolumes": list = byName(svolumes as { name: string }[]); break;
       case "resources": list = byName(resources as { name: string }[]); break;
       default: list = []; break;
@@ -242,6 +242,8 @@ export default function InventoryTab() {
                     <><SortTH label="Catalog" dir={sortDir} onToggle={() => setSortDir((d) => d === "asc" ? "desc" : "asc")} /><TH>Type</TH></>
                   ) : subTab === "databases" ? (
                     <><SortTH label="Database" dir={sortDir} onToggle={() => setSortDir((d) => d === "asc" ? "desc" : "asc")} /><TH>Catalog</TH></>
+                  ) : subTab === "rgroups" ? (
+                    <><SortTH label="Name" dir={sortDir} onToggle={() => setSortDir((d) => d === "asc" ? "desc" : "asc")} /><TH>CPU</TH><TH>Memory</TH><TH>Assigned</TH></>
                   ) : isSystemTab ? (
                     <><SortTH label="Name" dir={sortDir} onToggle={() => setSortDir((d) => d === "asc" ? "desc" : "asc")} />
                       {(subTab === "pipes" || subTab === "tasks") && <TH>Database</TH>}
@@ -291,6 +293,13 @@ export default function InventoryTab() {
                         <>
                           <TD><span style={{ fontWeight: 500, color: C.text1 }}>{row.name}</span></TD>
                           <TD><span style={{ color: C.text1, fontSize: 12 }}>{row.catalog || "default_catalog"}</span></TD>
+                        </>
+                      ) : subTab === "rgroups" ? (
+                        <>
+                          <TD><span style={{ fontWeight: 500, color: C.text1 }}>{row.name}</span></TD>
+                          <TD><span style={{ color: C.text1, fontSize: 12 }}>{row.exclusive_cpu_cores && row.exclusive_cpu_cores !== "0" ? `excl: ${row.exclusive_cpu_cores}` : row.cpu_weight ? `wt: ${row.cpu_weight}` : "-"}</span></TD>
+                          <TD><span style={{ color: C.text1, fontSize: 12 }}>{row.mem_limit || "-"}</span></TD>
+                          <TD><span style={{ color: C.text1, fontSize: 12 }}>{(() => { try { return (JSON.parse(row.classifiers || "[]") as string[]).filter((c: string) => /(?:user|role|db|source_ip|query_type)/.test(c)).length; } catch { return 0; } })()}</span></TD>
                         </>
                       ) : isSystemTab ? (
                         <>

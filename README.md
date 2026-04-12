@@ -12,7 +12,7 @@ A web UI for visually exploring user, role, and object permission structures acr
   - **Object Hierarchy**: SYSTEM → CATALOG → DATABASE → Tables / Views / MVs / Functions (top-to-bottom DAG)
   - **Role Map**: root → built-in roles → custom roles → users (top-to-bottom DAG with full inheritance chain)
   - **Permission Focus**: Search a user or role → view inheritance DAG + privilege list (admin only)
-  - **My Inventory**: Browse all accessible objects by type with detail side panel (Roles, Users, Catalogs, Databases, Tables, MVs, Views, Functions)
+  - **My Inventory**: Browse all accessible objects by type with detail side panel (Roles, Users, Catalogs, Databases, Tables, MVs, Views, Functions, Resource Groups, Warehouses, etc.)
 - **Admin & Non-Admin Support** — Admin users see all roles/users/objects via `/api/admin/*` routes (sys.* tables). Non-admin users see only their accessible objects and role chain via `/api/user/*` routes (SHOW GRANTS + INFORMATION_SCHEMA). Admin routes enforce `require_admin` (403 for non-admin).
 - **Object Permission Matrix** — Click an object to see a grantee × privilege matrix (Direct/Inherited indicators), with type-specific columns per object type
 - **Implicit USAGE** — TABLE-level grants automatically show implicit DATABASE/CATALOG USAGE access
@@ -22,7 +22,6 @@ A web UI for visually exploring user, role, and object permission structures acr
 - **Sidebar Navigation** — Searchable hierarchy browser with hide/show toggles per node
 - **Filters** — Toggle node types via checkboxes, Groups Only mode
 - **Export** — Download DAG as high-resolution PNG
-- **Customization** — Replace SVG icons and app logo
 
 ## Screenshots
 
@@ -37,6 +36,9 @@ A web UI for visually exploring user, role, and object permission structures acr
 
 ### My Inventory
 ![My Inventory](docs/screenshots/my-inventory.png)
+
+### Resource Groups
+![Resource Groups](docs/screenshots/resource-groups.png)
 
 ### Object Detail — Permission Matrix
 ![Permission Matrix](docs/screenshots/permission-matrix.png)
@@ -160,7 +162,7 @@ server {
 | **Object Hierarchy** | Visualizes SYSTEM → Catalog → DB → Objects as a top-down DAG. Group containers bundle tables/views/MVs/functions per database. | No |
 | **Role Map** | Shows role inheritance with full BFS child traversal. Clicking a role shows the complete inheritance chain (parents + children + users). | No |
 | **Permission Focus** | Search for a user or role to view their inheritance DAG and full privilege list side-by-side. | Yes |
-| **My Inventory** | Browse all accessible objects organized by sub-tabs (Roles, Users, Catalogs, Databases, Tables, MVs, Views, Functions) with a detail side panel. | No |
+| **My Inventory** | Browse all accessible objects organized by sub-tabs (Roles, Users, Catalogs, Databases, Tables, MVs, Views, Functions, Resource Groups, Warehouses, etc.) with a detail side panel. | No |
 
 ### My Inventory Sub-tabs
 
@@ -174,6 +176,7 @@ server {
 | **MVs** | Materialized views with Rows, Size. Click → privilege matrix + column/DDL detail. |
 | **Views** | Views. Click → privilege matrix + column detail. |
 | **Functions** | User-defined functions. Click → privilege matrix. |
+| **Resource Groups** | Resource groups with CPU, Memory, Assigned columns. Admin: all groups. Non-admin: user-scoped groups. Click → resource limits detail + assignment rules (paginated, current user highlighted). System default groups show fallback notice. |
 
 Features: text filter, A→Z/Z→A column sorting, pagination (10/25/50/100 per page).
 
@@ -355,17 +358,6 @@ Replace SVG files in `frontend/icons/` to change icons across the entire app (DA
 ## External Catalog Support
 
 Uses `information_schema.tables` and `columns` as the primary data source, making it compatible with Hive, Iceberg, JDBC, Elasticsearch, and other External Catalogs. Internal Catalog-specific metadata (partitions, buckets, storage, etc.) is supplemented via `partitions_meta` + DDL parsing. Unsupported sections are automatically hidden.
-
-## Roadmap
-
-| Version | Feature |
-|---------|---------|
-| v1.0 | Read-only permission exploration & visualization (current) |
-| v1.1 | 3-layer service architecture, layered API routes (`/api/user/*` + `/api/admin/*`), Resource Group/Storage Volume/Resource support |
-| v1.2 | SQL Privilege Checker — Permission Focus 탭에서 SQL 쿼리 입력 시 선택된 유저/역할의 실행 권한 검증 (SELECT, INSERT, CREATE TABLE 등 → 필요 권한 ✅/❌ 표시) |
-| v2.0 | GRANT/REVOKE UI, Bulk Operations |
-| v2.1 | Audit Log, Permission Diff |
-| v2.2 | Alert Rules, Export (CSV/PDF) |
 
 ## Contributing
 

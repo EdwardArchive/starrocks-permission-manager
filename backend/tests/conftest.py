@@ -10,11 +10,12 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import Header
 from fastapi.testclient import TestClient
 
 from app.dependencies import get_credentials, get_db
 from app.main import app
-from app.utils.session import create_token
+from app.utils.session import create_token, decode_token
 from app.utils.session_store import session_store
 
 # ── Test credentials ──
@@ -24,8 +25,8 @@ TEST_USER = "test_admin"
 TEST_PASS = "test_pass"
 
 
-def make_token() -> str:
-    session_id = session_store.create(TEST_HOST, TEST_PORT, TEST_USER, TEST_PASS, is_admin=True)
+def make_token(*, is_admin: bool = True) -> str:
+    session_id = session_store.create(TEST_HOST, TEST_PORT, TEST_USER, TEST_PASS, is_admin=is_admin)
     return create_token(session_id, TEST_USER)
 
 
@@ -299,14 +300,21 @@ def client(mock_db, query_map):
     user_dag_cache.clear()
     _user_cache.clear()
 
-    def _override_credentials():
-        return {
-            "host": TEST_HOST,
-            "port": TEST_PORT,
-            "username": TEST_USER,
-            "password": TEST_PASS,
-            "is_admin": True,
-        }
+    def _override_credentials(authorization: str = Header(default="")):
+        _default = {"host": TEST_HOST, "port": TEST_PORT, "username": TEST_USER,
+                     "password": TEST_PASS, "is_admin": True}
+        if not authorization or not authorization.startswith("Bearer "):
+            return _default
+        token = authorization[7:]
+        try:
+            payload = decode_token(token)
+            session_id = payload.get("session_id", "")
+            creds = session_store.get(session_id)
+            if creds:
+                return creds
+        except Exception:
+            pass
+        return _default
 
     def _override_db():
         yield mock_db
@@ -357,5 +365,11 @@ def client(mock_db, query_map):
 
 @pytest.fixture()
 def auth_header():
-    """Authorization header with a valid JWT token."""
+    """Authorization header with a valid JWT token (admin)."""
     return {"Authorization": f"Bearer {make_token()}"}
+
+
+@pytest.fixture()
+def non_admin_auth_header():
+    """Authorization header with a valid JWT token (non-admin)."""
+    return {"Authorization": f"Bearer {make_token(is_admin=False)}"}

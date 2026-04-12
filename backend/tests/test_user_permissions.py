@@ -72,7 +72,16 @@ def test_my_permissions_effective_privileges(client, auth_header, query_map):
 def test_my_permissions_system_objects(client, auth_header, query_map):
     """System objects (resource groups, warehouses, etc.) appear in response."""
     query_map["SHOW RESOURCE GROUPS ALL"] = [
-        {"name": "rg_etl", "cpu_weight": "8", "mem_limit": "50%", "concurrency_limit": "10"},
+        {"name": "rg_etl", "cpu_weight": "8", "mem_limit": "50%", "concurrency_limit": "10",
+         "exclusive_cpu_cores": "0", "big_query_cpu_second_limit": "100",
+         "big_query_scan_rows_limit": "100000", "big_query_mem_limit": "0",
+         "spill_mem_limit_threshold": "0.8",
+         "classifiers": "(id=300040, weight=3.0, user=alice, query_type in (SELECT))"},
+        {"name": "rg_etl", "cpu_weight": "8", "mem_limit": "50%", "concurrency_limit": "10",
+         "exclusive_cpu_cores": "0", "big_query_cpu_second_limit": "100",
+         "big_query_scan_rows_limit": "100000", "big_query_mem_limit": "0",
+         "spill_mem_limit_threshold": "0.8",
+         "classifiers": "(id=300041, weight=1.0, db=analytics_db)"},
     ]
     query_map["SHOW STORAGE VOLUMES"] = [
         {"Storage Volume": "sv_main"},
@@ -112,9 +121,17 @@ def test_my_permissions_system_objects(client, auth_header, query_map):
     assert "PIPE" in types_found
     assert "TASK" in types_found
     assert "RESOURCE" in types_found
-    # Verify details propagated
+    # Verify details propagated (including classifiers aggregation)
     rg = next(o for o in sys_objs if o["type"] == "RESOURCE_GROUP")
     assert rg["name"] == "rg_etl"
+    assert rg["cpu_weight"] == "8"
+    assert rg["mem_limit"] == "50%"
+    assert rg["big_query_cpu_second_limit"] == "100"
+    import json as _json
+    classifiers = _json.loads(rg["classifiers"])
+    assert len(classifiers) == 2
+    assert "alice" in classifiers[0]
+    assert "analytics_db" in classifiers[1]
 
 
 def test_my_permissions_functions(client, auth_header, query_map):
@@ -181,3 +198,51 @@ def test_my_permissions_view_detection(client, auth_header, query_map):
     objs = resp.json()["accessible_objects"]
     views = [o for o in objs if o["type"] == "VIEW"]
     assert any(v["name"] == "daily_summary" for v in views)
+
+
+def test_resource_groups_non_admin_uses_show_without_all(client, non_admin_auth_header, query_map):
+    """Non-admin users should use SHOW RESOURCE GROUPS (without ALL)."""
+    query_map["SHOW RESOURCE GROUPS ALL"] = [
+        {"name": "should_not_appear", "cpu_weight": "1", "mem_limit": "10%",
+         "concurrency_limit": "5", "classifiers": ""},
+    ]
+    query_map["SHOW RESOURCE GROUPS"] = [
+        {"name": "rg_my_group", "cpu_weight": "4", "mem_limit": "20%",
+         "concurrency_limit": "8",
+         "classifiers": "(id=100, weight=1.0, user=test_admin)"},
+    ]
+    resp = client.get("/api/user/my-permissions", headers=non_admin_auth_header)
+    assert resp.status_code == 200
+    sys_objs = resp.json()["system_objects"]
+    rg_names = [o["name"] for o in sys_objs if o["type"] == "RESOURCE_GROUP"]
+    assert "rg_my_group" in rg_names
+    assert "should_not_appear" not in rg_names
+
+
+def test_resource_groups_empty_classifiers(client, auth_header, query_map):
+    """Resource group with no classifiers produces empty JSON array."""
+    import json as _json
+    query_map["SHOW RESOURCE GROUPS ALL"] = [
+        {"name": "default_wg", "cpu_weight": "32", "mem_limit": "100%",
+         "concurrency_limit": "0", "classifiers": ""},
+    ]
+    resp = client.get("/api/user/my-permissions", headers=auth_header)
+    assert resp.status_code == 200
+    sys_objs = resp.json()["system_objects"]
+    rg = next((o for o in sys_objs if o["type"] == "RESOURCE_GROUP" and o["name"] == "default_wg"), None)
+    assert rg is not None
+    assert _json.loads(rg["classifiers"]) == []
+
+
+def test_resource_groups_skips_empty_name(client, auth_header, query_map):
+    """Rows with empty name are skipped."""
+    query_map["SHOW RESOURCE GROUPS ALL"] = [
+        {"name": "", "cpu_weight": "1", "mem_limit": "10%", "concurrency_limit": "0", "classifiers": ""},
+        {"name": "rg_valid", "cpu_weight": "4", "mem_limit": "20%", "concurrency_limit": "5", "classifiers": ""},
+    ]
+    resp = client.get("/api/user/my-permissions", headers=auth_header)
+    assert resp.status_code == 200
+    sys_objs = resp.json()["system_objects"]
+    rg_names = [o["name"] for o in sys_objs if o["type"] == "RESOURCE_GROUP"]
+    assert "rg_valid" in rg_names
+    assert "" not in rg_names
