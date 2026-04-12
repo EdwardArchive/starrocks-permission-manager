@@ -52,10 +52,6 @@ export const handlers = [
     HttpResponse.json([{ name: "role_admin", is_builtin: false }]),
   ),
 
-  http.get("/api/user/roles/hierarchy", () =>
-    HttpResponse.json({ nodes: [], edges: [] }),
-  ),
-
   // ── User DAG ──
   http.get("/api/user/dag/role-hierarchy", () =>
     HttpResponse.json({ nodes: [], edges: [] }),
