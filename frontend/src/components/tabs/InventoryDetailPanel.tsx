@@ -561,6 +561,65 @@ function SysObjectPrivilegesPane({ item }: { item: SelectedItem }) {
   return <ObjectPrivilegesPane catalog={noScope ? "" : (item.catalog || "")} database={noScope ? "" : (item.database || "")} name={item.name} objectType={objType} />;
 }
 
+/* ── Resource Group: Assigned To (paginated) ── */
+const CLF_LABELS: Record<string, string> = {
+  user: "User", role: "Role", query_type: "Query Type", source_ip: "Source IP",
+  db: "Database", plan_cpu_cost_range: "CPU Cost", plan_mem_cost_range: "Mem Cost",
+};
+const CLF_PAGE_SIZE = 3;
+
+function RGAssignedTo({ classifiers, currentUser }: { classifiers: Record<string, string>[]; currentUser: string }) {
+  const [page, setPage] = useState(0);
+  const totalPages = Math.ceil(classifiers.length / CLF_PAGE_SIZE);
+  const slice = classifiers.slice(page * CLF_PAGE_SIZE, (page + 1) * CLF_PAGE_SIZE);
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <SectionLabel>Assigned To ({classifiers.length})</SectionLabel>
+        {totalPages > 1 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: C.text3 }}>
+            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}
+              style={{ background: "none", border: "none", cursor: page === 0 ? "default" : "pointer", color: page === 0 ? C.border : C.text2, fontSize: 12, fontFamily: "inherit", padding: "2px 4px" }}>◀</button>
+            <span>{page + 1}/{totalPages}</span>
+            <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page === totalPages - 1}
+              style={{ background: "none", border: "none", cursor: page === totalPages - 1 ? "default" : "pointer", color: page === totalPages - 1 ? C.border : C.text2, fontSize: 12, fontFamily: "inherit", padding: "2px 4px" }}>▶</button>
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+        {slice.map((clf, idx) => {
+          const globalIdx = page * CLF_PAGE_SIZE + idx + 1;
+          const isCurrentUser = !!clf.user && currentUser.startsWith(clf.user);
+          const entries = Object.entries(clf).filter(([k]) => k !== "id" && k !== "weight");
+          return (
+            <div key={globalIdx} style={{
+              borderRadius: 6, overflow: "hidden",
+              border: `1px solid ${isCurrentUser ? C.accent : C.border}`,
+              background: isCurrentUser ? `${C.accent}06` : undefined,
+            }}>
+              <div style={{
+                padding: "5px 10px", fontSize: 10, fontWeight: 600, color: isCurrentUser ? C.accent : C.text3,
+                borderBottom: `1px solid ${isCurrentUser ? C.accent + "40" : C.border}`,
+                background: isCurrentUser ? `${C.accent}10` : `${C.bg}`,
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+                Rule {globalIdx}
+                {isCurrentUser && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: C.accent, color: "#fff" }}>YOU</span>}
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "90px 1fr", gap: "6px 10px", padding: "8px 10px", fontSize: 12 }}>
+                {entries.map(([k, v]) => (
+                  <MetaItem key={k} label={CLF_LABELS[k] || k} value={v} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ── System Object Info ── */
 function SysObjectInfoPane({ item, myData }: { item: SelectedItem; myData: MyPermissionsResponse | null }) {
   const obj = useMemo(() => {
@@ -568,15 +627,46 @@ function SysObjectInfoPane({ item, myData }: { item: SelectedItem; myData: MyPer
     return myData.system_objects?.find((o) => o.name === item.name && o.type === (OBJECT_TYPE_MAP[item.tab] || "").replace(" ", "_")) || null;
   }, [myData, item.name, item.tab]);
 
+  // Parse classifiers for RESOURCE_GROUP (must be before early return to satisfy Rules of Hooks)
+  const { classifiers, isSystemDefault } = useMemo(() => {
+    if (!obj || obj.type !== "RESOURCE_GROUP" || !obj.classifiers) return { classifiers: [], isSystemDefault: false };
+    try {
+      const raw: string[] = JSON.parse(obj.classifiers);
+      const parsed = raw.map((c) => {
+        const inner = c.replace(/^\(/, "").replace(/\)$/, "");
+        const result: Record<string, string> = {};
+        const parts = inner.match(/[^,]+(?:\([^)]*\))?/g) || [];
+        for (const part of parts) {
+          const trimmed = part.trim();
+          const eqIdx = trimmed.indexOf("=");
+          const inIdx = trimmed.indexOf(" in ");
+          if (eqIdx > 0) {
+            result[trimmed.slice(0, eqIdx).trim()] = trimmed.slice(eqIdx + 1).trim();
+          } else if (inIdx > 0) {
+            result[trimmed.slice(0, inIdx).trim()] = trimmed.slice(inIdx + 4).trim();
+          }
+        }
+        return result;
+      });
+      const meaningful = parsed.filter((clf) => Object.keys(clf).some((k) => k !== "id" && k !== "weight"));
+      return { classifiers: meaningful, isSystemDefault: raw.length > 0 && meaningful.length === 0 };
+    } catch { return { classifiers: [], isSystemDefault: false }; }
+  }, [obj]);
+
   if (!obj) return <div style={{ padding: 16, color: C.text3, fontSize: 12 }}>No detail available</div>;
 
   const fields: [string, string][] = [["Name", obj.name], ["Type", obj.type]];
 
   switch (obj.type) {
     case "RESOURCE_GROUP":
-      if (obj.cpu_weight) fields.push(["CPU Weight", obj.cpu_weight]);
+      if (obj.cpu_weight && obj.cpu_weight !== "0") fields.push(["CPU Weight", obj.cpu_weight]);
+      if (obj.exclusive_cpu_cores && obj.exclusive_cpu_cores !== "0") fields.push(["Exclusive CPU Cores", obj.exclusive_cpu_cores]);
       if (obj.mem_limit) fields.push(["Memory Limit", obj.mem_limit]);
-      if (obj.concurrency_limit) fields.push(["Concurrency Limit", obj.concurrency_limit]);
+      if (obj.concurrency_limit && obj.concurrency_limit !== "0") fields.push(["Concurrency Limit", obj.concurrency_limit]);
+      if (obj.big_query_cpu_second_limit && obj.big_query_cpu_second_limit !== "0") fields.push(["Big Query CPU Limit", obj.big_query_cpu_second_limit + "s"]);
+      if (obj.big_query_scan_rows_limit && obj.big_query_scan_rows_limit !== "0") fields.push(["Big Query Rows Limit", Number(obj.big_query_scan_rows_limit).toLocaleString()]);
+      if (obj.big_query_mem_limit && obj.big_query_mem_limit !== "0") fields.push(["Big Query Mem Limit", obj.big_query_mem_limit]);
+      if (obj.spill_mem_limit_threshold && obj.spill_mem_limit_threshold !== "0") fields.push(["Spill Threshold", obj.spill_mem_limit_threshold]);
       break;
     case "STORAGE_VOLUME":
       if (obj.sv_type) fields.push(["Storage Type", obj.sv_type]);
@@ -620,6 +710,8 @@ function SysObjectInfoPane({ item, myData }: { item: SelectedItem; myData: MyPer
       break;
   }
 
+  const currentUser = myData?.username || "";
+
   return (
     <div>
       <SectionLabel>Details</SectionLabel>
@@ -628,6 +720,19 @@ function SysObjectInfoPane({ item, myData }: { item: SelectedItem; myData: MyPer
           <MetaItem key={label} label={label} value={value} />
         ))}
       </div>
+      {obj.type === "RESOURCE_GROUP" && classifiers.length > 0 && (
+        <RGAssignedTo classifiers={classifiers} currentUser={currentUser} />
+      )}
+      {obj.type === "RESOURCE_GROUP" && classifiers.length === 0 && (
+        <div style={{ marginTop: 16 }}>
+          <SectionLabel>Assigned To</SectionLabel>
+          <div style={{ padding: "8px 0", fontSize: 12, color: C.text3 }}>
+            {isSystemDefault
+              ? "System default — automatically assigned to unmatched queries"
+              : "No assignments defined"}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

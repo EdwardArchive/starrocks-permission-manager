@@ -34,7 +34,7 @@ beforeEach(() => {
   vi.mocked(useAuthStore.getState).mockReturnValue({
     token: null,
     logout: mockLogout,
-  } as ReturnType<typeof useAuthStore.getState>);
+  } as unknown as ReturnType<typeof useAuthStore.getState>);
 });
 
 describe("apiFetch", () => {

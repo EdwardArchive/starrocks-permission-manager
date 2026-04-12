@@ -6,6 +6,7 @@ Mirrors the existing my_permissions.py router for non-admin access.
 
 from __future__ import annotations
 
+import json
 import logging
 
 from fastapi import APIRouter, Depends
@@ -205,17 +206,32 @@ def get_my_permissions(
             obj.update(extra)
             system_objects.append(obj)
 
-    # Resource Groups (multiple rows per group — dedup, collect detail)
+    # Resource Groups — aggregate classifiers across multiple rows per group
     try:
-        for r in execute_query(conn, "SHOW RESOURCE GROUPS ALL"):
+        rg_sql = "SHOW RESOURCE GROUPS ALL" if credentials.get("is_admin", False) else "SHOW RESOURCE GROUPS"
+        _rg_data: dict[str, dict] = {}
+        for r in execute_query(conn, rg_sql):
             name = r.get("name") or r.get("Name") or ""
-            _add_sys(
-                name,
-                "RESOURCE_GROUP",
-                cpu_weight=str(r.get("cpu_weight") or ""),
-                mem_limit=str(r.get("mem_limit") or ""),
-                concurrency_limit=str(r.get("concurrency_limit") or ""),
-            )
+            if not name:
+                continue
+            if name not in _rg_data:
+                _rg_data[name] = {
+                    "cpu_weight": str(r.get("cpu_weight") or ""),
+                    "mem_limit": str(r.get("mem_limit") or ""),
+                    "concurrency_limit": str(r.get("concurrency_limit") or ""),
+                    "exclusive_cpu_cores": str(r.get("exclusive_cpu_cores") or ""),
+                    "big_query_cpu_second_limit": str(r.get("big_query_cpu_second_limit") or ""),
+                    "big_query_scan_rows_limit": str(r.get("big_query_scan_rows_limit") or ""),
+                    "big_query_mem_limit": str(r.get("big_query_mem_limit") or ""),
+                    "spill_mem_limit_threshold": str(r.get("spill_mem_limit_threshold") or ""),
+                    "classifiers": [],
+                }
+            classifier = str(r.get("classifiers") or r.get("Classifiers") or "").strip()
+            if classifier:
+                _rg_data[name]["classifiers"].append(classifier)
+        for rg_name, rg_info in _rg_data.items():
+            classifiers_list = rg_info.pop("classifiers")
+            _add_sys(rg_name, "RESOURCE_GROUP", classifiers=json.dumps(classifiers_list), **rg_info)
     except Exception:
         logger.debug("Query failed, skipping")
 
