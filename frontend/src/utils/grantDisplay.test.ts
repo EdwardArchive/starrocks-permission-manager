@@ -133,7 +133,7 @@ describe("buildGrantDisplay", () => {
     it("does NOT add implicit USAGE when explicit USAGE already exists", () => {
       const result = buildGrantDisplay([
         grant({ object_type: "TABLE", privilege_type: "SELECT", object_name: "t1", object_database: "db1" }),
-        grant({ object_type: "DATABASE", privilege_type: "USAGE", object_database: "db1", object_name: "db1" }),
+        grant({ object_type: "DATABASE", privilege_type: "USAGE", object_database: "db1", object_name: null }),
       ]);
       const dbGroup = result.find((g) => g.scope === "DATABASE")!;
       const implicitItems = dbGroup.items.filter((i) => i.privs.includes("USAGE (implicit)"));

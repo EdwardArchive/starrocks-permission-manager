@@ -19,11 +19,9 @@ describe("formatSQL", () => {
   });
 
   it("returns original string when formatting fails", () => {
-    // A string that is neither valid SQL nor JSON
     const garbage = "{{{{not-valid}}}}";
     const result = formatSQL(garbage);
-    // Should at least not throw; may return the original or a best-effort format
-    expect(typeof result).toBe("string");
+    expect(result).toBe(garbage);
   });
 
   it("removes consecutive blank lines from formatted output", () => {
