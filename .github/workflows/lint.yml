@@ -57,7 +57,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: ".nvmrc"
 
       - name: Install dependencies
         run: cd frontend && npm ci
@@ -75,6 +75,26 @@ jobs:
 
       - name: TypeScript type check
         run: cd frontend && npx tsc --noEmit
+
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: self-hosted
+    needs: frontend
+    if: |
+      github.event.pull_request.draft == false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Install dependencies
+        run: cd frontend && npm ci
+
+      - name: Run tests with coverage
+        run: cd frontend && npm run test:coverage
 
   tests:
     name: Backend Tests
