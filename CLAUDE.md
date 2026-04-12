@@ -20,12 +20,16 @@ When code or project structure changes, run a sub-agent after completing the tas
 ```
 ├── Dockerfile                 # Multi-stage Docker build
 ├── PRD.md                     # Product Requirements Document
-├── README.md                  # Setup/run/API guide
+├── README.md                  # Project overview + quick start guide
 ├── pyproject.toml             # Ruff + Bandit + mypy config
+├── docs/
+│   ├── API.md                 # Full API documentation (moved from backend/)
+│   ├── CONTRIBUTING.md        # Contributing guide
+│   ├── TESTING.md             # Testing guide
+│   └── screenshots/           # UI screenshots
 ├── backend/
 │   ├── requirements.txt       # Python dependencies
 │   ├── pytest.ini             # Test config
-│   ├── API.md                 # Detailed API documentation
 │   ├── app/
 │   │   ├── main.py            # FastAPI entry, CORS, router registration, lifespan
 │   │   ├── config.py          # pydantic-settings (env: SRPM_*)

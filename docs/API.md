@@ -5,6 +5,83 @@
 
 ---
 
+## Quick Start
+
+```bash
+# Login
+curl -X POST http://localhost:8001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"host":"your-starrocks-host","port":9030,"username":"admin","password":"pwd"}'
+
+# Extract token from response
+TOKEN="eyJhbG..."
+
+# --- User routes (all users) ---
+
+# My permissions + accessible objects
+curl http://localhost:8001/api/user/my-permissions \
+  -H "Authorization: Bearer $TOKEN"
+
+# Object Hierarchy DAG (user-scoped)
+curl "http://localhost:8001/api/user/dag/object-hierarchy?catalog=default_catalog" \
+  -H "Authorization: Bearer $TOKEN"
+
+# --- Admin routes (admin only, returns 403 for non-admin) ---
+
+# Object privileges (permission matrix)
+curl "http://localhost:8001/api/admin/privileges/object?catalog=default_catalog&database=mydb&name=mytable&object_type=TABLE" \
+  -H "Authorization: Bearer $TOKEN"
+
+# All roles in cluster
+curl http://localhost:8001/api/admin/roles \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+## Endpoint Summary
+
+### Authentication & Health
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/auth/login` | Login with StarRocks credentials |
+| POST | `/api/auth/logout` | Invalidate server-side session |
+| GET | `/api/auth/me` | Current user info + roles + is_user_admin |
+| GET | `/api/health` | Server health check (no auth required) |
+
+### User Routes (`/api/user/*` — all users, Layer 1 only)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/user/objects/catalogs` | List accessible catalogs |
+| GET | `/api/user/objects/databases?catalog=X` | List accessible databases |
+| GET | `/api/user/objects/tables?catalog=X&database=Y` | List accessible tables/views/MVs/functions |
+| GET | `/api/user/objects/table-detail?catalog=X&database=Y&table=Z` | Detailed metadata |
+| GET | `/api/user/my-permissions` | Current user's permission tree + accessible objects |
+| GET | `/api/user/roles` | Current user's roles |
+| GET | `/api/user/roles/hierarchy` | Current user's role hierarchy DAG |
+| GET | `/api/user/dag/object-hierarchy?catalog=X` | Object hierarchy DAG (user-scoped) |
+| GET | `/api/user/dag/role-hierarchy` | Role hierarchy DAG (user-scoped) |
+| GET | `/api/user/search?q=keyword&limit=50` | Search accessible objects |
+
+### Admin Routes (`/api/admin/*` — admin only, requires `require_admin`)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/admin/privileges/user/{name}` | User direct privileges |
+| GET | `/api/admin/privileges/user/{name}/effective` | Effective privileges (including inherited) |
+| GET | `/api/admin/privileges/role/{name}` | Role privileges (including inherited) |
+| GET | `/api/admin/privileges/role/{name}/raw` | Raw role grants |
+| GET | `/api/admin/privileges/object?catalog=X&database=Y&name=Z&object_type=T` | Privileges on an object |
+| GET | `/api/admin/roles` | All roles in cluster |
+| GET | `/api/admin/roles/hierarchy` | Full role inheritance DAG |
+| GET | `/api/admin/roles/inheritance-dag?name=X&type=role` | Focused inheritance DAG (BFS up + down) |
+| GET | `/api/admin/roles/{name}/users` | Users assigned to a role |
+| GET | `/api/admin/dag/object-hierarchy?catalog=X` | Object hierarchy DAG (all objects) |
+| GET | `/api/admin/dag/role-hierarchy` | Role hierarchy DAG (all roles) |
+| GET | `/api/admin/search?q=keyword&limit=50` | Unified search (all objects/users/roles) |
+| GET | `/api/admin/search/users-roles?q=keyword` | Fast user/role search |
+
+---
+
 ## Authentication
 
 All APIs require JWT Bearer token authentication (except login and logout).
