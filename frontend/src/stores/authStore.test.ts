@@ -130,5 +130,51 @@ describe("useAuthStore", () => {
       useAuthStore.getState().setConnectionInfo("host2", 9031);
       expect(useAuthStore.getState().connectionInfo).toEqual({ host: "host2", port: 9031 });
     });
+
+    it("persists connection info to localStorage", () => {
+      useAuthStore.getState().setConnectionInfo("sr-host", 9030);
+      const raw = localStorage.getItem("sr_connection");
+      expect(raw).not.toBeNull();
+      const parsed = JSON.parse(raw!);
+      expect(parsed).toEqual({ host: "sr-host", port: 9030 });
+    });
+  });
+
+  describe("loadConnectionInfo (cold start)", () => {
+    it("loads valid connection info from localStorage on cold start", async () => {
+      localStorage.setItem("sr_connection", JSON.stringify({ host: "10.1.2.3", port: 9030 }));
+
+      vi.resetModules();
+      const { useAuthStore: freshStore } = await import("./authStore");
+
+      expect(freshStore.getState().connectionInfo).toEqual({ host: "10.1.2.3", port: 9030 });
+    });
+
+    it("returns null for malformed JSON in sr_connection", async () => {
+      localStorage.setItem("sr_connection", "not-valid-json{{{");
+
+      vi.resetModules();
+      const { useAuthStore: freshStore } = await import("./authStore");
+
+      expect(freshStore.getState().connectionInfo).toBeNull();
+    });
+
+    it("returns null when sr_connection has wrong field types", async () => {
+      localStorage.setItem("sr_connection", JSON.stringify({ host: 12345, port: "9030" }));
+
+      vi.resetModules();
+      const { useAuthStore: freshStore } = await import("./authStore");
+
+      expect(freshStore.getState().connectionInfo).toBeNull();
+    });
+
+    it("returns null when sr_connection is absent", async () => {
+      localStorage.removeItem("sr_connection");
+
+      vi.resetModules();
+      const { useAuthStore: freshStore } = await import("./authStore");
+
+      expect(freshStore.getState().connectionInfo).toBeNull();
+    });
   });
 });

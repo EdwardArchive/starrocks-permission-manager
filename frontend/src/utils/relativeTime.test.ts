@@ -156,6 +156,11 @@ describe("formatRelativeTime", () => {
       const input = new Date(NOW.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString();
       expect(formatRelativeTime(input, NOW)).toBe("in 3 days");
     });
+
+    it("returns 'just now' for a future timestamp within 5 seconds", () => {
+      const input = new Date(NOW.getTime() + 3 * 1000).toISOString();
+      expect(formatRelativeTime(input, NOW)).toBe("just now");
+    });
   });
 
   describe("time format support", () => {

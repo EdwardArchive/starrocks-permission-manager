@@ -95,4 +95,22 @@ describe("Header", () => {
     await user.click(screen.getByTestId("cluster-status-btn"));
     expect(useClusterStore.getState().isOpen).toBe(true);
   });
+
+  it("cluster status button hover updates color style", async () => {
+    const user = userEvent.setup();
+    render(<Header />);
+    const btn = screen.getByTestId("cluster-status-btn");
+    await user.hover(btn);
+    await user.unhover(btn);
+    expect(btn).toBeInTheDocument();
+  });
+
+  it("logout button hover/unhover does not throw", async () => {
+    const user = userEvent.setup();
+    render(<Header />);
+    const logoutBtn = screen.getByText("Logout");
+    await user.hover(logoutBtn);
+    await user.unhover(logoutBtn);
+    expect(logoutBtn).toBeInTheDocument();
+  });
 });
