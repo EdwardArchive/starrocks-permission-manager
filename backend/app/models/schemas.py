@@ -122,3 +122,78 @@ class TableDetail(BaseModel):
     replication_num: int | None = None
     storage_medium: str | None = None
     compression: str | None = None
+
+
+# ── Cluster Status ──
+class FENodeInfo(BaseModel):
+    name: str
+    ip: str
+    edit_log_port: int | None = None
+    http_port: int | None = None
+    query_port: int | None = None
+    rpc_port: int | None = None
+    role: str
+    alive: bool
+    join: bool
+    last_heartbeat: str | None = None
+    replayed_journal_id: int | None = None
+    start_time: str | None = None
+    version: str | None = None
+    err_msg: str | None = None
+    # Populated from FE /metrics endpoint (unauthenticated Prometheus scrape)
+    jvm_heap_used_pct: float | None = None
+    gc_young_count: int | None = None
+    gc_young_time_ms: int | None = None
+    gc_old_count: int | None = None
+    gc_old_time_ms: int | None = None
+    query_p99_ms: float | None = None
+    metrics_error: str | None = None  # null on success; short reason string on failure
+
+
+class BENodeInfo(BaseModel):
+    name: str
+    ip: str
+    node_type: str = "backend"  # "backend" (SHOW BACKENDS) or "compute" (SHOW COMPUTE NODES)
+    heartbeat_port: int | None = None
+    be_port: int | None = None
+    http_port: int | None = None
+    brpc_port: int | None = None
+    alive: bool
+    last_heartbeat: str | None = None
+    last_start_time: str | None = None
+    tablet_count: int | None = None
+    data_used_capacity: str | None = None
+    total_capacity: str | None = None
+    used_pct: float | None = None
+    cpu_cores: int | None = None
+    cpu_used_pct: float | None = None  # Only populated for compute nodes (SHOW COMPUTE NODES)
+    mem_used_pct: float | None = None
+    mem_limit: str | None = None  # Human-readable total memory (e.g. "75.687GB"); CN only
+    num_running_queries: int | None = None
+    warehouse: str | None = None  # Only populated for compute nodes
+    version: str | None = None
+    err_msg: str | None = None
+
+
+class ClusterMetrics(BaseModel):
+    fe_total: int
+    fe_alive: int
+    be_total: int
+    be_alive: int
+    cn_total: int = 0
+    cn_alive: int = 0
+    total_tablets: int | None = None
+    total_data_used: str | None = None
+    avg_disk_used_pct: float | None = None
+    avg_cpu_used_pct: float | None = None
+    avg_mem_used_pct: float | None = None
+    avg_fe_heap_used_pct: float | None = None  # from FE /metrics
+
+
+class ClusterStatusResponse(BaseModel):
+    frontends: list[FENodeInfo]
+    backends: list[BENodeInfo]
+    metrics: ClusterMetrics
+    has_errors: bool
+    mode: str = "full"  # "full" = SHOW succeeded; "limited" = access-denied fallback
+    metrics_warning: str | None = None  # set iff all FE /metrics fetches failed

@@ -8,12 +8,35 @@ from app.services.starrocks_client import execute_query
 
 logger = logging.getLogger(__name__)
 
+# MySQL error codes that indicate access was denied (authorization failure).
+# 1044: DB access denied · 1045: bad user/password · 1142: table op denied ·
+# 1227: cluster/SYSTEM op denied.
+ACCESS_DENIED_ERRNOS = frozenset({1044, 1045, 1142, 1227})
+
 
 def can_access_sys(conn) -> bool:
-    """Return True if the current connection can query sys.role_edges."""
+    """Return True only if the connection can query all three sys tables used by admin routes.
+
+    Calls SET ROLE ALL first so that non-default roles (e.g. cluster_admin granted
+    but not active by default) are considered in the check.
+    """
     try:
-        execute_query(conn, "SELECT 1 FROM sys.role_edges LIMIT 1")
-        return True
+        execute_query(conn, "SET ROLE ALL")
     except Exception:
-        logger.debug("sys.role_edges not accessible — falling back to SHOW GRANTS")
+        logger.debug("SET ROLE ALL failed during admin check — proceeding without it")
+
+    for table in ("sys.role_edges", "sys.grants_to_users", "sys.grants_to_roles"):
+        try:
+            execute_query(conn, f"SELECT 1 FROM {table} LIMIT 1")
+        except Exception:
+            logger.debug("sys table not accessible (%s) — treating as non-admin", table)
+            return False
+
+    # SHOW ROLES requires user_admin/security_admin — verifies full admin capability
+    try:
+        execute_query(conn, "SHOW ROLES")
+    except Exception:
+        logger.debug("SHOW ROLES denied — treating as non-admin")
         return False
+
+    return True

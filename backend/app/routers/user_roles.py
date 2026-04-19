@@ -158,6 +158,9 @@ def _build_role_hierarchy_from_grants(conn, username: str) -> DAGGraph:
 
     # BFS through role chain
     direct_roles = parse_role_assignments(conn, username, "USER")
+    # Every user implicitly has 'public' — SHOW GRANTS omits it but it should appear in the DAG
+    if "public" not in direct_roles:
+        direct_roles = [*direct_roles, "public"]
     for role in direct_roles:
         rc = "root" if role == "root" else "builtin" if role in BUILTIN_ROLES else "custom"
         add_node(f"r_{role}", role, "role", metadata={"role_category": rc})

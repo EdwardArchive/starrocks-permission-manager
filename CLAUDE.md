@@ -44,7 +44,8 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   │   ├── admin_privileges.py  # GET /api/admin/privileges/* (Layer 1+2, admin only)
 │   │   │   ├── admin_roles.py       # GET /api/admin/roles/* (Layer 1+2, admin only)
 │   │   │   ├── admin_dag.py         # GET /api/admin/dag/* (Layer 1+2, admin only)
-│   │   │   └── admin_search.py      # GET /api/admin/search/* (Layer 1+2, admin only)
+│   │   │   ├── admin_search.py      # GET /api/admin/search/* (Layer 1+2, admin only)
+│   │   │   └── cluster.py           # GET /api/cluster/status (no require_admin; SR enforces cluster_admin)
 │   │   ├── services/
 │   │   │   ├── starrocks_client.py        # MySQL connector wrapper + parallel_queries
 │   │   │   ├── grant_collector.py         # Facade: delegates to common or admin collector
@@ -89,17 +90,22 @@ When code or project structure changes, run a sub-agent after completing the tas
         │   ├── client.ts            # Axios instance + interceptors
         │   ├── auth.ts              # Auth API
         │   ├── user.ts              # /api/user/* endpoints (all users)
-        │   └── admin.ts             # /api/admin/* endpoints (admin only)
-        ├── stores/              # Zustand (authStore, dagStore)
+        │   ├── admin.ts             # /api/admin/* endpoints (admin only)
+        │   └── cluster.ts           # /api/cluster/* (new category, separate from user/admin)
+        ├── stores/              # Zustand (authStore, dagStore, clusterStore)
+        │   └── clusterStore.ts      # Drawer open state + expanded nodes
         ├── utils/
         │   ├── grantDisplay.ts      # buildGrantDisplay() — unified grant grouping + implicit USAGE
         │   ├── inventory-helpers.ts  # SubTab/AllTab types, SUB_TAB_META, formatSQL/Bytes
         │   ├── privColors.ts        # Privilege tag color map
+        │   ├── relativeTime.ts      # formatRelativeTime helper
         │   ├── scopeConfig.ts       # SCOPE_ORDER, SCOPE_ICONS
         │   └── toast.ts             # Deduplicating toast
         └── components/
             ├── auth/LoginForm.tsx
-            ├── layout/Header.tsx, Sidebar.tsx  # Sidebar uses isAdmin-conditional APIs
+            ├── cluster/
+            │   └── ClusterDrawer.tsx  # Right-side drawer for FE/BE node health (440px)
+            ├── layout/Header.tsx, Sidebar.tsx  # Sidebar uses isAdmin-conditional APIs; Header has cluster icon
             ├── common/
             │   ├── InlineIcon.tsx     # SVG icon renderer
             │   ├── GrantTreeView.tsx  # Unified privilege display (scope-grouped)
@@ -176,8 +182,11 @@ When code or project structure changes, run a sub-agent after completing the tas
 - **Frontend API Pattern**: ← NEW
   - `api/user.ts`: Calls `/api/user/*` endpoints (all users)
   - `api/admin.ts`: Calls `/api/admin/*` endpoints (admin only)
+  - `api/cluster.ts`: Calls `/api/cluster/*` endpoints (new category, all logged-in users)
   - Each tab selects the appropriate API module based on `isAdmin` flag
   - Response schemas remain identical (`DAGGraph`, `PrivilegeGrant`, etc.) — only scope differs
+
+- **Cluster Status**: `/api/cluster/*` is a third route category (neither user nor admin). StarRocks enforces `cluster_admin` / SYSTEM OPERATE privilege for `SHOW FRONTENDS` / `SHOW BACKENDS`; backend catches mysql-connector `ProgrammingError`/`DatabaseError` with errno in {1044, 1045, 1227, 1142} and returns HTTP 403. TTL cache is per-username. UI: header cluster icon → right-side slide-out drawer (no new tab). Non-privileged users see an in-drawer permission-required message instead of data.
 
 - **DAG**: 2 views (Object Hierarchy TB, Role Hierarchy TB). `SET ROLE ALL` before object-hierarchy queries. (unchanged)
 
@@ -197,6 +206,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 - /api/admin/* routes may call Layer 1 + Layer 2 services
 - /api/admin/* routes must verify is_admin via middleware
 - /api/auth/* routes are shared (no layer restriction)
+- /api/cluster/* is a new route category — no require_admin; StarRocks enforces privilege, backend maps access-denied errors to 403
 
 ### Code Quality
 - No duplicate grant parsing logic — use services/shared/grant_parser.py
@@ -286,4 +296,7 @@ python -m pytest tests/test_integration.py -v -s               # Integration (ne
 - Roles: GET /api/admin/roles, hierarchy, inheritance-dag, {name}/users
 - DAG: GET /api/admin/dag/object-hierarchy, role-hierarchy, full
 - Search: GET /api/admin/search, /api/admin/search/users-roles
+
+### Cluster Routes (`/api/cluster/*` — any logged-in user; StarRocks enforces privilege, 403 on denied)
+- Status: GET /api/cluster/status — FE/BE node list + aggregate metrics + has_errors flag
 

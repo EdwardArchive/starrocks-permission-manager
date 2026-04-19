@@ -20,6 +20,7 @@ import { C } from "./utils/colors";
 import ExportPngBtn from "./components/common/ExportPngBtn";
 import PermissionDetailTab from "./components/tabs/PermissionDetailTab";
 import InventoryTab from "./components/tabs/InventoryTab";
+import ClusterDrawer from "./components/cluster/ClusterDrawer";
 
 const TAB_CONFIG: { id: TabId; label: string; icon: string; disabled?: boolean; adminOnly?: boolean }[] = [
   { id: "obj", label: "Object Hierarchy", icon: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>' },
@@ -60,8 +61,15 @@ export default function App() {
     }))
   );
 
-  const isAdmin = user?.is_user_admin ?? true;
+  const isAdmin = user?.is_user_admin ?? false;
   const visibleTabs = TAB_CONFIG.filter((t) => !t.adminOnly || isAdmin);
+
+  // Redirect away from admin-only tabs if user is not admin (e.g. URL hash was #perm)
+  useEffect(() => {
+    if (user && !isAdmin && activeTab === "perm") {
+      setActiveTab("obj");
+    }
+  }, [user, isAdmin, activeTab, setActiveTab]);
 
   const [dagState, setDagState] = useState<{ cache: Record<string, DAGGraph | null>; loading: boolean }>({
     cache: {}, loading: false,
@@ -84,7 +92,7 @@ export default function App() {
   // Load DAG data when tab or catalog changes (skip perm tab - it manages its own DAG)
   const dagKey = `${activeTab}_${activeCatalog}`;
   useEffect(() => {
-    if (!isLoggedIn || activeTab === "perm" || activeTab === "myperm") return;
+    if (!isLoggedIn || !user || activeTab === "perm" || activeTab === "myperm") return;
     if (dagState.cache[dagKey]) return;
     const controller = new AbortController();
     setDagState((prev) => ({ ...prev, loading: true }));
@@ -97,8 +105,8 @@ export default function App() {
       .then((data) => setDagState((prev) => ({ cache: { ...prev.cache, [dagKey]: data }, loading: false })))
       .catch(() => setDagState((prev) => ({ ...prev, loading: false })));
     return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only reload on tab/catalog change, dagState.cache checked inside
-  }, [isLoggedIn, activeTab, activeCatalog]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload only when tab/catalog changes or user loads (post-refresh); dagState.cache checked inside
+  }, [isLoggedIn, user, isAdmin, activeTab, activeCatalog]);
 
   const rawDag = dagState.cache[dagKey] || null;
   const loading = dagState.loading;
@@ -150,7 +158,7 @@ export default function App() {
           {/* Content area */}
           {activeTab === "myperm" ? (
             <InventoryTab />
-          ) : activeTab === "perm" ? (
+          ) : activeTab === "perm" && isAdmin ? (
             <PermissionDetailTab />
           ) : (
             <div style={{ flex: 1, position: "relative", background: C.bg }}>
@@ -219,6 +227,7 @@ export default function App() {
           </div>
         )}
       </div>
+      <ClusterDrawer />
     </div>
   );
 }

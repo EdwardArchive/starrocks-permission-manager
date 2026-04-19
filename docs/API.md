@@ -80,6 +80,11 @@ curl http://localhost:8001/api/admin/roles \
 | GET | `/api/admin/search?q=keyword&limit=50` | Unified search (all objects/users/roles) |
 | GET | `/api/admin/search/users-roles?q=keyword` | Fast user/role search |
 
+### Cluster Routes (`/api/cluster/*` — any logged-in user; StarRocks enforces privilege)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/cluster/status` | FE/BE node list + aggregate metrics + has_errors flag |
+
 ---
 
 ## Authentication
@@ -562,7 +567,141 @@ Returns the role hierarchy DAG. Structure: root (top) → built-in roles → cus
 
 ---
 
-## 6. Health Check
+## 6. Cluster API
+
+### GET `/api/cluster/status`
+
+Returns FE/BE/CN node health and aggregate cluster metrics. Designed as a **common view** for every logged-in user — non-privileged users see a limited view instead of a 403.
+
+**Auth**: Requires JWT Bearer token. `SHOW FRONTENDS`/`SHOW BACKENDS`/`SHOW COMPUTE NODES` require `cluster_admin` (or SYSTEM OPERATE). When denied, the backend falls back to `mode="limited"` with a single placeholder FE for the host the caller is connected to.
+
+FE resource metrics (heap, GC, p99) come from each FE's unauthenticated Prometheus `/metrics` endpoint on port 8030, fetched in parallel with a 2 s per-node timeout. Unreachable endpoints surface as `metrics_error` on the specific FE and — if **every** FE probe fails — a top-level `metrics_warning`.
+
+**Response** `200 OK` (full mode, K8s-style Shared-Data cluster)
+```json
+{
+  "mode": "full",
+  "frontends": [
+    {
+      "name": "starrocks-oss-fe-0_9010_1775306864789",
+      "ip": "10.100.1.2",
+      "edit_log_port": 9010, "http_port": 8030, "query_port": 9030, "rpc_port": 9020,
+      "role": "LEADER", "alive": true, "join": true,
+      "last_heartbeat": "2026-04-19 10:00:00",
+      "replayed_journal_id": 12345, "start_time": "2026-04-15 08:00:00",
+      "version": "3.2.0", "err_msg": null,
+      "jvm_heap_used_pct": 9.8,
+      "gc_young_count": 8703, "gc_young_time_ms": 23400,
+      "gc_old_count": 0, "gc_old_time_ms": 0,
+      "query_p99_ms": 12.3,
+      "metrics_error": null
+    }
+  ],
+  "backends": [
+    {
+      "name": "20001",
+      "ip": "starrocks-oss-cn-0.starrocks-oss-cn-search.starrocks-oss.svc.cluster.local",
+      "node_type": "compute",
+      "heartbeat_port": 9050, "be_port": 9060, "http_port": 8040, "brpc_port": 8060,
+      "alive": true,
+      "last_heartbeat": "2026-04-19 10:00:00", "last_start_time": "2026-04-15 08:00:00",
+      "tablet_count": 278,
+      "data_used_capacity": "200MB", "total_capacity": "10GB", "used_pct": 1.95,
+      "cpu_cores": 32, "cpu_used_pct": 12.5,
+      "mem_used_pct": 30.0, "mem_limit": "64.0GB",
+      "num_running_queries": 1,
+      "warehouse": "default_warehouse",
+      "version": "3.2.0", "err_msg": null
+    }
+  ],
+  "metrics": {
+    "fe_total": 1, "fe_alive": 1,
+    "be_total": 0, "be_alive": 0,
+    "cn_total": 1, "cn_alive": 1,
+    "total_tablets": 278,
+    "total_data_used": null,
+    "avg_disk_used_pct": 1.95,
+    "avg_cpu_used_pct": 12.5,
+    "avg_mem_used_pct": 30.0,
+    "avg_fe_heap_used_pct": 9.8
+  },
+  "has_errors": false,
+  "metrics_warning": null
+}
+```
+
+**Response Schema**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| mode | `"full"` \| `"limited"` | `"limited"` when `SHOW FRONTENDS` is denied — only a placeholder FE is returned |
+| frontends | FENodeInfo[] | FE nodes |
+| backends | BENodeInfo[] | Backends **and** Compute Nodes (distinguished by `node_type`) |
+| metrics | ClusterMetrics | Aggregate metrics |
+| has_errors | boolean | True if any node is not alive or reports `err_msg` |
+| metrics_warning | string\|null | Set when every FE `/metrics` probe failed (network reachability issue) |
+
+**FENodeInfo**
+| Field | Type | Description |
+|-------|------|-------------|
+| name | string | FE identifier (K8s format: `<hostname>_<editLogPort>_<startupTs>`) |
+| ip | string | IP address (SHOW FRONTENDS `IP` column) |
+| edit_log_port / http_port / query_port / rpc_port | integer\|null | StarRocks FE ports |
+| role | `"LEADER"` \| `"FOLLOWER"` \| `"OBSERVER"` \| `"UNKNOWN"` | LEADER is derived from `IsMaster=true` |
+| alive / join | boolean | Heartbeat status |
+| last_heartbeat / start_time | string\|null | Timestamps |
+| replayed_journal_id | integer\|null | |
+| version / err_msg | string\|null | |
+| jvm_heap_used_pct | float\|null | From `/metrics` (`jvm_heap_size_bytes{type="used"}/{type="max"}`) |
+| gc_young_count / gc_young_time_ms | integer\|null | Cumulative YoungGC counters from `/metrics` |
+| gc_old_count / gc_old_time_ms | integer\|null | Cumulative OldGC counters |
+| query_p99_ms | float\|null | `starrocks_fe_query_latency{type="99_quantile"}` |
+| metrics_error | string\|null | Non-null if the FE's `/metrics` probe failed (`timeout` / `network` / `http_status` / `parse`) |
+
+**BENodeInfo** (shared schema for BE and CN)
+| Field | Type | Description |
+|-------|------|-------------|
+| name | string | `BackendId` (BE) or `ComputeNodeId` (CN), numeric |
+| ip | string | `Host` column from SHOW BACKENDS / `IP` from SHOW COMPUTE NODES (may be a K8s FQDN) |
+| node_type | `"backend"` \| `"compute"` | Distinguishes BE vs CN |
+| heartbeat_port / be_port / http_port / brpc_port | integer\|null | |
+| alive | boolean | |
+| last_heartbeat / last_start_time | string\|null | |
+| tablet_count | integer\|null | |
+| data_used_capacity / total_capacity | string\|null | Human-readable (e.g. `"256.78 GB"`). For CN, extracted from `DataCacheMetrics` (local cache usage, not persistent storage). |
+| used_pct | float\|null | Disk utilization (BE) or cache utilization (CN) percentage |
+| cpu_cores | integer\|null | Reported in SHOW BACKENDS / SHOW COMPUTE NODES |
+| cpu_used_pct | float\|null | **CN only** — BE does not report CPU usage |
+| mem_used_pct | float\|null | |
+| mem_limit | string\|null | **CN only** — e.g. `"64.0GB"` from `MemLimit` |
+| num_running_queries | integer\|null | |
+| warehouse | string\|null | **CN only** — warehouse name |
+| version / err_msg | string\|null | |
+
+**ClusterMetrics**
+| Field | Type | Description |
+|-------|------|-------------|
+| fe_total / fe_alive | integer | FE counts |
+| be_total / be_alive | integer | BE-only counts (excludes CN) |
+| cn_total / cn_alive | integer | CN-only counts |
+| total_tablets | integer\|null | Sum of tablet counts across BE + CN |
+| total_data_used | string\|null | Sum of `data_used_capacity` across BE nodes only (not cache). Null when no BE |
+| avg_disk_used_pct | float\|null | Avg of `used_pct` across all nodes that report it |
+| avg_cpu_used_pct | float\|null | Avg of `cpu_used_pct` (CN only) |
+| avg_mem_used_pct | float\|null | Avg of `mem_used_pct` across all nodes that report it |
+| avg_fe_heap_used_pct | float\|null | Avg of `jvm_heap_used_pct` across FEs whose `/metrics` succeeded |
+
+> **Cache**: Results are cached per `{username}:{mode}` for `SRPM_CACHE_TTL_SECONDS` (default: 60 s). The cache key includes `mode` so a user's full / limited results never collide.
+
+**Example curl**
+```bash
+curl http://localhost:8001/api/cluster/status \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+---
+
+## 7. Health Check
 
 ### GET `/api/health`
 
@@ -586,6 +725,7 @@ All errors follow this format:
 | Status | Description |
 |--------|-------------|
 | 401 | Authentication failure (invalid token, expired, StarRocks connection failed) |
+| 403 | Authorization failure (non-admin accessing admin route; or insufficient StarRocks privilege, e.g. cluster_admin required) |
 | 422 | Request parameter validation failure |
 | 500 | Internal server error |
 

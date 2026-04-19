@@ -1,9 +1,11 @@
 import { useAuthStore } from "../../stores/authStore";
 import { APP_LOGO_SVG } from "../dag/nodeIcons";
 import { C } from "../../utils/colors";
+import { useClusterStore } from "../../stores/clusterStore";
 
 export default function Header() {
   const { user, connectionInfo, logout } = useAuthStore();
+  const toggleDrawer = useClusterStore((s) => s.toggleDrawer);
 
   return (
     <header style={{
@@ -25,6 +27,27 @@ export default function Header() {
           <strong style={{ color: C.text1 }}>{user?.username}</strong>
           {connectionInfo && `@${connectionInfo.host}:${connectionInfo.port}`}
         </span>
+        <button
+          onClick={toggleDrawer}
+          aria-label="Cluster Status"
+          title="Cluster Status"
+          data-testid="cluster-status-btn"
+          style={{
+            width: 34, height: 34, padding: 0,
+            background: "transparent", border: `1px solid ${C.borderLight}`,
+            borderRadius: 6, color: C.text2, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = C.accent; e.currentTarget.style.borderColor = C.accent; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = C.text2; e.currentTarget.style.borderColor = C.borderLight; }}
+        >
+          <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="6" rx="1"/>
+            <rect x="3" y="14" width="18" height="6" rx="1"/>
+            <line x1="6" y1="7" x2="6.01" y2="7"/>
+            <line x1="6" y1="17" x2="6.01" y2="17"/>
+          </svg>
+        </button>
         <button
           onClick={logout}
           style={{

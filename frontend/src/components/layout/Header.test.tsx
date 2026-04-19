@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "../../test/test-utils";
 import userEvent from "@testing-library/user-event";
 import Header from "./Header";
+import { useClusterStore } from "../../stores/clusterStore";
 
 // Mock nodeIcons to avoid SVG ?raw imports
 vi.mock("../dag/nodeIcons", () => ({
@@ -33,6 +34,8 @@ vi.mock("../../stores/authStore", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Reset cluster store state before each test
+  useClusterStore.setState({ isOpen: false });
 });
 
 describe("Header", () => {
@@ -76,5 +79,20 @@ describe("Header", () => {
     expect(screen.getByText("viewer")).toBeInTheDocument();
     // No @host:port text
     expect(screen.queryByText(/@/)).not.toBeInTheDocument();
+  });
+
+  it("renders cluster status icon button", () => {
+    render(<Header />);
+    const btn = screen.getByTestId("cluster-status-btn");
+    expect(btn).toBeInTheDocument();
+    expect(btn).toHaveAttribute("aria-label", "Cluster Status");
+  });
+
+  it("clicking cluster status button toggles drawer open", async () => {
+    const user = userEvent.setup();
+    render(<Header />);
+    expect(useClusterStore.getState().isOpen).toBe(false);
+    await user.click(screen.getByTestId("cluster-status-btn"));
+    expect(useClusterStore.getState().isOpen).toBe(true);
   });
 });

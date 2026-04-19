@@ -14,6 +14,7 @@ A web UI for visually exploring user, role, and object permission structures acr
   - **Permission Focus**: Search a user or role → view inheritance DAG + privilege list (admin only)
   - **My Inventory**: Browse all accessible objects by type with detail side panel (Roles, Users, Catalogs, Databases, Tables, MVs, Views, Functions, Resource Groups, Warehouses, etc.)
 - **Admin & Non-Admin Support** — Admin users see all roles/users/objects via `/api/admin/*` routes (sys.* tables). Non-admin users see only their accessible objects and role chain via `/api/user/*` routes (SHOW GRANTS + INFORMATION_SCHEMA). Admin routes enforce `require_admin` (403 for non-admin).
+- **Cluster Status** — Header cluster icon opens a right-side drawer showing FE/BE node health and aggregate metrics. Visible to all logged-in users; requires `cluster_admin` role or SYSTEM OPERATE privilege in StarRocks (non-privileged users see an in-drawer message).
 - **Object Permission Matrix** — Click an object to see a grantee × privilege matrix (Direct/Inherited indicators), with type-specific columns per object type
 - **Implicit USAGE** — TABLE-level grants automatically show implicit DATABASE/CATALOG USAGE access
 - **User/Role Privilege View** — Unified scope-grouped tree (GrantTreeView) across all panels
