@@ -8,9 +8,40 @@ import { C } from "../../utils/colors";
 import { Badge, Loader } from "../tabs/inventory-ui";
 import InlineIcon from "../common/InlineIcon";
 
+const STATUS = {
+  danger: "#ef4444",
+} as const;
+
+const ui = {
+  h1: { fontSize: 15, lineHeight: 1.3, fontWeight: 700, color: C.text1 } as const,
+  bodyText: { fontSize: 12, lineHeight: 1.4, color: C.text1 } as const,
+  metaText: { fontSize: 12, lineHeight: 1.4, color: C.text2 } as const,
+  subtleText: { fontSize: 12, lineHeight: 1.4, color: C.text3 } as const,
+  tinyMeta: { fontSize: 11, lineHeight: 1.35, color: C.text3 } as const,
+  caption: { fontSize: 10, lineHeight: 1.25, color: C.text3 } as const,
+  metricRow: { fontSize: 11, lineHeight: 1.35, color: C.text2, display: "flex", justifyContent: "space-between" } as const,
+  summaryCell: { display: "flex", alignItems: "center", minHeight: 24 } as const,
+  summaryRow: {
+    display: "inline-flex",
+    alignItems: "baseline",
+    gap: 6,
+    fontVariantNumeric: "tabular-nums",
+  } as const,
+  summaryLabel: { color: C.text3, fontSize: 12, lineHeight: 1.25 } as const,
+  summaryValue: { color: C.text1, fontSize: 13, lineHeight: 1.25, fontWeight: 600 } as const,
+  sectionTitle: { fontSize: 13, lineHeight: 1.3, fontWeight: 700, color: C.text1 } as const,
+  sectionCount: { fontSize: 11, lineHeight: 1.3, color: C.text3 } as const,
+  bannerText: { fontSize: 12, lineHeight: 1.45, color: C.text1 } as const,
+  cardTitle: { fontSize: 13, lineHeight: 1.35, fontWeight: 600, color: C.text1 } as const,
+  cardMeta: { fontSize: 12, lineHeight: 1.35, color: C.text2 } as const,
+  dangerText: { fontSize: 12, lineHeight: 1.4, color: STATUS.danger } as const,
+  dangerTextStrong: { fontSize: 12, lineHeight: 1.4, fontWeight: 700, color: STATUS.danger } as const,
+  ellipsis: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const,
+} as const;
+
 /* ── Utilization progress bar (0–100%) ── */
 function UtilBar({ pct }: { pct: number }) {
-  const color = pct > 85 ? "#ef4444" : pct > 70 ? C.warning : C.green;
+  const color = pct > 85 ? STATUS.danger : pct > 70 ? C.warning : C.green;
   return (
     <div style={{ width: "100%", height: 6, background: C.border, borderRadius: 3, overflow: "hidden", marginTop: 4 }}>
       <div style={{ width: `${Math.min(pct, 100)}%`, height: "100%", background: color, borderRadius: 3, transition: "width 0.3s" }} />
@@ -22,9 +53,9 @@ function UtilBar({ pct }: { pct: number }) {
 function MetricRow({ label, pct, extra }: { label: string; pct: number; extra?: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 6 }}>
-      <div style={{ fontSize: 11, color: C.text2, display: "flex", justifyContent: "space-between" }}>
-        <span>{label} <span style={{ color: C.text3 }}>{extra}</span></span>
-        <strong style={{ color: C.text1 }}>{pct.toFixed(1)}%</strong>
+      <div style={ui.metricRow}>
+        <span>{label} <span style={ui.subtleText}>{extra}</span></span>
+        <strong style={ui.summaryValue}>{pct.toFixed(1)}%</strong>
       </div>
       <UtilBar pct={pct} />
     </div>
@@ -40,8 +71,8 @@ function StatusDot({ alive }: { alive: boolean }) {
   return (
     <span style={{
       display: "inline-block", width: 8, height: 8, borderRadius: "50%",
-      background: alive ? C.green : "#ef4444", flexShrink: 0,
-      boxShadow: alive ? `0 0 4px ${C.green}80` : `0 0 4px #ef444480`,
+      background: alive ? C.green : STATUS.danger, flexShrink: 0,
+      boxShadow: alive ? `0 0 4px ${C.green}80` : `0 0 4px ${STATUS.danger}80`,
       transform: "translateY(0.5px)",
     }} />
   );
@@ -61,7 +92,7 @@ function FENodeCard({ node, expanded, onToggle }: { node: FENodeInfo; expanded: 
   const displayIp = shortenNodeName(node.ip);
 
   return (
-    <div style={{ border: `1px solid ${node.alive ? C.borderLight : "#ef4444"}`, borderRadius: 6, marginBottom: 6, overflow: "hidden", background: C.card }}>
+    <div style={{ border: `1px solid ${node.alive ? C.borderLight : STATUS.danger}`, borderRadius: 6, marginBottom: 6, overflow: "hidden", background: C.card }}>
       {/* Header row — clickable */}
       <div
         onClick={onToggle}
@@ -74,16 +105,16 @@ function FENodeCard({ node, expanded, onToggle }: { node: FENodeInfo; expanded: 
         <StatusDot alive={node.alive} />
         <span
           title={node.name}
-          style={{ fontSize: 13, fontWeight: 600, color: C.text1, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          style={{ ...ui.cardTitle, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
         >
           {displayName}
         </span>
         {displayIp !== displayName && (
-          <span title={node.ip} style={{ fontSize: 12, color: C.text2, flexShrink: 0 }}>{displayIp}</span>
+          <span title={node.ip} style={{ ...ui.cardMeta, flexShrink: 0 }}>{displayIp}</span>
         )}
         <Badge text={node.role} color={roleBadgeColor(node.role)} />
-        <Badge text={node.alive ? "ALIVE" : "DEAD"} color={node.alive ? C.green : "#ef4444"} />
-        <span style={{ fontSize: 10, color: C.text3, marginLeft: 2 }}>{expanded ? "▲" : "▼"}</span>
+        <Badge text={node.alive ? "ALIVE" : "DEAD"} color={node.alive ? C.green : STATUS.danger} />
+        <span style={{ ...ui.caption, marginLeft: 2 }}>{expanded ? "▲" : "▼"}</span>
       </div>
 
       {/* Resource bars — Heap usage (from /metrics) */}
@@ -93,14 +124,7 @@ function FENodeCard({ node, expanded, onToggle }: { node: FENodeInfo; expanded: 
             <MetricRow label="Heap" pct={node.jvm_heap_used_pct ?? 0} />
           ) : (
             <div
-              style={{
-                fontSize: 11,
-                color: C.text3,
-                padding: "4px 8px",
-                background: "rgba(148,163,184,0.08)",
-                borderRadius: 4,
-                fontStyle: "italic",
-              }}
+              style={{ ...ui.tinyMeta, padding: "4px 8px", background: "rgba(148,163,184,0.08)", borderRadius: 4, fontStyle: "italic" }}
               title={node.metrics_error ?? ""}
             >
               Metrics unavailable ({node.metrics_error})
@@ -131,7 +155,7 @@ function FENodeCard({ node, expanded, onToggle }: { node: FENodeInfo; expanded: 
             <Detail label="Query p99" value={`${node.query_p99_ms.toFixed(1)} ms`} />
           )}
           {node.err_msg && (
-            <div style={{ gridColumn: "1 / -1", color: "#ef4444", fontSize: 12, marginTop: 4, padding: "4px 8px", background: "rgba(239,68,68,0.08)", borderRadius: 4 }}>
+            <div style={{ ...ui.dangerText, gridColumn: "1 / -1", marginTop: 4, padding: "4px 8px", background: "rgba(239,68,68,0.08)", borderRadius: 4 }}>
               {node.err_msg}
             </div>
           )}
@@ -153,7 +177,7 @@ function BENodeCard({ node, expanded, onToggle }: { node: BENodeInfo; expanded: 
   const displayIp = shortenNodeName(node.ip);
 
   return (
-    <div style={{ border: `1px solid ${node.alive ? C.borderLight : "#ef4444"}`, borderRadius: 6, marginBottom: 6, overflow: "hidden", background: C.card }}>
+    <div style={{ border: `1px solid ${node.alive ? C.borderLight : STATUS.danger}`, borderRadius: 6, marginBottom: 6, overflow: "hidden", background: C.card }}>
       {/* Header row — clickable */}
       <div
         onClick={onToggle}
@@ -166,22 +190,22 @@ function BENodeCard({ node, expanded, onToggle }: { node: BENodeInfo; expanded: 
         <StatusDot alive={node.alive} />
         <span
           title={node.name}
-          style={{ fontSize: 13, fontWeight: 600, color: C.text1, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          style={{ ...ui.cardTitle, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
         >
           {displayName}
         </span>
         {displayIp !== displayName && (
-          <span title={node.ip} style={{ fontSize: 12, color: C.text2, flexShrink: 0 }}>{displayIp}</span>
+          <span title={node.ip} style={{ ...ui.cardMeta, flexShrink: 0 }}>{displayIp}</span>
         )}
         <Badge text={isCompute ? "CN" : "BE"} color={isCompute ? C.warning : C.accent} />
-        <Badge text={node.alive ? "ALIVE" : "DEAD"} color={node.alive ? C.green : "#ef4444"} />
-        <span style={{ fontSize: 10, color: C.text3, marginLeft: 2 }}>{expanded ? "▲" : "▼"}</span>
+        <Badge text={node.alive ? "ALIVE" : "DEAD"} color={node.alive ? C.green : STATUS.danger} />
+        <span style={{ ...ui.caption, marginLeft: 2 }}>{expanded ? "▲" : "▼"}</span>
       </div>
 
       {/* Resource bars — always visible */}
       <div style={{ padding: "4px 12px 8px" }}>
         {node.tablet_count != null && (
-          <div style={{ fontSize: 11, color: C.text3, marginBottom: 4 }}>
+          <div style={{ ...ui.subtleText, marginBottom: 4 }}>
             {node.tablet_count.toLocaleString()} tablets
           </div>
         )}
@@ -222,7 +246,7 @@ function BENodeCard({ node, expanded, onToggle }: { node: BENodeInfo; expanded: 
           {node.last_start_time && <Detail label="Last Start" value={formatRelativeTime(node.last_start_time)} />}
           {node.version && <Detail label="Version" value={node.version} />}
           {node.err_msg && (
-            <div style={{ gridColumn: "1 / -1", color: "#ef4444", fontSize: 12, marginTop: 4, padding: "4px 8px", background: "rgba(239,68,68,0.08)", borderRadius: 4 }}>
+            <div style={{ ...ui.dangerText, gridColumn: "1 / -1", marginTop: 4, padding: "4px 8px", background: "rgba(239,68,68,0.08)", borderRadius: 4 }}>
               {node.err_msg}
             </div>
           )}
@@ -236,8 +260,8 @@ function BENodeCard({ node, expanded, onToggle }: { node: BENodeInfo; expanded: 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div style={{ fontSize: 10, color: C.text3, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 1 }}>{label}</div>
-      <div style={{ fontSize: 12, color: C.text1, fontWeight: 500, wordBreak: "break-all" }}>{value}</div>
+      <div style={{ ...ui.caption, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 1 }}>{label}</div>
+      <div style={{ ...ui.bodyText, fontWeight: 500, wordBreak: "break-all" }}>{value}</div>
     </div>
   );
 }
@@ -246,9 +270,18 @@ function Detail({ label, value }: { label: string; value: string }) {
 function SectionHeader({ title, count }: { title: string; count: number }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0 6px", borderBottom: `1px solid ${C.border}`, marginBottom: 8 }}>
-      <span style={{ fontSize: 13, fontWeight: 700, color: C.text1 }}>{title}</span>
-      <span style={{ fontSize: 11, color: C.text3 }}>({count})</span>
+      <span style={ui.sectionTitle}>{title}</span>
+      <span style={ui.sectionCount}>({count})</span>
     </div>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: string }) {
+  return (
+    <span style={ui.summaryRow}>
+      <span style={ui.summaryLabel}>{label}</span>
+      <span style={ui.summaryValue}>{value}</span>
+    </span>
   );
 }
 
@@ -350,7 +383,7 @@ export default function ClusterDrawer() {
             <line x1="6" y1="7" x2="6.01" y2="7"/>
             <line x1="6" y1="17" x2="6.01" y2="17"/>
           </svg>
-          <span style={{ fontSize: 15, fontWeight: 700, color: C.text1, flex: 1 }}>Cluster Status</span>
+          <span style={{ ...ui.h1, flex: 1 }}>Cluster Status</span>
 
           {/* Refresh button */}
           <button
@@ -379,7 +412,7 @@ export default function ClusterDrawer() {
               display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18,
               fontFamily: "inherit",
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; e.currentTarget.style.borderColor = "#ef4444"; }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = STATUS.danger; e.currentTarget.style.borderColor = STATUS.danger; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = C.text2; e.currentTarget.style.borderColor = C.borderLight; }}
           >
             <InlineIcon type="close" size={16} />
@@ -396,12 +429,12 @@ export default function ClusterDrawer() {
           {!loading && error && (
             <div style={{
               padding: 12, borderRadius: 6, border: `1px solid ${C.borderLight}`,
-              background: "rgba(239,68,68,0.06)", fontSize: 12, color: C.text2, textAlign: "center",
+              background: "rgba(239,68,68,0.06)", ...ui.metaText, textAlign: "center",
             }}>
               Failed to load cluster status.{" "}
               <button
                 onClick={() => fetchData()}
-                style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 12, padding: 0, fontFamily: "inherit" }}
+                style={{ ...ui.bodyText, background: "none", border: "none", color: C.accent, cursor: "pointer", padding: 0, fontFamily: "inherit" }}
               >
                 Retry
               </button>
@@ -417,7 +450,7 @@ export default function ClusterDrawer() {
                   padding: 10, marginBottom: 12, borderRadius: 6,
                   border: `1px solid ${C.accent}40`,
                   background: `${C.accent}12`,
-                  fontSize: 12, color: C.text1, display: "flex", gap: 8, alignItems: "flex-start",
+                  ...ui.bannerText, display: "flex", gap: 8, alignItems: "flex-start",
                 }}>
                   <span style={{ display: "inline-flex", paddingTop: 1 }}><InlineIcon type="info" size={14} /></span>
                   <span>
@@ -433,7 +466,7 @@ export default function ClusterDrawer() {
                   padding: 10, marginBottom: 12, borderRadius: 6,
                   border: `1px solid ${C.warning}40`,
                   background: `${C.warning}12`,
-                  fontSize: 12, color: C.text1, display: "flex", gap: 8, alignItems: "flex-start",
+                  ...ui.bannerText, display: "flex", gap: 8, alignItems: "flex-start",
                 }}>
                   <span style={{ display: "inline-flex", paddingTop: 1 }}><InlineIcon type="warning" size={14} /></span>
                   <span>{data.metrics_warning}</span>
@@ -445,78 +478,69 @@ export default function ClusterDrawer() {
                 background: C.card, border: `1px solid ${C.borderLight}`, borderRadius: 8,
                 padding: 14, marginBottom: 14,
               }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px", alignItems: "center" }}>
                   {/* FE alive */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ ...ui.summaryCell, gap: 6 }}>
                     <StatusDot alive={metrics!.fe_alive === metrics!.fe_total} />
-                    <span style={{ fontSize: 13, color: C.text1 }}>
-                      FE <strong>{metrics!.fe_alive}/{metrics!.fe_total}</strong> alive
-                    </span>
+                    <SummaryStat label="FE Alive" value={`${metrics!.fe_alive}/${metrics!.fe_total}`} />
                   </div>
                   {/* BE alive (only if any BE exists) */}
                   {metrics!.be_total > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ ...ui.summaryCell, gap: 6 }}>
                       <StatusDot alive={metrics!.be_alive === metrics!.be_total} />
-                      <span style={{ fontSize: 13, color: C.text1 }}>
-                        BE <strong>{metrics!.be_alive}/{metrics!.be_total}</strong> alive
-                      </span>
+                      <SummaryStat label="BE Alive" value={`${metrics!.be_alive}/${metrics!.be_total}`} />
                     </div>
                   )}
                   {/* CN alive (only if any CN exists) */}
                   {metrics!.cn_total > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ ...ui.summaryCell, gap: 6 }}>
                       <StatusDot alive={metrics!.cn_alive === metrics!.cn_total} />
-                      <span style={{ fontSize: 13, color: C.text1 }}>
-                        CN <strong>{metrics!.cn_alive}/{metrics!.cn_total}</strong> alive
-                      </span>
+                      <SummaryStat label="CN Alive" value={`${metrics!.cn_alive}/${metrics!.cn_total}`} />
                     </div>
                   )}
                   {/* Tablets */}
                   {metrics!.total_tablets != null && (
-                    <div style={{ fontSize: 12, color: C.text2 }}>
-                      <span style={{ color: C.text3 }}>Tablets: </span>
-                      <strong style={{ color: C.text1 }}>{metrics!.total_tablets.toLocaleString()}</strong>
+                    <div style={ui.summaryCell}>
+                      <SummaryStat label="Tablets" value={metrics!.total_tablets.toLocaleString()} />
                     </div>
                   )}
                   {/* Data used (BE only) */}
                   {metrics!.total_data_used && (
-                    <div style={{ fontSize: 12, color: C.text2 }}>
-                      <span style={{ color: C.text3 }}>Data Used: </span>
-                      <strong style={{ color: C.text1 }}>{metrics!.total_data_used}</strong>
+                    <div style={ui.summaryCell}>
+                      <SummaryStat label="Data Used" value={metrics!.total_data_used} />
                     </div>
                   )}
                   {/* Avg Disk/Cache — label depends on cluster shape */}
                   {metrics!.avg_disk_used_pct != null && (
-                    <div style={{ fontSize: 12, color: C.text2 }}>
-                      <span style={{ color: C.text3 }}>
-                        {metrics!.be_total > 0 && metrics!.cn_total > 0
-                          ? "Avg Disk/Cache: "
-                          : metrics!.be_total > 0
-                            ? "Avg Disk: "
-                            : "Avg Cache: "}
-                      </span>
-                      <strong style={{ color: C.text1 }}>{metrics!.avg_disk_used_pct.toFixed(1)}%</strong>
+                    <div style={ui.summaryCell}>
+                      <SummaryStat
+                        label={
+                          metrics!.be_total > 0 && metrics!.cn_total > 0
+                            ? "Avg Disk/Cache"
+                            : metrics!.be_total > 0
+                              ? "Avg Disk"
+                              : "Avg Cache"
+                        }
+                        value={`${metrics!.avg_disk_used_pct.toFixed(1)}%`}
+                      />
                     </div>
                   )}
                   {/* Avg CPU (CN only) */}
                   {metrics!.avg_cpu_used_pct != null && (
-                    <div style={{ fontSize: 12, color: C.text2 }}>
-                      <span style={{ color: C.text3 }}>Avg CPU: </span>
-                      <strong style={{ color: C.text1 }}>{metrics!.avg_cpu_used_pct.toFixed(1)}%</strong>
+                    <div style={ui.summaryCell}>
+                      <SummaryStat label="Avg CPU" value={`${metrics!.avg_cpu_used_pct.toFixed(1)}%`} />
                     </div>
                   )}
                   {/* Avg Mem */}
                   {metrics!.avg_mem_used_pct != null && (
-                    <div style={{ fontSize: 12, color: C.text2 }}>
-                      <span style={{ color: C.text3 }}>Avg Mem: </span>
-                      <strong style={{ color: C.text1 }}>{metrics!.avg_mem_used_pct.toFixed(1)}%</strong>
+                    <div style={ui.summaryCell}>
+                      <SummaryStat label="Avg Mem" value={`${metrics!.avg_mem_used_pct.toFixed(1)}%`} />
                     </div>
                   )}
                   {/* Avg FE Heap (from /metrics) */}
                   {metrics!.avg_fe_heap_used_pct != null && (
-                    <div style={{ fontSize: 12, color: C.text2 }}>
-                      <span style={{ color: C.text3 }}>Avg FE Heap: </span>
-                      <strong style={{ color: C.text1 }}>{metrics!.avg_fe_heap_used_pct.toFixed(1)}%</strong>
+                    <div style={ui.summaryCell}>
+                      <SummaryStat label="Avg FE Heap" value={`${metrics!.avg_fe_heap_used_pct.toFixed(1)}%`} />
                     </div>
                   )}
                 </div>
@@ -525,10 +549,10 @@ export default function ClusterDrawer() {
               {/* ── Alerts section ── */}
               {data.has_errors && (
                 <div style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#ef4444", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
-                    <InlineIcon type="warning" size={14} color="#ef4444" />
+                  <div style={{ ...ui.dangerTextStrong, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                    <InlineIcon type="warning" size={14} color={STATUS.danger} />
                     <span>Alerts</span>
-                    <span style={{ color: C.text3, fontWeight: 400 }}>
+                    <span style={{ ...ui.subtleText, fontWeight: 400 }}>
                       ({[...frontends, ...backends].filter((n) => !n.alive || n.err_msg).length})
                     </span>
                   </div>
@@ -539,11 +563,11 @@ export default function ClusterDrawer() {
                     <div key={`${alert.full}:${alert.ip}`} style={{
                       display: "flex", alignItems: "center", gap: 8, padding: "6px 10px",
                       borderRadius: 4, border: "1px solid rgba(239,68,68,0.3)",
-                      background: "rgba(239,68,68,0.06)", marginBottom: 4, fontSize: 12,
+                      background: "rgba(239,68,68,0.06)", marginBottom: 4, ...ui.bodyText,
                     }}>
-                      <span title={alert.full} style={{ fontWeight: 600, color: "#ef4444" }}>{alert.name}</span>
-                      <span style={{ color: C.text3 }}>{alert.ip}</span>
-                      <span style={{ color: C.text2, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{alert.msg}</span>
+                      <span title={alert.full} style={{ fontWeight: 600, color: STATUS.danger }}>{alert.name}</span>
+                      <span style={ui.subtleText}>{alert.ip}</span>
+                      <span style={{ ...ui.metaText, flex: 1, ...ui.ellipsis }}>{alert.msg}</span>
                     </div>
                   ))}
                 </div>
@@ -552,7 +576,7 @@ export default function ClusterDrawer() {
               {/* ── Frontend Nodes ── */}
               <SectionHeader title="Frontend Nodes" count={frontends.length} />
               {frontends.length === 0 ? (
-                <div style={{ fontSize: 12, color: C.text3, padding: "8px 0" }}>No nodes reported</div>
+                <div style={{ ...ui.subtleText, padding: "8px 0" }}>No nodes reported</div>
               ) : (
                 frontends.map((node) => {
                   const id = `fe:${node.name}`;
@@ -580,7 +604,7 @@ export default function ClusterDrawer() {
                   count={backends.length}
                 />
                 {backends.length === 0 ? (
-                  <div style={{ fontSize: 12, color: C.text3, padding: "8px 0" }}>No nodes reported</div>
+                  <div style={{ ...ui.subtleText, padding: "8px 0" }}>No nodes reported</div>
                 ) : (
                   backends.map((node) => {
                     const id = `${node.node_type === "compute" ? "cn" : "be"}:${node.name}`;
