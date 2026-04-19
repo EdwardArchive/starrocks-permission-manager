@@ -14,6 +14,19 @@ logger = logging.getLogger(__name__)
 ACCESS_DENIED_ERRNOS = frozenset({1044, 1045, 1142, 1227})
 
 
+def is_access_denied(exc: Exception) -> bool:
+    """True if exc represents a database access-denied error.
+
+    Checks errno first, falls back to StarRocks' canonical "Access denied"
+    prefix since some access-denied errors come back as ProgrammingError
+    without the standard MySQL errno.
+    """
+    errno = getattr(exc, "errno", None)
+    if errno in ACCESS_DENIED_ERRNOS:
+        return True
+    return "Access denied" in str(exc)
+
+
 def can_access_sys(conn) -> bool:
     """Return True only if the connection can query all three sys tables used by admin routes.
 

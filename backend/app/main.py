@@ -23,7 +23,7 @@ from app.routers import (
     user_search,
 )
 from app.utils.session_store import session_store
-from app.utils.sys_access import ACCESS_DENIED_ERRNOS
+from app.utils.sys_access import is_access_denied
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +74,7 @@ app.include_router(cluster.router, prefix="/api/cluster", tags=["cluster"])
 
 @app.exception_handler(mysql.connector.errors.Error)
 async def mysql_error_handler(request: Request, exc: mysql.connector.errors.Error):
-    errno = getattr(exc, "errno", None)
-    if errno in ACCESS_DENIED_ERRNOS:
+    if is_access_denied(exc):
         logger.warning("DB access denied for %s: %s", request.url.path, exc)
         return JSONResponse(
             status_code=403,

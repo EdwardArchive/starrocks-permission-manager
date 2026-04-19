@@ -21,6 +21,7 @@ import ExportPngBtn from "./components/common/ExportPngBtn";
 import PermissionDetailTab from "./components/tabs/PermissionDetailTab";
 import InventoryTab from "./components/tabs/InventoryTab";
 import ClusterDrawer from "./components/cluster/ClusterDrawer";
+import { Loader } from "./components/tabs/inventory-ui";
 
 const TAB_CONFIG: { id: TabId; label: string; icon: string; disabled?: boolean; adminOnly?: boolean }[] = [
   { id: "obj", label: "Object Hierarchy", icon: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>' },
@@ -116,6 +117,7 @@ export default function App() {
   useEffect(() => { setDagData(rawDag); }, [dagKey, dagState.cache]);
 
   if (!isLoggedIn) return <LoginForm />;
+  if (!user) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh" }}><Loader /></div>;  // restoring session
 
   const direction = "TB";
 

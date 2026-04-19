@@ -149,6 +149,8 @@ function BENodeCard({ node, expanded, onToggle }: { node: BENodeInfo; expanded: 
     node.data_used_capacity && node.total_capacity
       ? `${node.data_used_capacity} / ${node.total_capacity}`
       : null;
+  const displayName = shortenNodeName(node.name);
+  const displayIp = shortenNodeName(node.ip);
 
   return (
     <div style={{ border: `1px solid ${node.alive ? C.borderLight : "#ef4444"}`, borderRadius: 6, marginBottom: 6, overflow: "hidden", background: C.card }}>
@@ -162,23 +164,15 @@ function BENodeCard({ node, expanded, onToggle }: { node: BENodeInfo; expanded: 
         }}
       >
         <StatusDot alive={node.alive} />
-        {(() => {
-          const dn = shortenNodeName(node.name);
-          const di = shortenNodeName(node.ip);
-          return (
-            <>
-              <span
-                title={node.name}
-                style={{ fontSize: 13, fontWeight: 600, color: C.text1, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-              >
-                {dn}
-              </span>
-              {di !== dn && (
-                <span title={node.ip} style={{ fontSize: 12, color: C.text2, flexShrink: 0 }}>{di}</span>
-              )}
-            </>
-          );
-        })()}
+        <span
+          title={node.name}
+          style={{ fontSize: 13, fontWeight: 600, color: C.text1, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        >
+          {displayName}
+        </span>
+        {displayIp !== displayName && (
+          <span title={node.ip} style={{ fontSize: 12, color: C.text2, flexShrink: 0 }}>{displayIp}</span>
+        )}
         <Badge text={isCompute ? "CN" : "BE"} color={isCompute ? C.warning : C.accent} />
         <Badge text={node.alive ? "ALIVE" : "DEAD"} color={node.alive ? C.green : "#ef4444"} />
         <span style={{ fontSize: 10, color: C.text3, marginLeft: 2 }}>{expanded ? "▲" : "▼"}</span>

@@ -34,7 +34,7 @@ from app.models.schemas import (
 )
 from app.services.fe_metrics import FEMetricsData, FEMetricsError, fetch_fe_metrics
 from app.services.starrocks_client import execute_query
-from app.utils.sys_access import ACCESS_DENIED_ERRNOS
+from app.utils.sys_access import is_access_denied
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ def _parse_float(val) -> float | None:
     if val is None:
         return None
     try:
-        return float(str(val).strip().rstrip(" %").rstrip("%").strip())
+        return float(str(val).strip().rstrip("% "))
     except (ValueError, TypeError):
         return None
 
@@ -289,15 +289,6 @@ def _compute_metrics(
     )
 
 
-def _is_access_denied(exc: Exception) -> bool:
-    errno = getattr(exc, "errno", None)
-    if errno in ACCESS_DENIED_ERRNOS:
-        return True
-    # Fallback substring check — StarRocks sometimes returns access-denied as ProgrammingError
-    # without a standard MySQL errno; match its canonical prefix only.
-    return "Access denied" in str(exc)
-
-
 _DEFAULT_FE_HTTP_PORT = 8030
 _METRICS_TIMEOUT_SECONDS = 2.0
 
@@ -399,7 +390,7 @@ def get_cluster_status(
     try:
         fe_rows = execute_query(conn, "SHOW FRONTENDS")
     except (mysql.connector.errors.ProgrammingError, mysql.connector.errors.DatabaseError) as exc:
-        if _is_access_denied(exc):
+        if is_access_denied(exc):
             mode = "limited"
             logger.debug("SHOW FRONTENDS denied for %s → limited mode", username)
         else:
@@ -410,7 +401,7 @@ def get_cluster_status(
         try:
             be_rows = execute_query(conn, "SHOW BACKENDS")
         except (mysql.connector.errors.ProgrammingError, mysql.connector.errors.DatabaseError) as exc:
-            if _is_access_denied(exc):
+            if is_access_denied(exc):
                 mode = "limited"
                 be_rows = []
                 logger.debug("SHOW BACKENDS denied — downgrading to limited mode")
@@ -421,7 +412,7 @@ def get_cluster_status(
         try:
             cn_rows = execute_query(conn, "SHOW COMPUTE NODES")
         except (mysql.connector.errors.ProgrammingError, mysql.connector.errors.DatabaseError) as exc:
-            if _is_access_denied(exc):
+            if is_access_denied(exc):
                 # CN privilege doesn't exist separately in practice; downgrade too.
                 mode = "limited"
                 be_rows = []
