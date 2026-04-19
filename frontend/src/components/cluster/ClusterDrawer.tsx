@@ -260,7 +260,7 @@ export default function ClusterDrawer() {
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const fetchData = useCallback(() => {
+  const fetchData = useCallback((refresh = false) => {
     // Cancel any in-flight request
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -269,7 +269,7 @@ export default function ClusterDrawer() {
     setLoading(true);
     setError(null);
 
-    getClusterStatus(controller.signal)
+    getClusterStatus(controller.signal, refresh)
       .then((res) => {
         setData(res);
         setLoading(false);
@@ -354,7 +354,7 @@ export default function ClusterDrawer() {
 
           {/* Refresh button */}
           <button
-            onClick={fetchData}
+            onClick={() => fetchData(true)}
             disabled={loading}
             title="Refresh"
             style={{
@@ -400,7 +400,7 @@ export default function ClusterDrawer() {
             }}>
               Failed to load cluster status.{" "}
               <button
-                onClick={fetchData}
+                onClick={() => fetchData()}
                 style={{ background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 12, padding: 0, fontFamily: "inherit" }}
               >
                 Retry

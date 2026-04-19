@@ -22,6 +22,7 @@ from app.routers import (
     user_roles,
     user_search,
 )
+from app.routers.cluster import shutdown_metrics_executor
 from app.utils.session_store import session_store
 from app.utils.sys_access import is_access_denied
 
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown
     cleanup_task.cancel()
+    shutdown_metrics_executor()
 
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)

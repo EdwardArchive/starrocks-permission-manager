@@ -709,5 +709,87 @@ describe("ClusterDrawer", () => {
       screen.getByTitle("Refresh").click();
       expect(mockGetClusterStatus).toHaveBeenCalledTimes(2);
     });
+
+    it("refresh button passes refresh=true to getClusterStatus", async () => {
+      useClusterStore.setState({ isOpen: true });
+      render(<ClusterDrawer />);
+      await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument());
+
+      screen.getByTitle("Refresh").click();
+      await waitFor(() => expect(mockGetClusterStatus).toHaveBeenCalledTimes(2));
+
+      // Second call must have refresh=true as its second argument
+      expect(mockGetClusterStatus.mock.calls[1][1]).toBe(true);
+    });
+  });
+
+  describe("CN-only cluster", () => {
+    it("renders summary card without crashing and shows CN counts", async () => {
+      mockGetClusterStatus.mockResolvedValue(
+        makeClusterData({
+          backends: [
+            makeBENode({ node_type: "compute", name: "cn-01", ip: "10.0.0.3" }),
+            makeBENode({ node_type: "compute", name: "cn-02", ip: "10.0.0.4" }),
+          ],
+          metrics: {
+            fe_total: 1, fe_alive: 1, be_total: 0, be_alive: 0,
+            cn_total: 2, cn_alive: 2,
+            total_tablets: null, total_data_used: null,
+            avg_disk_used_pct: null, avg_cpu_used_pct: null,
+            avg_mem_used_pct: null, avg_fe_heap_used_pct: null,
+          },
+        }),
+      );
+      useClusterStore.setState({ isOpen: true });
+      render(<ClusterDrawer />);
+      await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument());
+
+      // CN 2/2 alive is shown in summary
+      expect(screen.getByText(/2\/2/)).toBeInTheDocument();
+      // No BE row since be_total === 0
+      expect(screen.queryByText("BE")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("AbortController on unmount", () => {
+    it("calls abort when component unmounts while open", async () => {
+      const abortSpy = vi.spyOn(AbortController.prototype, "abort");
+
+      useClusterStore.setState({ isOpen: true });
+      const { unmount } = render(<ClusterDrawer />);
+
+      unmount();
+
+      expect(abortSpy).toHaveBeenCalled();
+      abortSpy.mockRestore();
+    });
+  });
+
+  describe("limited-mode FE label", () => {
+    it("displays 'FE (connected)' name and shortened host IP in limited mode", async () => {
+      mockGetClusterStatus.mockResolvedValue(
+        makeClusterData({
+          mode: "limited",
+          frontends: [
+            makeFENode({ name: "FE (connected)", ip: "starrocks.example.com" }),
+          ],
+          metrics: {
+            fe_total: 1, fe_alive: 1, be_total: 0, be_alive: 0,
+            cn_total: 0, cn_alive: 0,
+            total_tablets: null, total_data_used: null,
+            avg_disk_used_pct: null, avg_cpu_used_pct: null,
+            avg_mem_used_pct: null, avg_fe_heap_used_pct: null,
+          },
+        }),
+      );
+      useClusterStore.setState({ isOpen: true });
+      render(<ClusterDrawer />);
+      await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument());
+
+      // Node name displayed as-is (no mangling)
+      expect(screen.getByText("FE (connected)")).toBeInTheDocument();
+      // Shortened IP (first DNS label) shown separately
+      expect(screen.getByText("starrocks")).toBeInTheDocument();
+    });
   });
 });

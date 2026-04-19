@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -153,7 +155,7 @@ class FENodeInfo(BaseModel):
 class BENodeInfo(BaseModel):
     name: str
     ip: str
-    node_type: str = "backend"  # "backend" (SHOW BACKENDS) or "compute" (SHOW COMPUTE NODES)
+    node_type: Literal["backend", "compute"] = "backend"  # "backend" (SHOW BACKENDS) or "compute" (SHOW COMPUTE NODES)
     heartbeat_port: int | None = None
     be_port: int | None = None
     http_port: int | None = None
@@ -195,5 +197,5 @@ class ClusterStatusResponse(BaseModel):
     backends: list[BENodeInfo]
     metrics: ClusterMetrics
     has_errors: bool
-    mode: str = "full"  # "full" = SHOW succeeded; "limited" = access-denied fallback
+    mode: Literal["full", "limited"] = "full"  # "full" = SHOW succeeded; "limited" = access-denied fallback
     metrics_warning: str | None = None  # set iff all FE /metrics fetches failed

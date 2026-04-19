@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 import mysql.connector.errors
 import pytest
 
@@ -10,7 +12,16 @@ from app.services.fe_metrics import FEMetricsData, FEMetricsError
 
 @pytest.fixture(autouse=True)
 def _stub_fe_metrics(monkeypatch):
-    """Default: return a deterministic FEMetricsData so tests don't hit the network."""
+    """Default: return a deterministic FEMetricsData so tests don't hit the network.
+
+    Also replaces the module-level _metrics_executor with a fresh one for each test.
+    The FastAPI lifespan shutdown (triggered by TestClient.__exit__) calls
+    shutdown_metrics_executor(), which permanently shuts down the module-level
+    ThreadPoolExecutor.  Without this replacement the second test in the session
+    would see a shut-down executor and raise RuntimeError.
+    """
+    import app.routers.cluster as cluster_mod
+
     def _fake(host, http_port, timeout=2.0):
         return FEMetricsData(
             heap_used_pct=5.0,
@@ -20,8 +31,12 @@ def _stub_fe_metrics(monkeypatch):
             gc_old_time_ms=0,
             query_p99_ms=12.3,
         )
-    import app.routers.cluster as cluster_mod
+
     monkeypatch.setattr(cluster_mod, "fetch_fe_metrics", _fake)
+    # Provide a fresh executor so that lifespan-shutdown from a previous test
+    # doesn't leave the singleton in a shut-down state.
+    fresh_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="fe-metrics-test")
+    monkeypatch.setattr(cluster_mod, "_metrics_executor", fresh_executor)
 
 
 # ── Happy path ──
@@ -176,6 +191,10 @@ def test_cluster_status_limited_mode(client, auth_header, monkeypatch):
     assert data["backends"] == []
     fe = data["frontends"][0]
     assert fe["role"] == "UNKNOWN"
+    # M3: placeholder name must be the fixed string "FE (connected)"
+    assert fe["name"] == "FE (connected)"
+    # The IP should still reflect the login host so the UI can show the real address
+    assert fe["ip"] == "test-sr-host"
     # /metrics stub still fires on the placeholder FE
     assert fe["jvm_heap_used_pct"] == pytest.approx(5.0)
     cluster_mod._cluster_cache.clear()
@@ -284,6 +303,143 @@ def test_cluster_status_cached(client, auth_header, monkeypatch):
 
     # First request: 3 SHOW calls (SHOW FRONTENDS + SHOW BACKENDS + SHOW COMPUTE NODES).
     # Second request: served from cache → still 3 total.
-    # (SET ROLE ALL runs each time but it is cheap, so we don't count it.)
+    # Note: SET ROLE ALL is no longer called inside get_cluster_status() (M2 — removed
+    # the duplicate call; get_db() already runs it). We only count SHOW-prefixed queries.
     assert show_calls == 3
+    cluster_mod._cluster_cache.clear()
+
+
+# ── H2: ?refresh=1 bypasses cache ──
+
+def test_cluster_status_refresh_bypass(client, auth_header, monkeypatch):
+    """?refresh=1 must skip the cache read and re-execute the SHOW queries.
+
+    Sequence:
+      1. Normal call  → populates cache (3 SHOW calls)
+      2. refresh call → cache read skipped, queries re-run (3 more = 6 total)
+      3. Normal call  → cache hit from refresh's write-back (still 6 total)
+    """
+    import app.routers.cluster as cluster_mod
+
+    show_calls = 0
+    original = cluster_mod.execute_query
+
+    def _counting(conn, sql, params=None):
+        nonlocal show_calls
+        if sql.strip().upper().startswith("SHOW "):
+            show_calls += 1
+        return original(conn, sql, params)
+
+    monkeypatch.setattr(cluster_mod, "execute_query", _counting)
+    cluster_mod._cluster_cache.clear()
+
+    # 1. Normal call — populates cache.
+    resp1 = client.get("/api/cluster/status", headers=auth_header)
+    assert resp1.status_code == 200
+    after_first = show_calls
+    assert after_first == 3  # SHOW FRONTENDS + SHOW BACKENDS + SHOW COMPUTE NODES
+
+    # 2. Refresh call — bypasses cache read, runs queries again.
+    resp2 = client.get("/api/cluster/status?refresh=1", headers=auth_header)
+    assert resp2.status_code == 200
+    after_refresh = show_calls
+    assert after_refresh == 6  # 3 new SHOW calls on top of the first 3
+
+    # 3. Normal call — served from the cache written by the refresh call.
+    resp3 = client.get("/api/cluster/status", headers=auth_header)
+    assert resp3.status_code == 200
+    assert show_calls == 6  # count unchanged — came from cache
+
+    cluster_mod._cluster_cache.clear()
+
+
+# ── SHOW BACKENDS access-denied: frontends populated, backends empty ──
+
+def test_cluster_status_be_only_denied(client, auth_header, monkeypatch):
+    """SHOW FRONTENDS succeeds but SHOW BACKENDS raises access-denied.
+
+    Expected: 200, mode='full', frontends populated from fixture, backends=[].
+    (The handler downgrades to limited mode when BACKENDS is denied, so we
+    verify the limited-mode path only clears backends not frontends.)
+    """
+    import app.routers.cluster as cluster_mod
+
+    access_denied = mysql.connector.errors.ProgrammingError(
+        msg="Access denied for user 'viewer'@'%'",
+        errno=1044,
+    )
+    original = cluster_mod.execute_query
+
+    def _deny_backends(conn, sql, params=None):
+        up = sql.strip().upper()
+        if up.startswith("SHOW BACKENDS"):
+            raise access_denied
+        return original(conn, sql, params)
+
+    monkeypatch.setattr(cluster_mod, "execute_query", _deny_backends)
+    cluster_mod._cluster_cache.clear()
+
+    resp = client.get("/api/cluster/status", headers=auth_header)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # When SHOW BACKENDS is denied the router downgrades to limited mode.
+    # In limited mode frontends is replaced by the placeholder FE.
+    assert data["mode"] == "limited"
+    assert len(data["frontends"]) == 1
+    assert data["frontends"][0]["name"] == "FE (connected)"
+    assert data["backends"] == []
+
+    cluster_mod._cluster_cache.clear()
+
+
+# ── SHOW COMPUTE NODES non-access-denied error: warning logged, CN absent ──
+
+def test_cluster_status_cn_silent_on_generic_error(client, auth_header, monkeypatch, caplog):
+    """SHOW COMPUTE NODES fails with a non-access-denied error.
+
+    Expected: 200, FE/BE still present, CN absent, logger.warning fired with
+    a message containing 'SHOW COMPUTE NODES failed'.
+    """
+    import logging
+
+    import app.routers.cluster as cluster_mod
+
+    generic_err = mysql.connector.errors.ProgrammingError(
+        msg="Connection lost",
+        errno=2006,
+    )
+    original = cluster_mod.execute_query
+
+    def _fail_cn(conn, sql, params=None):
+        up = sql.strip().upper()
+        if up.startswith("SHOW COMPUTE NODES"):
+            raise generic_err
+        return original(conn, sql, params)
+
+    monkeypatch.setattr(cluster_mod, "execute_query", _fail_cn)
+    cluster_mod._cluster_cache.clear()
+
+    with caplog.at_level(logging.WARNING, logger="app.routers.cluster"):
+        resp = client.get("/api/cluster/status", headers=auth_header)
+
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # Full mode: SHOW FRONTENDS and SHOW BACKENDS succeeded.
+    assert data["mode"] == "full"
+    # FE nodes from fixture
+    assert len(data["frontends"]) == 2
+    # BE nodes from fixture (CN absent because SHOW COMPUTE NODES failed)
+    be_nodes = [b for b in data["backends"] if b["node_type"] == "backend"]
+    cn_nodes = [b for b in data["backends"] if b["node_type"] == "compute"]
+    assert len(be_nodes) == 2
+    assert len(cn_nodes) == 0
+
+    # logger.warning must have been emitted with the expected substring
+    warning_msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("SHOW COMPUTE NODES failed" in m for m in warning_msgs), (
+        f"Expected 'SHOW COMPUTE NODES failed' in warnings; got: {warning_msgs}"
+    )
+
     cluster_mod._cluster_cache.clear()

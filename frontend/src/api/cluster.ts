@@ -7,5 +7,8 @@
 import { apiFetch } from "./client";
 import type { ClusterStatusResponse } from "../types";
 
-export const getClusterStatus = (signal?: AbortSignal) =>
-  apiFetch<ClusterStatusResponse>("/cluster/status", { signal });
+export const getClusterStatus = (signal?: AbortSignal, refresh?: boolean) =>
+  apiFetch<ClusterStatusResponse>(
+    refresh ? "/cluster/status?refresh=1" : "/cluster/status",
+    { signal },
+  );
