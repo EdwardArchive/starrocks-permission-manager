@@ -8,6 +8,7 @@ interface ClusterState {
   expandedNodes: Set<string>;
   toggleNodeExpansion: (id: string) => void;
   collapseAll: () => void;
+  reset: () => void;
 }
 
 export const useClusterStore = create<ClusterState>((set) => ({
@@ -24,4 +25,5 @@ export const useClusterStore = create<ClusterState>((set) => ({
       return { expandedNodes: next };
     }),
   collapseAll: () => set({ expandedNodes: new Set<string>() }),
+  reset: () => set({ isOpen: false, expandedNodes: new Set<string>() }),
 }));

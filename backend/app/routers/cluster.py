@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import mysql.connector.errors
 from cachetools import TTLCache
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.config import settings
 from app.dependencies import get_credentials, get_db
@@ -40,8 +40,16 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # ── TTL cache (per username) ──
-_cluster_cache: TTLCache = TTLCache(maxsize=8, ttl=settings.cache_ttl_seconds)
+_cluster_cache: TTLCache = TTLCache(maxsize=256, ttl=settings.cache_ttl_seconds)
 _cluster_cache_lock = threading.Lock()
+
+# Module-level executor — reused across requests to avoid per-request thread-pool creation overhead.
+_metrics_executor = ThreadPoolExecutor(max_workers=6, thread_name_prefix="fe-metrics")
+
+
+def shutdown_metrics_executor() -> None:
+    """Shutdown the module-level FE metrics executor. Called from FastAPI lifespan."""
+    _metrics_executor.shutdown(wait=False)
 
 
 # ── Parse helpers ──
@@ -296,11 +304,14 @@ _METRICS_TIMEOUT_SECONDS = 2.0
 def _limited_mode_fe(host: str) -> FENodeInfo:
     """Build a best-effort FENodeInfo for non-cluster_admin users.
 
-    Only fields we can know without SHOW FRONTENDS: host/port and a placeholder
-    role. Resource fields are filled in afterwards from /metrics.
+    `host` is the StarRocks address the caller already authenticated against
+    (from `LoginRequest.host`, validated by the MySQL credential handshake in
+    `get_connection`). `_inject_metrics` only reaches `http://{host}:8030/metrics`
+    after that handshake succeeded — no new SSRF surface beyond the existing SR
+    connection path.
     """
     return FENodeInfo(
-        name=host,
+        name="FE (connected)",
         ip=host,
         http_port=_DEFAULT_FE_HTTP_PORT,
         role="UNKNOWN",
@@ -322,19 +333,21 @@ def _inject_metrics(frontends: list[FENodeInfo]) -> str | None:
         port = fe.http_port or _DEFAULT_FE_HTTP_PORT
         return fe, fetch_fe_metrics(fe.ip, port, timeout=_METRICS_TIMEOUT_SECONDS)
 
+    # Submit all probes to the module-level executor; collect futures in order.
     any_success = False
-    with ThreadPoolExecutor(max_workers=min(3, len(frontends))) as pool:
-        for fe, result in pool.map(_probe, frontends):
-            if isinstance(result, FEMetricsData):
-                any_success = True
-                fe.jvm_heap_used_pct = result.heap_used_pct
-                fe.gc_young_count = result.gc_young_count
-                fe.gc_young_time_ms = result.gc_young_time_ms
-                fe.gc_old_count = result.gc_old_count
-                fe.gc_old_time_ms = result.gc_old_time_ms
-                fe.query_p99_ms = result.query_p99_ms
-            else:
-                fe.metrics_error = f"{result.reason}: {result.message}"
+    futures = [_metrics_executor.submit(_probe, fe) for fe in frontends]
+    for future in futures:
+        fe, result = future.result()
+        if isinstance(result, FEMetricsData):
+            any_success = True
+            fe.jvm_heap_used_pct = result.heap_used_pct
+            fe.gc_young_count = result.gc_young_count
+            fe.gc_young_time_ms = result.gc_young_time_ms
+            fe.gc_old_count = result.gc_old_count
+            fe.gc_old_time_ms = result.gc_old_time_ms
+            fe.query_p99_ms = result.query_p99_ms
+        else:
+            fe.metrics_error = f"{result.reason}: {result.message}"
 
     if not any_success:
         return (
@@ -349,12 +362,16 @@ def _inject_metrics(frontends: list[FENodeInfo]) -> str | None:
 def get_cluster_status(
     conn=Depends(get_db),
     credentials: dict = Depends(get_credentials),
+    refresh: bool = Query(False, description="Bypass per-user cache and force a live query"),
 ):
     """Return FE/BE/CN inventory + resource metrics.
 
     No require_admin guard — any logged-in user may call this. When StarRocks
     denies SHOW FRONTENDS (no cluster_admin role), we fall back to a single-FE
     "limited" view so basic cluster health is still visible (common UI).
+
+    Pass `?refresh=1` to bypass the cache for this request; the result is still
+    written back to cache so the next non-refresh call remains fast.
     """
     username = credentials["username"]
     host = credentials.get("host") or ""
@@ -369,17 +386,13 @@ def get_cluster_status(
         with _cluster_cache_lock:
             _cluster_cache[f"cluster_status_{username}:{mode}"] = resp
 
-    # Fast path: serve either mode from cache if present.
-    for cached_mode in ("full", "limited"):
-        hit = _cached(cached_mode)
+    # Fast path: serve from cache if present (skipped when refresh=True).
+    if not refresh:
+        hit = _cached("full") or _cached("limited")
         if hit is not None:
             return hit
 
-    # Activate all granted roles so non-default roles like cluster_admin apply.
-    try:
-        execute_query(conn, "SET ROLE ALL")
-    except Exception:
-        logger.debug("Failed to SET ROLE ALL for user %s", username)
+    # get_db() already runs SET ROLE ALL; no need to repeat it here.
 
     mode = "full"
     fe_rows: list[dict] = []
@@ -419,7 +432,7 @@ def get_cluster_status(
                 cn_rows = []
                 logger.debug("SHOW COMPUTE NODES denied — downgrading to limited mode")
             else:
-                logger.debug("SHOW COMPUTE NODES not available: %s", exc)
+                logger.warning("SHOW COMPUTE NODES failed (non-access-denied): %s", exc)
 
     # Build node lists.
     if mode == "full":

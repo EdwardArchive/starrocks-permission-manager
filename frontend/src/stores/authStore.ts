@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { UserInfo } from "../types";
 import { logoutApi } from "../api/auth";
+import { useClusterStore } from "./clusterStore";
 
 interface AuthState {
   token: string | null;
@@ -38,6 +39,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.removeItem("sr_token");
     localStorage.removeItem("sr_connection");
     set({ token: null, user: null, isLoggedIn: false, connectionInfo: null });
+    useClusterStore.getState().reset();
   },
   setConnectionInfo: (host, port) => {
     localStorage.setItem("sr_connection", JSON.stringify({ host, port }));

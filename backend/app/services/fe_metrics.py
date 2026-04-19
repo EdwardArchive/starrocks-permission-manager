@@ -101,14 +101,14 @@ def fetch_fe_metrics(
         return FEMetricsError(reason="timeout", message=f"timeout after {timeout}s")
     except urllib.error.HTTPError as exc:
         return FEMetricsError(reason="http_status", message=f"HTTP {exc.code}")
-    except urllib.error.URLError as exc:
-        return FEMetricsError(reason="network", message=str(exc.reason))
-    except Exception as exc:  # noqa: BLE001  - graceful degradation is the goal
-        logger.debug("Unexpected /metrics fetch error for %s:%s: %s", host, http_port, exc)
+    except (urllib.error.URLError, ConnectionError, OSError) as exc:
+        return FEMetricsError(reason="network", message=str(exc))
+    except Exception as exc:  # noqa: BLE001  - last-resort fallback; unexpected errors logged
+        logger.exception("Unexpected error fetching FE metrics from %s:%s", host, http_port)
         return FEMetricsError(reason="unknown", message=str(exc))
 
     try:
         return _parse_metrics_body(body)
     except Exception as exc:  # noqa: BLE001
-        logger.debug("Parse error for %s:%s: %s", host, http_port, exc)
+        logger.exception("Parse error for FE metrics from %s:%s", host, http_port)
         return FEMetricsError(reason="parse", message=str(exc))

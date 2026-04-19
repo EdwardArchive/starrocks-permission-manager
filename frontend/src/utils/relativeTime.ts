@@ -2,6 +2,12 @@
  * Format an absolute timestamp (ISO 8601 or "YYYY-MM-DD HH:MM:SS") as
  * relative time like "2 minutes ago", "3 days ago", or "just now".
  * Returns an empty string for null/undefined/invalid input.
+ *
+ * **UTC assumption**: Space-separated timestamps (e.g. `"2026-04-19 10:00:00"`)
+ * are assumed to be UTC because that's the StarRocks default. If your StarRocks
+ * server runs in a non-UTC timezone, offsets displayed as "X minutes ago" will
+ * be wrong by the TZ offset. Most production deployments use UTC, so this is
+ * usually a non-issue.
  */
 export function formatRelativeTime(
   input: string | null | undefined,
