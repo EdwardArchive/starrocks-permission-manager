@@ -279,7 +279,7 @@ function SectionHeader({ title, count }: { title: string; count: number }) {
 function SummaryStat({ label, value }: { label: string; value: string }) {
   return (
     <span style={ui.summaryRow}>
-      <span style={ui.summaryLabel}>{label}</span>
+      <span style={ui.summaryLabel}>{label}:</span>
       <span style={ui.summaryValue}>{value}</span>
     </span>
   );
