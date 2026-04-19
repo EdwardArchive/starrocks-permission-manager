@@ -44,7 +44,8 @@ export function Chip({ label, active, onClick, muted }: { label: string; active:
 export function Badge({ text, color }: { text: string; color: string }) {
   return (
     <span style={{
-      display: "inline-block", padding: "1px 7px", borderRadius: 4, fontSize: 10,
+      display: "inline-flex", alignItems: "center", justifyContent: "center",
+      lineHeight: 1, padding: "2px 7px", borderRadius: 4, fontSize: 10,
       fontWeight: 600, background: `${color}18`, color, border: `1px solid ${color}30`,
       textTransform: "uppercase", letterSpacing: "0.03em",
     }}>{text}</span>

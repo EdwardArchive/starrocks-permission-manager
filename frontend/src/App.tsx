@@ -43,6 +43,7 @@ const ROLE_FILTERS = [
   { type: "role", label: "Roles" },
   { type: "user", label: "Users" },
 ];
+const TOP_RAIL_HEIGHT = 56;
 
 export default function App() {
   const { isLoggedIn, user, setAuth } = useAuthStore();
@@ -131,7 +132,7 @@ export default function App() {
         {/* Main content */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {/* Tab bar */}
-          <div style={{ display: "flex", gap: 0, borderBottom: `1px solid ${C.borderLight}`, background: C.card, padding: "0 16px", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, height: TOP_RAIL_HEIGHT, borderBottom: `1px solid ${C.borderLight}`, background: C.card, padding: "0 16px", flexShrink: 0 }}>
             {visibleTabs.map((t) => {
               const active = activeTab === t.id;
               return (
@@ -140,18 +141,47 @@ export default function App() {
                   onClick={() => !t.disabled && setActiveTab(t.id)}
                   disabled={t.disabled}
                   style={{
-                    padding: "12px 20px", fontSize: 13, fontWeight: 500,
+                    position: "relative",
+                    height: TOP_RAIL_HEIGHT,
+                    padding: "0 16px",
+                    fontSize: 13,
+                    fontWeight: active ? 600 : 500,
                     cursor: t.disabled ? "not-allowed" : "pointer",
-                    color: t.disabled ? C.borderLight : active ? C.accent : C.text2,
+                    color: t.disabled ? C.borderLight : active ? C.text1 : C.text2,
                     opacity: t.disabled ? 0.5 : 1,
-                    border: "none", borderBottom: `2px solid ${active && !t.disabled ? C.accent : "transparent"}`,
-                    background: "none", fontFamily: "inherit",
-                    display: "flex", alignItems: "center", gap: 6,
+                    border: "none",
+                    background: "transparent",
+                    fontFamily: "inherit",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    transition: "color 120ms ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (t.disabled || active) return;
+                    e.currentTarget.style.color = C.text1;
+                  }}
+                  onMouseLeave={(e) => {
+                    if (t.disabled || active) return;
+                    e.currentTarget.style.color = C.text2;
                   }}
                 >
-                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: "block" }} dangerouslySetInnerHTML={{ __html: t.icon }} />
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, display: "block", opacity: active ? 1 : 0.85 }} dangerouslySetInnerHTML={{ __html: t.icon }} />
                   <span style={{ whiteSpace: "nowrap", lineHeight: 1 }}>{t.label}</span>
                   {t.disabled && <span style={{ fontSize: 9, color: C.text3, fontWeight: 400 }}>Coming Soon</span>}
+                  {active && !t.disabled && (
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: 12,
+                        right: 12,
+                        bottom: 0,
+                        height: 3,
+                        borderRadius: "3px 3px 0 0",
+                        background: C.accent,
+                      }}
+                    />
+                  )}
                 </button>
               );
             })}

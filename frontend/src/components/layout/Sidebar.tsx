@@ -7,6 +7,8 @@ import { colorizedSvg, NODE_COLORS } from "../dag/nodeIcons";
 import { C } from "../../utils/colors";
 import type { CatalogItem, DatabaseItem, ObjectItem, RoleItem } from "../../types";
 
+const TOP_RAIL_HEIGHT = 56;
+
 /* ── Inline SVG icon (same as mockup: 16x16) ── */
 function Icon({ type, size = 16 }: { type: string; size?: number }) {
   const svg = colorizedSvg(type);
@@ -28,7 +30,10 @@ const S = {
     width: 300, flexShrink: 0, display: "flex" as const, flexDirection: "column" as const,
     borderRight: `1px solid ${C.borderLight}`, background: C.card, overflow: "hidden",
   },
-  searchWrap: { padding: "12px 16px", borderBottom: `1px solid ${C.borderLight}` },
+  searchWrap: {
+    height: TOP_RAIL_HEIGHT, padding: "0 16px", borderBottom: `1px solid ${C.borderLight}`,
+    display: "flex" as const, alignItems: "center" as const,
+  },
   searchInput: {
     width: "100%", padding: "8px 12px", background: C.bg, border: `1px solid ${C.borderLight}`,
     borderRadius: 6, color: C.text1, fontSize: 13, outline: "none", fontFamily: "inherit",
