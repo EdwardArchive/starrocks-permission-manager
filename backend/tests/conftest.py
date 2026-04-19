@@ -231,6 +231,50 @@ DEFAULT_QUERY_MAP: dict[str, list[dict[str, Any]]] = {
     ],
     "SET CATALOG": [],
     "SHOW GRANTS FOR": [],
+    "SHOW FRONTENDS": [
+        {"Name": "fe-01", "IP": "10.0.0.1", "EditLogPort": "9010", "HttpPort": "8030",
+         "QueryPort": "9030", "RpcPort": "9020", "Role": "FOLLOWER", "IsMaster": "true",
+         "ClusterId": "1234", "Join": "true", "Alive": "true",
+         "ReplayedJournalId": "12345", "LastHeartbeat": "2026-04-19 10:00:00",
+         "IsHelper": "true", "ErrMsg": "", "StartTime": "2026-04-15 08:00:00",
+         "Version": "3.2.0"},
+        {"Name": "fe-02", "IP": "10.0.0.2", "EditLogPort": "9010", "HttpPort": "8030",
+         "QueryPort": "9030", "RpcPort": "9020", "Role": "FOLLOWER", "IsMaster": "false",
+         "ClusterId": "1234", "Join": "true", "Alive": "true",
+         "ReplayedJournalId": "12340", "LastHeartbeat": "2026-04-19 10:00:00",
+         "IsHelper": "true", "ErrMsg": "", "StartTime": "2026-04-15 08:00:00",
+         "Version": "3.2.0"},
+    ],
+    "SHOW BACKENDS": [
+        {"BackendId": "10001", "Host": "10.0.1.1", "HeartbeatPort": "9050", "BePort": "9060",
+         "HttpPort": "8040", "BrpcPort": "8060", "LastStartTime": "2026-04-15 08:00:00",
+         "LastHeartbeat": "2026-04-19 10:00:00", "Alive": "true",
+         "SystemDecommissioned": "false", "TabletNum": "1500",
+         "DataUsedCapacity": "256.78 GB", "AvailCapacity": "768 GB", "TotalCapacity": "1.00 TB",
+         "UsedPct": "25.07 %", "MaxDiskUsedPct": "25.07 %", "ErrMsg": "",
+         "Version": "3.2.0", "Status": "OK", "DataTotalCapacity": "1.00 TB",
+         "DataUsedPct": "25.07 %", "CpuCores": "16", "MemUsedPct": "45.2 %",
+         "NumRunningQueries": "2"},
+        {"BackendId": "10002", "Host": "10.0.1.2", "HeartbeatPort": "9050", "BePort": "9060",
+         "HttpPort": "8040", "BrpcPort": "8060", "LastStartTime": "2026-04-10 08:00:00",
+         "LastHeartbeat": "2026-04-19 09:55:00", "Alive": "false",
+         "SystemDecommissioned": "false", "TabletNum": "1200",
+         "DataUsedCapacity": "180.50 GB", "AvailCapacity": "820 GB", "TotalCapacity": "1.00 TB",
+         "UsedPct": "17.63 %", "MaxDiskUsedPct": "17.63 %", "ErrMsg": "Connection refused",
+         "Version": "3.2.0", "Status": "DISCONNECTED", "DataTotalCapacity": "1.00 TB",
+         "DataUsedPct": "17.63 %", "CpuCores": "16", "MemUsedPct": "0.0 %",
+         "NumRunningQueries": "0"},
+    ],
+    "SHOW COMPUTE NODES": [
+        {"ComputeNodeId": "20001", "IP": "10.0.2.1", "HeartbeatPort": "9050", "BePort": "9060",
+         "HttpPort": "8040", "BrpcPort": "8060", "LastStartTime": "2026-04-15 08:00:00",
+         "LastHeartbeat": "2026-04-19 10:00:00", "Alive": "true",
+         "SystemDecommissioned": "false", "ClusterDecommissioned": "false", "ErrMsg": "",
+         "Version": "3.2.0", "CpuCores": "32", "CpuUsedPct": "12.5 %",
+         "MemLimit": "64.0GB", "MemUsedPct": "30.0 %", "NumRunningQueries": "1",
+         "WarehouseName": "default_warehouse", "TabletNum": "278",
+         "DataCacheMetrics": "Status: Normal, DiskUsage: 200MB/10GB, MemUsage: 35.2MB/15.1GB"},
+    ],
 }
 
 
@@ -293,12 +337,14 @@ def client(mock_db, query_map):
     from app.routers.admin_dag import _dag_cache as admin_dag_cache
     from app.routers.user_dag import _dag_cache as user_dag_cache
     from app.services.admin.user_service import _user_cache
+    from app.routers.cluster import _cluster_cache
     _catalog_cache.clear()
     admin_role_cache.clear()
     user_role_cache.clear()
     admin_dag_cache.clear()
     user_dag_cache.clear()
     _user_cache.clear()
+    _cluster_cache.clear()
 
     def _override_credentials(authorization: str = Header(default="")):
         _default = {"host": TEST_HOST, "port": TEST_PORT, "username": TEST_USER,

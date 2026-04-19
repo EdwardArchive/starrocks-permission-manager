@@ -14,6 +14,10 @@ import functionIcon from "../../../icons/function.svg?raw";
 import userIcon from "../../../icons/user.svg?raw";
 import roleIcon from "../../../icons/role.svg?raw";
 import appLogoRaw from "../../../icons/app-logo.svg?raw";
+import infoIcon from "../../../icons/info.svg?raw";
+import warningIcon from "../../../icons/warning.svg?raw";
+import refreshIcon from "../../../icons/refresh.svg?raw";
+import closeIcon from "../../../icons/close.svg?raw";
 
 // Raw SVG strings for inline rendering
 export const NODE_SVG_RAW: Record<string, string> = {
@@ -26,6 +30,10 @@ export const NODE_SVG_RAW: Record<string, string> = {
   function: functionIcon,
   user: userIcon,
   role: roleIcon,
+  info: infoIcon,
+  warning: warningIcon,
+  refresh: refreshIcon,
+  close: closeIcon,
 };
 
 export const APP_LOGO_SVG = appLogoRaw;
@@ -40,6 +48,10 @@ export const NODE_COLORS: Record<string, string> = {
   function: "#14b8a6",
   user: "#0ea5e9",
   role: "#f97316",
+  info: "#3b82f6",
+  warning: "#f59e0b",
+  refresh: "#94a3b8",
+  close: "#94a3b8",
 };
 
 /** Role sub-type colors — used when backend sends metadata.role_category */

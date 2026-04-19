@@ -14,6 +14,7 @@ A web UI for visually exploring user, role, and object permission structures acr
   - **Permission Focus**: Search a user or role → view inheritance DAG + privilege list (admin only)
   - **My Inventory**: Browse all accessible objects by type with detail side panel (Roles, Users, Catalogs, Databases, Tables, MVs, Views, Functions, Resource Groups, Warehouses, etc.)
 - **Admin & Non-Admin Support** — Admin users see all roles/users/objects via `/api/admin/*` routes (sys.* tables). Non-admin users see only their accessible objects and role chain via `/api/user/*` routes (SHOW GRANTS + INFORMATION_SCHEMA). Admin routes enforce `require_admin` (403 for non-admin).
+- **Cluster Status** — Header cluster icon opens a right-side drawer showing FE/BE node health and aggregate metrics. Visible to all logged-in users; requires `cluster_admin` role or SYSTEM OPERATE privilege in StarRocks (non-privileged users see an in-drawer message).
 - **Object Permission Matrix** — Click an object to see a grantee × privilege matrix (Direct/Inherited indicators), with type-specific columns per object type
 - **Implicit USAGE** — TABLE-level grants automatically show implicit DATABASE/CATALOG USAGE access
 - **User/Role Privilege View** — Unified scope-grouped tree (GrantTreeView) across all panels
@@ -146,11 +147,34 @@ Features: text filter, A→Z/Z→A column sorting, pagination (10/25/50/100 per 
 | Feature | Admin (sys.* accessible) | Non-Admin (SHOW GRANTS only) |
 |---------|-------------------------|------------------------------|
 | Object Hierarchy | All objects in cluster | Only accessible objects (SET ROLE ALL) |
-| Role Map | All roles + all users | Own role chain only |
+| Role Map | All roles + all users | Own role chain only (includes implicit `public`) |
 | Permission Focus | Available | Hidden |
 | My Inventory | All roles, all users | Own roles/objects only |
 | Permission Matrix | All grantees shown | Own role chain grantees |
 | Implicit USAGE | Shown on DB/Catalog | Shown on DB/Catalog |
+| Cluster Status drawer | Full FE/BE/CN inventory | Single FE (the one you're connected to) — `mode="limited"` |
+
+#### Admin Detection — what "admin" means in this app
+
+At login the backend runs `SET ROLE ALL` and then checks that your StarRocks account can execute **every** query the admin routes rely on:
+
+1. `SELECT 1 FROM sys.role_edges LIMIT 1`
+2. `SELECT 1 FROM sys.grants_to_users LIMIT 1`
+3. `SELECT 1 FROM sys.grants_to_roles LIMIT 1`
+4. `SHOW ROLES`
+
+If **any** of these fails, you are treated as a non-admin. The simplest way to satisfy all four is to grant either of the built-in roles **`user_admin`** or **`security_admin`** — both give `SELECT` on all three `sys.*` tables *and* the ability to run `SHOW ROLES`.
+
+```sql
+-- Typical admin setup
+GRANT user_admin TO <username>;
+-- or for read-only admins:
+GRANT security_admin TO <username>;
+```
+
+> **Note**: `cluster_admin` alone is **not** enough — it governs `SHOW FRONTENDS` / `SHOW BACKENDS` (used by the cluster drawer) but does not grant the privileges required by the Permission Focus tab or admin-scoped DAG views. If a user has only `cluster_admin`, they see the common UI plus the full cluster drawer, but not the admin tabs.
+
+If you have admin-level roles but they aren't your default role, the app runs `SET ROLE ALL` for you — no need to `SET DEFAULT ROLE ALL` manually.
 
 ### Detail Panels
 

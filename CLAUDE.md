@@ -44,7 +44,8 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   │   ├── admin_privileges.py  # GET /api/admin/privileges/* (Layer 1+2, admin only)
 │   │   │   ├── admin_roles.py       # GET /api/admin/roles/* (Layer 1+2, admin only)
 │   │   │   ├── admin_dag.py         # GET /api/admin/dag/* (Layer 1+2, admin only)
-│   │   │   └── admin_search.py      # GET /api/admin/search/* (Layer 1+2, admin only)
+│   │   │   ├── admin_search.py      # GET /api/admin/search/* (Layer 1+2, admin only)
+│   │   │   └── cluster.py           # GET /api/cluster/status (no require_admin; SR enforces cluster_admin)
 │   │   ├── services/
 │   │   │   ├── starrocks_client.py        # MySQL connector wrapper + parallel_queries
 │   │   │   ├── grant_collector.py         # Facade: delegates to common or admin collector
@@ -68,7 +69,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │       ├── session_store.py # In-memory server-side session store (includes is_admin)
 │   │       ├── sql_safety.py  # SQL injection protection (safe_name, safe_identifier)
 │   │       ├── cache.py       # Central cache clearing utility
-│   │       ├── sys_access.py  # can_access_sys() — checks sys.role_edges access
+│   │       ├── sys_access.py  # can_access_sys() — verifies full admin capability (see "Admin Detection" below)
 │   │       └── role_helpers.py # Shared: get_user_roles, get_parent_roles, parse_role_assignments
 │   └── tests/
 │       ├── conftest.py           # FakeConnection mock + fixtures
@@ -89,17 +90,22 @@ When code or project structure changes, run a sub-agent after completing the tas
         │   ├── client.ts            # Axios instance + interceptors
         │   ├── auth.ts              # Auth API
         │   ├── user.ts              # /api/user/* endpoints (all users)
-        │   └── admin.ts             # /api/admin/* endpoints (admin only)
-        ├── stores/              # Zustand (authStore, dagStore)
+        │   ├── admin.ts             # /api/admin/* endpoints (admin only)
+        │   └── cluster.ts           # /api/cluster/* (new category, separate from user/admin)
+        ├── stores/              # Zustand (authStore, dagStore, clusterStore)
+        │   └── clusterStore.ts      # Drawer open state + expanded nodes
         ├── utils/
         │   ├── grantDisplay.ts      # buildGrantDisplay() — unified grant grouping + implicit USAGE
         │   ├── inventory-helpers.ts  # SubTab/AllTab types, SUB_TAB_META, formatSQL/Bytes
         │   ├── privColors.ts        # Privilege tag color map
+        │   ├── relativeTime.ts      # formatRelativeTime helper
         │   ├── scopeConfig.ts       # SCOPE_ORDER, SCOPE_ICONS
         │   └── toast.ts             # Deduplicating toast
         └── components/
             ├── auth/LoginForm.tsx
-            ├── layout/Header.tsx, Sidebar.tsx  # Sidebar uses isAdmin-conditional APIs
+            ├── cluster/
+            │   └── ClusterDrawer.tsx  # Right-side drawer for FE/BE node health (440px)
+            ├── layout/Header.tsx, Sidebar.tsx  # Sidebar uses isAdmin-conditional APIs; Header has cluster icon
             ├── common/
             │   ├── InlineIcon.tsx     # SVG icon renderer
             │   ├── GrantTreeView.tsx  # Unified privilege display (scope-grouped)
@@ -130,6 +136,22 @@ When code or project structure changes, run a sub-agent after completing the tas
 ## Key Design Decisions
 
 - **Auth**: StarRocks credentials → server-side session + JWT token. `is_admin` determined at login via `can_access_sys()` and stored in session.
+
+- **Admin Detection (`can_access_sys()`)**: To be flagged as admin, the user's StarRocks account (with `SET ROLE ALL` applied) must be able to execute **all** of the following:
+  1. `SELECT 1 FROM sys.role_edges LIMIT 1`
+  2. `SELECT 1 FROM sys.grants_to_users LIMIT 1`
+  3. `SELECT 1 FROM sys.grants_to_roles LIMIT 1`
+  4. `SHOW ROLES`  ← requires `user_admin` or `security_admin`
+
+  **Rationale**: Admin routes (`/api/admin/*`) call `SHOW ROLES`, `SHOW GRANTS FOR <user>`, and query all three sys.* tables. Granting a user SELECT on just `sys.role_edges` is not enough to drive the admin UI — the user would see the Permission Focus tab but every API call would fail. The detector verifies the user can actually run what the routes will run.
+
+  **Behavioral change from earlier versions**: Previously only `sys.role_edges` was checked. Users who had SELECT on that one table (without `user_admin`) were classified as admin but got 500 errors from admin routes. The stricter check keeps the UI and backend capabilities in sync.
+
+  **Implication**: A user with **only `cluster_admin`** (no `user_admin`/`security_admin`) is **not** admin in this app — they get the common UI plus the cluster drawer, not the Permission Focus tab. Grant `user_admin` (or `security_admin`) in addition to `cluster_admin` to enable the full admin UI.
+
+- **Connection-level Role Activation**: `get_db()` runs `SET ROLE ALL` on every new connection (wrapped in try/except — failures are non-fatal). Without this, users whose needed role is not their default role would get access-denied on sys.* queries even when granted.
+
+- **Database Error Mapping**: `main.py` registers a global `mysql.connector.errors.Error` handler that maps errno in `{1044, 1045, 1142, 1227}` (from `app.utils.sys_access.ACCESS_DENIED_ERRNOS`) to HTTP 403 with a human-readable message. All other DB errors return 500. This prevents access-denied errors from leaking as opaque 500s.
 
 - **3-Tier Data Access Architecture**: ← CHANGED (replaces previous "Admin vs Non-Admin")
   - **Common Tier**: `services/common/` — Uses only `INFORMATION_SCHEMA` and `SHOW` commands. StarRocks performs per-user permission filtering automatically, so no additional backend filtering is required. Used by all users, including admins.
@@ -176,8 +198,11 @@ When code or project structure changes, run a sub-agent after completing the tas
 - **Frontend API Pattern**: ← NEW
   - `api/user.ts`: Calls `/api/user/*` endpoints (all users)
   - `api/admin.ts`: Calls `/api/admin/*` endpoints (admin only)
+  - `api/cluster.ts`: Calls `/api/cluster/*` endpoints (new category, all logged-in users)
   - Each tab selects the appropriate API module based on `isAdmin` flag
   - Response schemas remain identical (`DAGGraph`, `PrivilegeGrant`, etc.) — only scope differs
+
+- **Cluster Status**: `/api/cluster/*` is a third route category (neither user nor admin). StarRocks enforces `cluster_admin` / SYSTEM OPERATE privilege for `SHOW FRONTENDS` / `SHOW BACKENDS`; backend catches mysql-connector `ProgrammingError`/`DatabaseError` with errno in {1044, 1045, 1227, 1142} and returns HTTP 403. TTL cache is per-username. UI: header cluster icon → right-side slide-out drawer (no new tab). Non-privileged users see an in-drawer permission-required message instead of data.
 
 - **DAG**: 2 views (Object Hierarchy TB, Role Hierarchy TB). `SET ROLE ALL` before object-hierarchy queries. (unchanged)
 
@@ -197,6 +222,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 - /api/admin/* routes may call Layer 1 + Layer 2 services
 - /api/admin/* routes must verify is_admin via middleware
 - /api/auth/* routes are shared (no layer restriction)
+- /api/cluster/* is a new route category — no require_admin; StarRocks enforces privilege, backend maps access-denied errors to 403
 
 ### Code Quality
 - No duplicate grant parsing logic — use services/shared/grant_parser.py
@@ -286,4 +312,7 @@ python -m pytest tests/test_integration.py -v -s               # Integration (ne
 - Roles: GET /api/admin/roles, hierarchy, inheritance-dag, {name}/users
 - DAG: GET /api/admin/dag/object-hierarchy, role-hierarchy, full
 - Search: GET /api/admin/search, /api/admin/search/users-roles
+
+### Cluster Routes (`/api/cluster/*` — any logged-in user; StarRocks enforces privilege, 403 on denied)
+- Status: GET /api/cluster/status — FE/BE node list + aggregate metrics + has_errors flag
 

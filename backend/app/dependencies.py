@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import Depends, Header, HTTPException
 
-from app.services.starrocks_client import get_connection
+from app.services.starrocks_client import execute_query, get_connection
 from app.utils.session import decode_token
 from app.utils.session_store import session_store
+
+logger = logging.getLogger(__name__)
 
 
 def get_credentials(authorization: str = Header(...)) -> dict:
@@ -41,4 +45,8 @@ def get_db(credentials: dict = Depends(get_credentials)):
         username=credentials["username"],
         password=credentials["password"],
     ) as conn:
+        try:
+            execute_query(conn, "SET ROLE ALL")
+        except Exception:
+            logger.debug("SET ROLE ALL failed on new connection — proceeding with default role")
         yield conn

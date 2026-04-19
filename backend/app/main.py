@@ -1,16 +1,20 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+import mysql.connector.errors
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import auth
 from app.routers import (
     admin_dag,
     admin_privileges,
     admin_roles,
     admin_search,
+    auth,
+    cluster,
     user_dag,
     user_objects,
     user_permissions,
@@ -19,6 +23,9 @@ from app.routers import (
     user_search,
 )
 from app.utils.session_store import session_store
+from app.utils.sys_access import is_access_denied
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -60,6 +67,21 @@ app.include_router(admin_privileges.router, prefix="/api/admin/privileges", tags
 app.include_router(admin_roles.router, prefix="/api/admin/roles", tags=["admin-roles"])
 app.include_router(admin_dag.router, prefix="/api/admin/dag", tags=["admin-dag"])
 app.include_router(admin_search.router, prefix="/api/admin/search", tags=["admin-search"])
+
+# Cluster routes (all logged-in users; StarRocks enforces cluster_admin / SYSTEM OPERATE)
+app.include_router(cluster.router, prefix="/api/cluster", tags=["cluster"])
+
+
+@app.exception_handler(mysql.connector.errors.Error)
+async def mysql_error_handler(request: Request, exc: mysql.connector.errors.Error):
+    if is_access_denied(exc):
+        logger.warning("DB access denied for %s: %s", request.url.path, exc)
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Insufficient database privileges. Try re-logging in or contact your admin."},
+        )
+    logger.error("Unexpected DB error for %s: %s", request.url.path, exc)
+    return JSONResponse(status_code=500, content={"detail": "Database error"})
 
 
 @app.get("/api/health")

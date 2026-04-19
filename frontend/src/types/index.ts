@@ -105,3 +105,78 @@ export interface TableDetail {
   storage_medium: string | null;
   compression: string | null;
 }
+
+// ── Cluster Status ──
+export interface FENodeInfo {
+  name: string;
+  ip: string;
+  edit_log_port: number | null;
+  http_port: number | null;
+  query_port: number | null;
+  rpc_port: number | null;
+  role: string;
+  alive: boolean;
+  join: boolean;
+  last_heartbeat: string | null;
+  replayed_journal_id: number | null;
+  start_time: string | null;
+  version: string | null;
+  err_msg: string | null;
+  // Populated from FE /metrics endpoint
+  jvm_heap_used_pct: number | null;
+  gc_young_count: number | null;
+  gc_young_time_ms: number | null;
+  gc_old_count: number | null;
+  gc_old_time_ms: number | null;
+  query_p99_ms: number | null;
+  metrics_error: string | null;
+}
+
+export interface BENodeInfo {
+  name: string;
+  ip: string;
+  node_type: "backend" | "compute";
+  heartbeat_port: number | null;
+  be_port: number | null;
+  http_port: number | null;
+  brpc_port: number | null;
+  alive: boolean;
+  last_heartbeat: string | null;
+  last_start_time: string | null;
+  tablet_count: number | null;
+  data_used_capacity: string | null;
+  total_capacity: string | null;
+  used_pct: number | null;
+  cpu_cores: number | null;
+  cpu_used_pct: number | null;
+  mem_used_pct: number | null;
+  mem_limit: string | null;
+  num_running_queries: number | null;
+  warehouse: string | null;
+  version: string | null;
+  err_msg: string | null;
+}
+
+export interface ClusterMetrics {
+  fe_total: number;
+  fe_alive: number;
+  be_total: number;
+  be_alive: number;
+  cn_total: number;
+  cn_alive: number;
+  total_tablets: number | null;
+  total_data_used: string | null;
+  avg_disk_used_pct: number | null;
+  avg_cpu_used_pct: number | null;
+  avg_mem_used_pct: number | null;
+  avg_fe_heap_used_pct: number | null;
+}
+
+export interface ClusterStatusResponse {
+  frontends: FENodeInfo[];
+  backends: BENodeInfo[];
+  metrics: ClusterMetrics;
+  has_errors: boolean;
+  mode: "full" | "limited";
+  metrics_warning: string | null;
+}
