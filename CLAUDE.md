@@ -69,7 +69,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │       ├── session_store.py # In-memory server-side session store (includes is_admin)
 │   │       ├── sql_safety.py  # SQL injection protection (safe_name, safe_identifier)
 │   │       ├── cache.py       # Central cache clearing utility
-│   │       ├── sys_access.py  # can_access_sys() — checks sys.role_edges access
+│   │       ├── sys_access.py  # can_access_sys() — verifies full admin capability (see "Admin Detection" below)
 │   │       └── role_helpers.py # Shared: get_user_roles, get_parent_roles, parse_role_assignments
 │   └── tests/
 │       ├── conftest.py           # FakeConnection mock + fixtures
@@ -136,6 +136,22 @@ When code or project structure changes, run a sub-agent after completing the tas
 ## Key Design Decisions
 
 - **Auth**: StarRocks credentials → server-side session + JWT token. `is_admin` determined at login via `can_access_sys()` and stored in session.
+
+- **Admin Detection (`can_access_sys()`)**: To be flagged as admin, the user's StarRocks account (with `SET ROLE ALL` applied) must be able to execute **all** of the following:
+  1. `SELECT 1 FROM sys.role_edges LIMIT 1`
+  2. `SELECT 1 FROM sys.grants_to_users LIMIT 1`
+  3. `SELECT 1 FROM sys.grants_to_roles LIMIT 1`
+  4. `SHOW ROLES`  ← requires `user_admin` or `security_admin`
+
+  **Rationale**: Admin routes (`/api/admin/*`) call `SHOW ROLES`, `SHOW GRANTS FOR <user>`, and query all three sys.* tables. Granting a user SELECT on just `sys.role_edges` is not enough to drive the admin UI — the user would see the Permission Focus tab but every API call would fail. The detector verifies the user can actually run what the routes will run.
+
+  **Behavioral change from earlier versions**: Previously only `sys.role_edges` was checked. Users who had SELECT on that one table (without `user_admin`) were classified as admin but got 500 errors from admin routes. The stricter check keeps the UI and backend capabilities in sync.
+
+  **Implication**: A user with **only `cluster_admin`** (no `user_admin`/`security_admin`) is **not** admin in this app — they get the common UI plus the cluster drawer, not the Permission Focus tab. Grant `user_admin` (or `security_admin`) in addition to `cluster_admin` to enable the full admin UI.
+
+- **Connection-level Role Activation**: `get_db()` runs `SET ROLE ALL` on every new connection (wrapped in try/except — failures are non-fatal). Without this, users whose needed role is not their default role would get access-denied on sys.* queries even when granted.
+
+- **Database Error Mapping**: `main.py` registers a global `mysql.connector.errors.Error` handler that maps errno in `{1044, 1045, 1142, 1227}` (from `app.utils.sys_access.ACCESS_DENIED_ERRNOS`) to HTTP 403 with a human-readable message. All other DB errors return 500. This prevents access-denied errors from leaking as opaque 500s.
 
 - **3-Tier Data Access Architecture**: ← CHANGED (replaces previous "Admin vs Non-Admin")
   - **Common Tier**: `services/common/` — Uses only `INFORMATION_SCHEMA` and `SHOW` commands. StarRocks performs per-user permission filtering automatically, so no additional backend filtering is required. Used by all users, including admins.

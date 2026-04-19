@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/set-state-in-effect -- setState in effects is intentional; React 18+ auto-batches these calls */
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useClusterStore } from "../../stores/clusterStore";
 import { getClusterStatus } from "../../api/cluster";
@@ -7,6 +6,7 @@ import { shortenNodeName } from "../../utils/nodeNameUtils";
 import type { ClusterStatusResponse, FENodeInfo, BENodeInfo } from "../../types";
 import { C } from "../../utils/colors";
 import { Badge, Loader } from "../tabs/inventory-ui";
+import InlineIcon from "../common/InlineIcon";
 
 /* ── Utilization progress bar (0–100%) ── */
 function UtilBar({ pct }: { pct: number }) {
@@ -291,6 +291,7 @@ export default function ClusterDrawer() {
   // Fetch on open
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchData's sync setState(true/null) is intentional: drawer must enter loading state on open
       fetchData();
     } else {
       // Cancel any in-flight request when closed
@@ -371,7 +372,7 @@ export default function ClusterDrawer() {
             onMouseEnter={(e) => { if (!loading) e.currentTarget.style.color = C.accent; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = C.text2; }}
           >
-            ↻
+            <InlineIcon type="refresh" size={16} />
           </button>
 
           {/* Close button */}
@@ -387,7 +388,7 @@ export default function ClusterDrawer() {
             onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; e.currentTarget.style.borderColor = "#ef4444"; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = C.text2; e.currentTarget.style.borderColor = C.borderLight; }}
           >
-            &times;
+            <InlineIcon type="close" size={16} />
           </button>
         </div>
 
@@ -424,7 +425,7 @@ export default function ClusterDrawer() {
                   background: `${C.accent}12`,
                   fontSize: 12, color: C.text1, display: "flex", gap: 8, alignItems: "flex-start",
                 }}>
-                  <span style={{ fontSize: 14 }}>ℹ️</span>
+                  <span style={{ display: "inline-flex", paddingTop: 1 }}><InlineIcon type="info" size={14} /></span>
                   <span>
                     <strong>Limited view</strong> — showing only the FE you're connected to.
                     Full cluster inventory requires the <code style={{ color: C.accent }}>cluster_admin</code> role.
@@ -440,7 +441,7 @@ export default function ClusterDrawer() {
                   background: `${C.warning}12`,
                   fontSize: 12, color: C.text1, display: "flex", gap: 8, alignItems: "flex-start",
                 }}>
-                  <span style={{ fontSize: 14 }}>⚠️</span>
+                  <span style={{ display: "inline-flex", paddingTop: 1 }}><InlineIcon type="warning" size={14} /></span>
                   <span>{data.metrics_warning}</span>
                 </div>
               )}
@@ -531,7 +532,7 @@ export default function ClusterDrawer() {
               {data.has_errors && (
                 <div style={{ marginBottom: 14 }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#ef4444", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
-                    <span>⚠</span>
+                    <InlineIcon type="warning" size={14} color="#ef4444" />
                     <span>Alerts</span>
                     <span style={{ color: C.text3, fontWeight: 400 }}>
                       ({[...frontends, ...backends].filter((n) => !n.alive || n.err_msg).length})

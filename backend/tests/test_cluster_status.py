@@ -148,7 +148,7 @@ def test_cluster_status_metrics_aggregation(client, auth_header):
 
 # ── Limited mode (formerly 403) ──
 
-def test_cluster_status_limited_mode(client, auth_header):
+def test_cluster_status_limited_mode(client, auth_header, monkeypatch):
     """When SHOW FRONTENDS is denied, fallback to limited mode with single-FE view."""
     err = mysql.connector.errors.ProgrammingError(
         msg="Access denied for user 'viewer'@'%' to database 'FRONTENDS'",
@@ -165,23 +165,20 @@ def test_cluster_status_limited_mode(client, auth_header):
             raise err
         return original(conn, sql, params)
 
-    cluster_mod.execute_query = _raise_on_show
+    monkeypatch.setattr(cluster_mod, "execute_query", _raise_on_show)
     cluster_mod._cluster_cache.clear()
-    try:
-        resp = client.get("/api/cluster/status", headers=auth_header)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["mode"] == "limited"
-        # Limited view: one FE placeholder, zero BE/CN
-        assert len(data["frontends"]) == 1
-        assert data["backends"] == []
-        fe = data["frontends"][0]
-        assert fe["role"] == "UNKNOWN"
-        # /metrics stub still fires on the placeholder FE
-        assert fe["jvm_heap_used_pct"] == pytest.approx(5.0)
-    finally:
-        cluster_mod.execute_query = original
-        cluster_mod._cluster_cache.clear()
+    resp = client.get("/api/cluster/status", headers=auth_header)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["mode"] == "limited"
+    # Limited view: one FE placeholder, zero BE/CN
+    assert len(data["frontends"]) == 1
+    assert data["backends"] == []
+    fe = data["frontends"][0]
+    assert fe["role"] == "UNKNOWN"
+    # /metrics stub still fires on the placeholder FE
+    assert fe["jvm_heap_used_pct"] == pytest.approx(5.0)
+    cluster_mod._cluster_cache.clear()
 
 
 def test_cluster_status_metrics_all_fail_warning(client, auth_header, monkeypatch):
@@ -236,9 +233,8 @@ def test_cluster_status_metrics_partial_fail(client, auth_header, monkeypatch):
 
 # ── Empty result ──
 
-def test_cluster_status_empty(client, auth_header, query_map):
+def test_cluster_status_empty(client, auth_header, query_map, monkeypatch):
     """SHOW FRONTENDS/BACKENDS returning [] → 200 with empty lists and fe_alive=0."""
-    # Override by patching execute_query
     import app.routers.cluster as cluster_mod
 
     original = cluster_mod.execute_query
@@ -249,26 +245,23 @@ def test_cluster_status_empty(client, auth_header, query_map):
             return []
         return original(conn, sql, params)
 
-    cluster_mod.execute_query = _empty
+    monkeypatch.setattr(cluster_mod, "execute_query", _empty)
     cluster_mod._cluster_cache.clear()
-    try:
-        resp = client.get("/api/cluster/status", headers=auth_header)
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["frontends"] == []
-        assert data["backends"] == []
-        assert data["metrics"]["fe_alive"] == 0
-        assert data["has_errors"] is False
-        # With no FE nodes, there's nothing to probe; no warning.
-        assert data["metrics_warning"] is None
-    finally:
-        cluster_mod.execute_query = original
-        cluster_mod._cluster_cache.clear()
+    resp = client.get("/api/cluster/status", headers=auth_header)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["frontends"] == []
+    assert data["backends"] == []
+    assert data["metrics"]["fe_alive"] == 0
+    assert data["has_errors"] is False
+    # With no FE nodes, there's nothing to probe; no warning.
+    assert data["metrics_warning"] is None
+    cluster_mod._cluster_cache.clear()
 
 
 # ── Cache test ──
 
-def test_cluster_status_cached(client, auth_header):
+def test_cluster_status_cached(client, auth_header, monkeypatch):
     """Second call must use the cache — expensive queries only run once."""
     import app.routers.cluster as cluster_mod
 
@@ -281,18 +274,16 @@ def test_cluster_status_cached(client, auth_header):
             show_calls += 1
         return original(conn, sql, params)
 
-    cluster_mod.execute_query = _counting
+    monkeypatch.setattr(cluster_mod, "execute_query", _counting)
     cluster_mod._cluster_cache.clear()
-    try:
-        resp1 = client.get("/api/cluster/status", headers=auth_header)
-        assert resp1.status_code == 200
-        resp2 = client.get("/api/cluster/status", headers=auth_header)
-        assert resp2.status_code == 200
 
-        # First request: 3 SHOW calls (SHOW FRONTENDS + SHOW BACKENDS + SHOW COMPUTE NODES).
-        # Second request: served from cache → still 3 total.
-        # (SET ROLE ALL runs each time but it is cheap, so we don't count it.)
-        assert show_calls == 3
-    finally:
-        cluster_mod.execute_query = original
-        cluster_mod._cluster_cache.clear()
+    resp1 = client.get("/api/cluster/status", headers=auth_header)
+    assert resp1.status_code == 200
+    resp2 = client.get("/api/cluster/status", headers=auth_header)
+    assert resp2.status_code == 200
+
+    # First request: 3 SHOW calls (SHOW FRONTENDS + SHOW BACKENDS + SHOW COMPUTE NODES).
+    # Second request: served from cache → still 3 total.
+    # (SET ROLE ALL runs each time but it is cheap, so we don't count it.)
+    assert show_calls == 3
+    cluster_mod._cluster_cache.clear()
