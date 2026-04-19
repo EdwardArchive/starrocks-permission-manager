@@ -54,7 +54,7 @@ function MetricRow({ label, pct, extra }: { label: string; pct: number; extra?: 
   return (
     <div style={{ marginBottom: 6 }}>
       <div style={ui.metricRow}>
-        <span>{label} <span style={ui.subtleText}>{extra}</span></span>
+        <span>{label} <span style={ui.tinyMeta}>{extra}</span></span>
         <strong style={ui.summaryValue}>{pct.toFixed(1)}%</strong>
       </div>
       <UtilBar pct={pct} />
@@ -205,7 +205,7 @@ function BENodeCard({ node, expanded, onToggle }: { node: BENodeInfo; expanded: 
       {/* Resource bars — always visible */}
       <div style={{ padding: "4px 12px 8px" }}>
         {node.tablet_count != null && (
-          <div style={{ ...ui.subtleText, marginBottom: 4 }}>
+          <div style={{ ...ui.tinyMeta, marginBottom: 4 }}>
             {node.tablet_count.toLocaleString()} tablets
           </div>
         )}
