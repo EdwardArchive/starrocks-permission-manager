@@ -109,12 +109,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Harden image with Rapidfort
-        uses: rapidfort/github-action@v1
-        env:
-          RF_USERNAME: ${{ secrets.RF_USERNAME }}
-          RF_PASSWORD: ${{ secrets.RF_PASSWORD }}
+        uses: rapidfort/action@v1
         with:
           image_ref: ${{ needs.build-base.outputs.image }}:${{ needs.build-base.outputs.base-tag }}
+          rf_username: ${{ secrets.RF_USERNAME }}
+          rf_password: ${{ secrets.RF_PASSWORD }}
 
       - name: Tag hardened image as release and latest
         run: |
