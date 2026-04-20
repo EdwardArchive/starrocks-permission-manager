@@ -8,6 +8,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  RF_ROOT_URL: "https://us01.rapidfort.com"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -64,7 +65,6 @@ jobs:
       - name: Extract version from tag
         id: version
         run: |
-          # refs/tags/v1.1 → v1.1
           VERSION=${GITHUB_REF#refs/tags/}
           IMAGE=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -91,7 +91,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── Harden with Rapidfort (CVE removal) ──
+  # ── Harden with Rapidfort (rfstub → smoke test → rfharden) ──
   harden:
     name: Harden with Rapidfort
     runs-on: self-hosted
@@ -99,6 +99,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      IMAGE: ${{ needs.build-base.outputs.image }}
+      BASE_TAG: ${{ needs.build-base.outputs.base-tag }}
 
     steps:
       - name: Log in to GitHub Container Registry
@@ -108,23 +111,58 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Harden image with Rapidfort
-        uses: rapidfort/action@v1
-        with:
-          image_ref: ${{ needs.build-base.outputs.image }}:${{ needs.build-base.outputs.base-tag }}
-          rf_username: ${{ secrets.RF_USERNAME }}
-          rf_password: ${{ secrets.RF_PASSWORD }}
+      - name: Install Rapidfort CLI
+        run: |
+          curl -s https://us01.rapidfort.com/cli/ | bash
+          echo "$HOME/.rapidfort/bin" >> $GITHUB_PATH
+
+      - name: Login to Rapidfort
+        env:
+          RF_ACCESS_ID: ${{ secrets.RF_ACCESS_ID }}
+          RF_SECRET_ACCESS_KEY: ${{ secrets.RF_SECRET_ACCESS_KEY }}
+        run: rflogin --access-id "$RF_ACCESS_ID" --secret-access-key "$RF_SECRET_ACCESS_KEY"
+
+      - name: Generate stub image
+        run: |
+          rfstub ${IMAGE}:${BASE_TAG}
+          docker push ${IMAGE}:${BASE_TAG}-rfstub
+
+      - name: Run stub container for workload profiling
+        run: |
+          docker run -d --name srpm-stub \
+            --cap-add SYS_PTRACE \
+            -p 8001:8001 \
+            -e SRPM_JWT_SECRET=ci-test-secret \
+            ${IMAGE}:${BASE_TAG}-rfstub
+
+          # Wait for the app to be ready
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8001/api/health; then
+              echo "App is ready"
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+
+          # Profile: hit key endpoints to cover usage patterns
+          curl -sf http://localhost:8001/api/health || true
+          curl -sf http://localhost:8001/ || true
+
+          docker stop srpm-stub
+          docker rm srpm-stub
+
+      - name: Harden image
+        run: rfharden ${IMAGE}:${BASE_TAG}-rfstub
 
       - name: Tag hardened image as release and latest
         run: |
-          IMAGE=${{ needs.build-base.outputs.image }}
           VERSION=${{ needs.build-base.outputs.version }}
-          BASE_TAG=${{ needs.build-base.outputs.base-tag }}
-          HARDENED_IMAGE=${IMAGE}:${BASE_TAG}-hardened
+          HARDENED=${IMAGE}:${BASE_TAG}-rfstub-rfhardened
 
-          docker pull $HARDENED_IMAGE
-          docker tag $HARDENED_IMAGE ${IMAGE}:${VERSION}
-          docker tag $HARDENED_IMAGE ${IMAGE}:latest
+          docker pull $HARDENED
+          docker tag $HARDENED ${IMAGE}:${VERSION}
+          docker tag $HARDENED ${IMAGE}:latest
           docker push ${IMAGE}:${VERSION}
           docker push ${IMAGE}:latest
 
@@ -132,7 +170,7 @@ jobs:
   release:
     name: Create GitHub Release
     runs-on: self-hosted
-    needs: harden
+    needs: [build-base, harden]
     permissions:
       contents: write
       packages: read
