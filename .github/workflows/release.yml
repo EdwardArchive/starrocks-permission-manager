@@ -114,13 +114,8 @@ jobs:
       - name: Install Rapidfort CLI
         run: |
           curl -s https://us01.rapidfort.com/cli/ | bash
-          # Find where the CLI was installed and add to PATH
-          RF_BIN=$(find $HOME -name "rflogin" -type f 2>/dev/null | head -1 | xargs dirname || true)
-          if [ -z "$RF_BIN" ]; then
-            RF_BIN=$(find /usr/local -name "rflogin" -type f 2>/dev/null | head -1 | xargs dirname || true)
-          fi
-          echo "Rapidfort CLI found at: $RF_BIN"
-          echo "$RF_BIN" >> $GITHUB_PATH
+          # CLI installs into ./rapidfort relative to the workspace
+          echo "${GITHUB_WORKSPACE}/rapidfort" >> $GITHUB_PATH
 
       - name: Login to Rapidfort
         env:
