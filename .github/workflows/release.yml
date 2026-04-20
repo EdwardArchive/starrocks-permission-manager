@@ -125,6 +125,7 @@ jobs:
 
       - name: Generate stub image
         run: |
+          docker pull ${IMAGE}:${BASE_TAG}
           rfstub ${IMAGE}:${BASE_TAG}
           docker push ${IMAGE}:${BASE_TAG}-rfstub
 
