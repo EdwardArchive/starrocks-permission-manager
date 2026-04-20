@@ -56,6 +56,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       base-tag: ${{ steps.version.outputs.base-tag }}
+      image: ${{ steps.version.outputs.image }}
 
     steps:
       - uses: actions/checkout@v4
@@ -65,9 +66,11 @@ jobs:
         run: |
           # refs/tags/v1.1 → v1.1
           VERSION=${GITHUB_REF#refs/tags/}
+          IMAGE=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "base-tag=${VERSION}-base" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
+          echo "image=${IMAGE}" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION, Image: $IMAGE"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -84,7 +87,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.base-tag }}
+          tags: ${{ steps.version.outputs.image }}:${{ steps.version.outputs.base-tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -111,19 +114,20 @@ jobs:
           RF_USERNAME: ${{ secrets.RF_USERNAME }}
           RF_PASSWORD: ${{ secrets.RF_PASSWORD }}
         with:
-          image_ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-base.outputs.base-tag }}
+          image_ref: ${{ needs.build-base.outputs.image }}:${{ needs.build-base.outputs.base-tag }}
 
       - name: Tag hardened image as release and latest
         run: |
+          IMAGE=${{ needs.build-base.outputs.image }}
           VERSION=${{ needs.build-base.outputs.version }}
           BASE_TAG=${{ needs.build-base.outputs.base-tag }}
-          HARDENED_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${BASE_TAG}-hardened
+          HARDENED_IMAGE=${IMAGE}:${BASE_TAG}-hardened
 
           docker pull $HARDENED_IMAGE
-          docker tag $HARDENED_IMAGE ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}
-          docker tag $HARDENED_IMAGE ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}
-          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker tag $HARDENED_IMAGE ${IMAGE}:${VERSION}
+          docker tag $HARDENED_IMAGE ${IMAGE}:latest
+          docker push ${IMAGE}:${VERSION}
+          docker push ${IMAGE}:latest
 
   # ── Create GitHub Release ──
   release:
@@ -148,7 +152,7 @@ jobs:
             ## Docker Image
 
             ```bash
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-base.outputs.version }}
+            docker pull ${{ needs.build-base.outputs.image }}:${{ needs.build-base.outputs.version }}
             ```
 
             ### Quick Start
@@ -157,21 +161,22 @@ jobs:
             docker run -d --name srpm \
               -p 8001:8001 \
               -e SRPM_JWT_SECRET=your-secret-here \
-              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-base.outputs.version }}
+              ${{ needs.build-base.outputs.image }}:${{ needs.build-base.outputs.version }}
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
         run: |
+          IMAGE=${{ needs.build-base.outputs.image }}
           VERSION=${{ needs.build-base.outputs.version }}
           echo "### 🚀 Release Published" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Version**: ${VERSION}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image**: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: \`${IMAGE}:${VERSION}\`" >> $GITHUB_STEP_SUMMARY
           echo "- **Hardened**: ✅ Rapidfort CVE removal applied" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Pull:**" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${IMAGE}:${VERSION}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
