@@ -8,6 +8,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ── Validate: run tests before releasing ──
@@ -44,14 +45,17 @@ jobs:
       - name: TypeScript check
         run: cd frontend && npx tsc --noEmit
 
-  # ── Build & Push Docker image ──
-  build-and-push:
-    name: Build & Push Docker Image
+  # ── Build base image (pre-hardening) ──
+  build-base:
+    name: Build Base Docker Image
     runs-on: self-hosted
     needs: test
     permissions:
-      contents: write
+      contents: read
       packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      base-tag: ${{ steps.version.outputs.base-tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +66,7 @@ jobs:
           # refs/tags/v1.1 → v1.1
           VERSION=${GITHUB_REF#refs/tags/}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "base-tag=${VERSION}-base" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
       - name: Log in to GitHub Container Registry
@@ -74,29 +79,76 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push Docker image
+      - name: Build and push base image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.base-tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # ── Harden with Rapidfort (CVE removal) ──
+  harden:
+    name: Harden with Rapidfort
+    runs-on: self-hosted
+    needs: build-base
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Harden image with Rapidfort
+        uses: rapidfort/github-action@v1
+        env:
+          RF_USERNAME: ${{ secrets.RF_USERNAME }}
+          RF_PASSWORD: ${{ secrets.RF_PASSWORD }}
+        with:
+          image_ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-base.outputs.base-tag }}
+
+      - name: Tag hardened image as release and latest
+        run: |
+          VERSION=${{ needs.build-base.outputs.version }}
+          BASE_TAG=${{ needs.build-base.outputs.base-tag }}
+          HARDENED_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${BASE_TAG}-hardened
+
+          docker pull $HARDENED_IMAGE
+          docker tag $HARDENED_IMAGE ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}
+          docker tag $HARDENED_IMAGE ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+  # ── Create GitHub Release ──
+  release:
+    name: Create GitHub Release
+    runs-on: self-hosted
+    needs: harden
+    permissions:
+      contents: write
+      packages: read
+
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
-          name: Release ${{ steps.version.outputs.version }}
+          tag_name: ${{ needs.build-base.outputs.version }}
+          name: Release ${{ needs.build-base.outputs.version }}
           generate_release_notes: true
           make_latest: true
           body: |
             ## Docker Image
 
             ```bash
-            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-base.outputs.version }}
             ```
 
             ### Quick Start
@@ -105,19 +157,21 @@ jobs:
             docker run -d --name srpm \
               -p 8001:8001 \
               -e SRPM_JWT_SECRET=your-secret-here \
-              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+              ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-base.outputs.version }}
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
         run: |
+          VERSION=${{ needs.build-base.outputs.version }}
           echo "### 🚀 Release Published" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Version**: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image**: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Version**: ${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Hardened**: ✅ Rapidfort CVE removal applied" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Pull:**" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
