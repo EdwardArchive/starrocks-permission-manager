@@ -102,6 +102,8 @@ jobs:
     env:
       IMAGE: ${{ needs.build-base.outputs.image }}
       BASE_TAG: ${{ needs.build-base.outputs.base-tag }}
+      RF_ACCESS_ID: ${{ secrets.RF_ACCESS_ID }}
+      RF_SECRET_ACCESS_KEY: ${{ secrets.RF_SECRET_ACCESS_KEY }}
 
     steps:
       - name: Log in to GitHub Container Registry
@@ -117,11 +119,16 @@ jobs:
           # CLI installs into ./rapidfort relative to the workspace
           echo "${GITHUB_WORKSPACE}/rapidfort" >> $GITHUB_PATH
 
-      - name: Login to Rapidfort
-        env:
-          RF_ACCESS_ID: ${{ secrets.RF_ACCESS_ID }}
-          RF_SECRET_ACCESS_KEY: ${{ secrets.RF_SECRET_ACCESS_KEY }}
-        run: rflogin --access-id "$RF_ACCESS_ID" --secret-access-key "$RF_SECRET_ACCESS_KEY"
+      - name: Write Rapidfort credentials
+        run: |
+          mkdir -p $HOME/.rapidfort
+          cat > $HOME/.rapidfort/credentials <<EOF
+          [default]
+          access_id = ${RF_ACCESS_ID}
+          secret_access_key = ${RF_SECRET_ACCESS_KEY}
+          root_url = ${RF_ROOT_URL}
+          EOF
+          chmod 600 $HOME/.rapidfort/credentials
 
       - name: Generate stub image
         run: |
