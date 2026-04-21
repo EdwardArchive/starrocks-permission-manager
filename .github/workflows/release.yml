@@ -180,16 +180,24 @@ jobs:
         env:
           IMAGE: ${{ steps.version.outputs.image }}
           BASE_TAG: ${{ steps.version.outputs.base-tag }}
+        shell: bash
         run: |
-          # Capture rfharden output to both stdout (for logs) and a file (for summary)
+          set -o pipefail
           rfharden ${IMAGE}:${BASE_TAG}-rfstub 2>&1 | tee /tmp/rfharden.log
 
-          # Extract key improvement lines (attack surface, packages, vulns) for summary
+          # Verify the hardened image was actually produced
+          if ! docker image inspect ${IMAGE}:${BASE_TAG}-rfhardened >/dev/null 2>&1; then
+            echo "ERROR: Expected hardened image ${IMAGE}:${BASE_TAG}-rfhardened was not created"
+            echo "Available images matching base tag:"
+            docker images | grep -E "${BASE_TAG}" || true
+            exit 1
+          fi
+
+          # Write improvement metrics to step summary
           {
             echo "### 🛡️ Rapidfort Hardening Results"
             echo ""
             echo '```'
-            # Grab improvement summary block + final image info
             grep -E "Attack Surface|Package Count|Vulns Count|Hardened image|Total size|Elapsed" /tmp/rfharden.log || tail -20 /tmp/rfharden.log
             echo '```'
           } >> $GITHUB_STEP_SUMMARY
