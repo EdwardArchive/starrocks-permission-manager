@@ -46,9 +46,9 @@ jobs:
       - name: TypeScript check
         run: cd frontend && npx tsc --noEmit
 
-  # ── Build base image (pre-hardening) ──
-  build-base:
-    name: Build Base Docker Image
+  # ── Build → Harden → Push (single job; intermediate images stay local) ──
+  build-harden-push:
+    name: Build, Harden & Push
     runs-on: self-hosted
     needs: test
     permissions:
@@ -56,13 +56,15 @@ jobs:
       packages: write
     outputs:
       version: ${{ steps.version.outputs.version }}
-      base-tag: ${{ steps.version.outputs.base-tag }}
       image: ${{ steps.version.outputs.image }}
+    env:
+      RF_ACCESS_ID: ${{ secrets.RF_ACCESS_ID }}
+      RF_SECRET_ACCESS_KEY: ${{ secrets.RF_SECRET_ACCESS_KEY }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract version from tag
+      - name: Extract version info
         id: version
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
@@ -71,6 +73,11 @@ jobs:
           echo "base-tag=${VERSION}-base" >> $GITHUB_OUTPUT
           echo "image=${IMAGE}" >> $GITHUB_OUTPUT
           echo "Version: $VERSION, Image: $IMAGE"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -82,47 +89,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push base image
+      # ── 1. Build base image locally (no push) ──
+      - name: Build base image (local)
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          load: true
           tags: ${{ steps.version.outputs.image }}:${{ steps.version.outputs.base-tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ── Harden with Rapidfort (rfstub → smoke test → rfharden) ──
-  harden:
-    name: Harden with Rapidfort
-    runs-on: self-hosted
-    needs: build-base
-    permissions:
-      contents: read
-      packages: write
-    env:
-      IMAGE: ${{ needs.build-base.outputs.image }}
-      BASE_TAG: ${{ needs.build-base.outputs.base-tag }}
-      RF_ACCESS_ID: ${{ secrets.RF_ACCESS_ID }}
-      RF_SECRET_ACCESS_KEY: ${{ secrets.RF_SECRET_ACCESS_KEY }}
-
-    steps:
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
+      # ── 2. Install / reuse Rapidfort CLI ──
       - name: Install Rapidfort CLI (if needed)
         run: |
-          # Reuse pre-installed CLI on self-hosted runner to avoid 128MB download per run
           if command -v rfstub >/dev/null 2>&1; then
             echo "Rapidfort CLI already on PATH"
           elif [ -x "/opt/rapidfort/rfstub" ]; then
@@ -140,21 +119,24 @@ jobs:
       - name: Install smoke test dependencies
         run: pip install httpx pytest
 
-      - name: Generate stub image
-        run: |
-          docker pull ${IMAGE}:${BASE_TAG}
-          rfstub ${IMAGE}:${BASE_TAG}
-          docker push ${IMAGE}:${BASE_TAG}-rfstub
-
-      - name: Run stub container and profile workload with smoke tests
+      # ── 3. Generate Rapidfort stub (local) ──
+      - name: Generate stub image (local)
         env:
+          IMAGE: ${{ steps.version.outputs.image }}
+          BASE_TAG: ${{ steps.version.outputs.base-tag }}
+        run: rfstub ${IMAGE}:${BASE_TAG}
+
+      # ── 4. Run stub + smoke tests for workload profiling ──
+      - name: Profile workload via smoke tests
+        env:
+          IMAGE: ${{ steps.version.outputs.image }}
+          BASE_TAG: ${{ steps.version.outputs.base-tag }}
           SMOKE_BASE_URL: http://localhost:18001
           SR_TEST_HOST: ${{ secrets.SR_TEST_HOST }}
           SR_TEST_PORT: ${{ secrets.SR_TEST_PORT }}
           SR_TEST_USER: ${{ secrets.SR_TEST_USER }}
           SR_TEST_PASS: ${{ secrets.SR_TEST_PASS }}
         run: |
-          # Clean up any stale stub container from previous runs
           docker rm -f srpm-stub 2>/dev/null || true
 
           docker run -d --name srpm-stub \
@@ -163,7 +145,6 @@ jobs:
             -e SRPM_JWT_SECRET=ci-test-secret \
             ${IMAGE}:${BASE_TAG}-rfstub
 
-          # Wait for the app to be ready
           for i in $(seq 1 30); do
             if curl -sf http://localhost:18001/api/health; then
               echo "App is ready"
@@ -173,35 +154,41 @@ jobs:
             sleep 2
           done
 
-          # Run smoke tests to exercise main APIs for Rapidfort profiling
           cd backend && python -m pytest tests/test_smoke_http.py -v -s || true
 
-      - name: Stop stub container (before harden)
+      - name: Stop stub container
+        if: always()
         run: |
           docker stop srpm-stub || true
           docker rm srpm-stub || true
 
+      # ── 5. Harden image (local) ──
       - name: Harden image
+        env:
+          IMAGE: ${{ steps.version.outputs.image }}
+          BASE_TAG: ${{ steps.version.outputs.base-tag }}
         run: rfharden ${IMAGE}:${BASE_TAG}-rfstub
 
-      - name: Tag hardened image as release and latest
+      # ── 6. Push final hardened image only ──
+      - name: Tag and push final image
+        env:
+          IMAGE: ${{ steps.version.outputs.image }}
+          BASE_TAG: ${{ steps.version.outputs.base-tag }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION=${{ needs.build-base.outputs.version }}
-          # rfharden transforms :TAG-rfstub → :TAG-rfhardened (strips -rfstub, adds -rfhardened)
           HARDENED=${IMAGE}:${BASE_TAG}-rfhardened
-
-          # Hardened image is already local (produced by rfharden); no pull needed
           docker tag $HARDENED ${IMAGE}:${VERSION}
           docker tag $HARDENED ${IMAGE}:latest
           docker push ${IMAGE}:${VERSION}
           docker push ${IMAGE}:latest
 
-      - name: Cleanup (always)
+      - name: Cleanup local images (always)
         if: always()
+        env:
+          IMAGE: ${{ steps.version.outputs.image }}
+          BASE_TAG: ${{ steps.version.outputs.base-tag }}
         run: |
-          # Remove stub container if still present (e.g. failed run)
           docker rm -f srpm-stub 2>/dev/null || true
-          # Remove intermediate local images to save disk on self-hosted runner
           docker rmi -f ${IMAGE}:${BASE_TAG} 2>/dev/null || true
           docker rmi -f ${IMAGE}:${BASE_TAG}-rfstub 2>/dev/null || true
           docker rmi -f ${IMAGE}:${BASE_TAG}-rfhardened 2>/dev/null || true
@@ -210,7 +197,7 @@ jobs:
   release:
     name: Create GitHub Release
     runs-on: self-hosted
-    needs: [build-base, harden]
+    needs: build-harden-push
     permissions:
       contents: write
       packages: read
@@ -221,15 +208,15 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.build-base.outputs.version }}
-          name: Release ${{ needs.build-base.outputs.version }}
+          tag_name: ${{ needs.build-harden-push.outputs.version }}
+          name: Release ${{ needs.build-harden-push.outputs.version }}
           generate_release_notes: true
           make_latest: true
           body: |
             ## Docker Image
 
             ```bash
-            docker pull ${{ needs.build-base.outputs.image }}:${{ needs.build-base.outputs.version }}
+            docker pull ${{ needs.build-harden-push.outputs.image }}:${{ needs.build-harden-push.outputs.version }}
             ```
 
             ### Quick Start
@@ -238,15 +225,15 @@ jobs:
             docker run -d --name srpm \
               -p 8001:8001 \
               -e SRPM_JWT_SECRET=your-secret-here \
-              ${{ needs.build-base.outputs.image }}:${{ needs.build-base.outputs.version }}
+              ${{ needs.build-harden-push.outputs.image }}:${{ needs.build-harden-push.outputs.version }}
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
         run: |
-          IMAGE=${{ needs.build-base.outputs.image }}
-          VERSION=${{ needs.build-base.outputs.version }}
+          IMAGE=${{ needs.build-harden-push.outputs.image }}
+          VERSION=${{ needs.build-harden-push.outputs.version }}
           echo "### 🚀 Release Published" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Version**: ${VERSION}" >> $GITHUB_STEP_SUMMARY
