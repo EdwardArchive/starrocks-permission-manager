@@ -189,7 +189,7 @@ jobs:
           VERSION=${{ needs.build-base.outputs.version }}
           HARDENED=${IMAGE}:${BASE_TAG}-rfstub-rfhardened
 
-          docker pull $HARDENED
+          # Hardened image is already local (produced by rfharden); no pull needed
           docker tag $HARDENED ${IMAGE}:${VERSION}
           docker tag $HARDENED ${IMAGE}:latest
           docker push ${IMAGE}:${VERSION}
