@@ -181,7 +181,10 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          rfharden -v=3 ${IMAGE}:${BASE_TAG}-rfstub 2>&1 | tee /tmp/rfharden.log
+          # -p preserves /app/** so lazy-imported app code not covered by smoke
+          # test (admin vs non-admin branches in grant_collector etc.) is not
+          # stubbed out by rfharden. See .rapidfort/keep.profile.
+          rfharden -p .rapidfort/keep.profile -v=3 ${IMAGE}:${BASE_TAG}-rfstub 2>&1 | tee /tmp/rfharden.log
 
           # Verify the hardened image was actually produced
           if ! docker image inspect ${IMAGE}:${BASE_TAG}-rfhardened >/dev/null 2>&1; then
