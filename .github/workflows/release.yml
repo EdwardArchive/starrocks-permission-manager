@@ -8,8 +8,8 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  RF_ROOT_URL: "https://us01.rapidfort.com"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # RF_ROOT_URL: "https://us01.rapidfort.com"  # [hardening disabled]
 
 jobs:
   # ── Validate: run tests before releasing ──
@@ -46,9 +46,16 @@ jobs:
       - name: TypeScript check
         run: cd frontend && npx tsc --noEmit
 
-  # ── Build → Harden → Push (single job; intermediate images stay local) ──
-  build-harden-push:
-    name: Build, Harden & Push
+  # ── Build & Push (Rapidfort hardening temporarily disabled — see NOTE below) ──
+  #
+  # NOTE: Rapidfort hardening steps (rfstub → smoke profiling → rfharden) are
+  # currently commented out. Re-enable once:
+  #   1. Rapidfort curated base image subscription is available, OR
+  #   2. Phase 2 smoke-test coverage work lands (see issue #44) so the
+  #      keep-profile can be narrowed and runtime correctness is guaranteed.
+  # The commented hardening pipeline is preserved at the bottom of this job.
+  build-and-push:
+    name: Build & Push Docker Image
     runs-on: self-hosted
     needs: test
     permissions:
@@ -57,9 +64,6 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       image: ${{ steps.version.outputs.image }}
-    env:
-      RF_ACCESS_ID: ${{ secrets.RF_ACCESS_ID }}
-      RF_SECRET_ACCESS_KEY: ${{ secrets.RF_SECRET_ACCESS_KEY }}
 
     steps:
       - uses: actions/checkout@v4
@@ -70,14 +74,8 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/}
           IMAGE=$(echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "base-tag=${VERSION}-base" >> $GITHUB_OUTPUT
           echo "image=${IMAGE}" >> $GITHUB_OUTPUT
           echo "Version: $VERSION, Image: $IMAGE"
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -86,152 +84,129 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── 1. Build base image locally (classic docker build; no buildx) ──
-      # Note: we intentionally skip docker/setup-buildx-action so that the
-      # default docker driver is used. rfharden's internal `docker build`
-      # resolves images from the local daemon, which requires the default
-      # driver (buildx docker-container driver cannot see local-only images).
-      - name: Build base image (local)
-        env:
-          IMAGE: ${{ steps.version.outputs.image }}
-          BASE_TAG: ${{ steps.version.outputs.base-tag }}
-        run: docker build -t ${IMAGE}:${BASE_TAG} .
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      # ── 2. Install / reuse Rapidfort CLI ──
-      - name: Install Rapidfort CLI (if needed)
-        run: |
-          if command -v rfstub >/dev/null 2>&1; then
-            echo "Rapidfort CLI already on PATH"
-          elif [ -x "/opt/rapidfort/rfstub" ]; then
-            echo "Using pre-installed CLI at /opt/rapidfort"
-            echo "/opt/rapidfort" >> $GITHUB_PATH
-          elif [ -x "${GITHUB_WORKSPACE}/rapidfort/rfstub" ]; then
-            echo "Using cached CLI in workspace"
-            echo "${GITHUB_WORKSPACE}/rapidfort" >> $GITHUB_PATH
-          else
-            echo "Installing Rapidfort CLI"
-            curl -s https://us01.rapidfort.com/cli/ | bash
-            echo "${GITHUB_WORKSPACE}/rapidfort" >> $GITHUB_PATH
-          fi
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }}
+            ${{ steps.version.outputs.image }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Install smoke test dependencies
-        run: pip install httpx pytest
-
-      # ── 3. Generate Rapidfort stub (local) ──
-      - name: Generate stub image (local)
-        env:
-          IMAGE: ${{ steps.version.outputs.image }}
-          BASE_TAG: ${{ steps.version.outputs.base-tag }}
-        run: rfstub ${IMAGE}:${BASE_TAG}
-
-      # ── 4. Run stub + smoke tests for workload profiling ──
-      - name: Profile workload via smoke tests
-        env:
-          IMAGE: ${{ steps.version.outputs.image }}
-          BASE_TAG: ${{ steps.version.outputs.base-tag }}
-          SMOKE_BASE_URL: http://localhost:18001
-          SR_TEST_HOST_RAW: ${{ secrets.SR_TEST_HOST }}
-          SR_TEST_PORT: ${{ secrets.SR_TEST_PORT }}
-          SR_TEST_USER: ${{ secrets.SR_TEST_USER }}
-          SR_TEST_PASS: ${{ secrets.SR_TEST_PASS }}
-        run: |
-          docker rm -f srpm-stub 2>/dev/null || true
-
-          # Container uses bridge network; map localhost/127.0.0.1 to host.docker.internal
-          # so the container can reach StarRocks running on the runner host.
-          case "$SR_TEST_HOST_RAW" in
-            localhost|127.0.0.1|0.0.0.0)
-              export SR_TEST_HOST="host.docker.internal"
-              echo "Translated SR_TEST_HOST → host.docker.internal"
-              ;;
-            *)
-              export SR_TEST_HOST="$SR_TEST_HOST_RAW"
-              ;;
-          esac
-
-          docker run -d --name srpm-stub \
-            --cap-add SYS_PTRACE \
-            --add-host host.docker.internal:host-gateway \
-            -p 18001:8001 \
-            -e SRPM_JWT_SECRET=ci-test-secret \
-            ${IMAGE}:${BASE_TAG}-rfstub
-
-          for i in $(seq 1 30); do
-            if curl -sf http://localhost:18001/api/health; then
-              echo "App is ready"
-              break
-            fi
-            echo "Waiting... ($i/30)"
-            sleep 2
-          done
-
-          cd backend && python -m pytest tests/test_smoke_http.py -v -s || true
-
-      - name: Stop stub container
-        if: always()
-        run: |
-          docker stop srpm-stub || true
-          docker rm srpm-stub || true
-
-      # ── 5. Harden image (local) ──
-      - name: Harden image
-        env:
-          IMAGE: ${{ steps.version.outputs.image }}
-          BASE_TAG: ${{ steps.version.outputs.base-tag }}
-        shell: bash
-        run: |
-          set -o pipefail
-          # -p preserves /app/** so lazy-imported app code not covered by smoke
-          # test (admin vs non-admin branches in grant_collector etc.) is not
-          # stubbed out by rfharden. See .rapidfort/keep.profile.
-          rfharden -p .rapidfort/keep.profile -v=3 ${IMAGE}:${BASE_TAG}-rfstub 2>&1 | tee /tmp/rfharden.log
-
-          # Verify the hardened image was actually produced
-          if ! docker image inspect ${IMAGE}:${BASE_TAG}-rfhardened >/dev/null 2>&1; then
-            echo "ERROR: Expected hardened image ${IMAGE}:${BASE_TAG}-rfhardened was not created"
-            echo "Available images matching base tag:"
-            docker images | grep -E "${BASE_TAG}" || true
-            exit 1
-          fi
-
-          # Write improvement metrics to step summary
-          {
-            echo "### 🛡️ Rapidfort Hardening Results"
-            echo ""
-            echo '```'
-            grep -E "Attack Surface|Package Count|Vulns Count|Hardened image|Total size|Elapsed" /tmp/rfharden.log || tail -20 /tmp/rfharden.log
-            echo '```'
-          } >> $GITHUB_STEP_SUMMARY
-
-      # ── 6. Push final hardened image only ──
-      - name: Tag and push final image
-        env:
-          IMAGE: ${{ steps.version.outputs.image }}
-          BASE_TAG: ${{ steps.version.outputs.base-tag }}
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          HARDENED=${IMAGE}:${BASE_TAG}-rfhardened
-          docker tag $HARDENED ${IMAGE}:${VERSION}
-          docker tag $HARDENED ${IMAGE}:latest
-          docker push ${IMAGE}:${VERSION}
-          docker push ${IMAGE}:latest
-
-      - name: Cleanup local images (always)
-        if: always()
-        env:
-          IMAGE: ${{ steps.version.outputs.image }}
-          BASE_TAG: ${{ steps.version.outputs.base-tag }}
-        run: |
-          docker rm -f srpm-stub 2>/dev/null || true
-          docker rmi -f ${IMAGE}:${BASE_TAG} 2>/dev/null || true
-          docker rmi -f ${IMAGE}:${BASE_TAG}-rfstub 2>/dev/null || true
-          docker rmi -f ${IMAGE}:${BASE_TAG}-rfhardened 2>/dev/null || true
+      # ───────────────────────────────────────────────────────────────────────
+      # Rapidfort hardening pipeline (DISABLED — keep for future re-enable).
+      # To re-enable:
+      #   1. Uncomment this block
+      #   2. Replace the "Build and push Docker image" step above with the
+      #      classic docker build that keeps the image local (see git log for
+      #      prior version of this file, commit before v1.2.2)
+      #   3. Ensure GitHub Secrets RF_ACCESS_ID / RF_SECRET_ACCESS_KEY are set
+      #   4. Uncomment env.RF_ROOT_URL at top of file
+      # ───────────────────────────────────────────────────────────────────────
+      #
+      # - name: Install Rapidfort CLI (if needed)
+      #   run: |
+      #     if command -v rfstub >/dev/null 2>&1; then
+      #       echo "Rapidfort CLI already on PATH"
+      #     elif [ -x "/opt/rapidfort/rfstub" ]; then
+      #       echo "/opt/rapidfort" >> $GITHUB_PATH
+      #     elif [ -x "${GITHUB_WORKSPACE}/rapidfort/rfstub" ]; then
+      #       echo "${GITHUB_WORKSPACE}/rapidfort" >> $GITHUB_PATH
+      #     else
+      #       curl -s https://us01.rapidfort.com/cli/ | bash
+      #       echo "${GITHUB_WORKSPACE}/rapidfort" >> $GITHUB_PATH
+      #     fi
+      #
+      # - name: Install smoke test dependencies
+      #   run: pip install httpx pytest
+      #
+      # - name: Generate stub image (local)
+      #   env:
+      #     IMAGE: ${{ steps.version.outputs.image }}
+      #     BASE_TAG: ${{ steps.version.outputs.version }}-base
+      #     RF_ACCESS_ID: ${{ secrets.RF_ACCESS_ID }}
+      #     RF_SECRET_ACCESS_KEY: ${{ secrets.RF_SECRET_ACCESS_KEY }}
+      #   run: rfstub ${IMAGE}:${BASE_TAG}
+      #
+      # - name: Profile workload via smoke tests
+      #   env:
+      #     IMAGE: ${{ steps.version.outputs.image }}
+      #     BASE_TAG: ${{ steps.version.outputs.version }}-base
+      #     SMOKE_BASE_URL: http://localhost:18001
+      #     SR_TEST_HOST_RAW: ${{ secrets.SR_TEST_HOST }}
+      #     SR_TEST_PORT: ${{ secrets.SR_TEST_PORT }}
+      #     SR_TEST_USER: ${{ secrets.SR_TEST_USER }}
+      #     SR_TEST_PASS: ${{ secrets.SR_TEST_PASS }}
+      #   run: |
+      #     docker rm -f srpm-stub 2>/dev/null || true
+      #     case "$SR_TEST_HOST_RAW" in
+      #       localhost|127.0.0.1|0.0.0.0) export SR_TEST_HOST="host.docker.internal" ;;
+      #       *) export SR_TEST_HOST="$SR_TEST_HOST_RAW" ;;
+      #     esac
+      #     docker run -d --name srpm-stub --cap-add SYS_PTRACE \
+      #       --add-host host.docker.internal:host-gateway \
+      #       -p 18001:8001 -e SRPM_JWT_SECRET=ci-test-secret \
+      #       ${IMAGE}:${BASE_TAG}-rfstub
+      #     for i in $(seq 1 30); do
+      #       curl -sf http://localhost:18001/api/health && break || sleep 2
+      #     done
+      #     cd backend && python -m pytest tests/test_smoke_http.py -v -s || true
+      #
+      # - name: Stop stub container
+      #   if: always()
+      #   run: docker rm -f srpm-stub 2>/dev/null || true
+      #
+      # - name: Harden image
+      #   env:
+      #     IMAGE: ${{ steps.version.outputs.image }}
+      #     BASE_TAG: ${{ steps.version.outputs.version }}-base
+      #     RF_ACCESS_ID: ${{ secrets.RF_ACCESS_ID }}
+      #     RF_SECRET_ACCESS_KEY: ${{ secrets.RF_SECRET_ACCESS_KEY }}
+      #   shell: bash
+      #   run: |
+      #     set -o pipefail
+      #     rfharden -p .rapidfort/keep.profile -v=3 ${IMAGE}:${BASE_TAG}-rfstub 2>&1 | tee /tmp/rfharden.log
+      #     docker image inspect ${IMAGE}:${BASE_TAG}-rfhardened >/dev/null || exit 1
+      #     {
+      #       echo "### 🛡️ Rapidfort Hardening Results"
+      #       echo '```'
+      #       grep -E "Attack Surface|Package Count|Vulns Count|Hardened image|Total size" /tmp/rfharden.log || tail -20 /tmp/rfharden.log
+      #       echo '```'
+      #     } >> $GITHUB_STEP_SUMMARY
+      #
+      # - name: Tag and push hardened image
+      #   env:
+      #     IMAGE: ${{ steps.version.outputs.image }}
+      #     BASE_TAG: ${{ steps.version.outputs.version }}-base
+      #     VERSION: ${{ steps.version.outputs.version }}
+      #   run: |
+      #     HARDENED=${IMAGE}:${BASE_TAG}-rfhardened
+      #     docker tag $HARDENED ${IMAGE}:${VERSION}
+      #     docker tag $HARDENED ${IMAGE}:latest
+      #     docker push ${IMAGE}:${VERSION}
+      #     docker push ${IMAGE}:latest
+      #
+      # - name: Cleanup local images (always)
+      #   if: always()
+      #   env:
+      #     IMAGE: ${{ steps.version.outputs.image }}
+      #     BASE_TAG: ${{ steps.version.outputs.version }}-base
+      #   run: |
+      #     docker rm -f srpm-stub 2>/dev/null || true
+      #     docker rmi -f ${IMAGE}:${BASE_TAG} 2>/dev/null || true
+      #     docker rmi -f ${IMAGE}:${BASE_TAG}-rfstub 2>/dev/null || true
+      #     docker rmi -f ${IMAGE}:${BASE_TAG}-rfhardened 2>/dev/null || true
 
   # ── Create GitHub Release ──
   release:
     name: Create GitHub Release
     runs-on: self-hosted
-    needs: build-harden-push
+    needs: build-and-push
     permissions:
       contents: write
       packages: read
@@ -242,15 +217,15 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.build-harden-push.outputs.version }}
-          name: Release ${{ needs.build-harden-push.outputs.version }}
+          tag_name: ${{ needs.build-and-push.outputs.version }}
+          name: Release ${{ needs.build-and-push.outputs.version }}
           generate_release_notes: true
           make_latest: true
           body: |
             ## Docker Image
 
             ```bash
-            docker pull ${{ needs.build-harden-push.outputs.image }}:${{ needs.build-harden-push.outputs.version }}
+            docker pull ${{ needs.build-and-push.outputs.image }}:${{ needs.build-and-push.outputs.version }}
             ```
 
             ### Quick Start
@@ -259,20 +234,19 @@ jobs:
             docker run -d --name srpm \
               -p 8001:8001 \
               -e SRPM_JWT_SECRET=your-secret-here \
-              ${{ needs.build-harden-push.outputs.image }}:${{ needs.build-harden-push.outputs.version }}
+              ${{ needs.build-and-push.outputs.image }}:${{ needs.build-and-push.outputs.version }}
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Summary
         run: |
-          IMAGE=${{ needs.build-harden-push.outputs.image }}
-          VERSION=${{ needs.build-harden-push.outputs.version }}
+          IMAGE=${{ needs.build-and-push.outputs.image }}
+          VERSION=${{ needs.build-and-push.outputs.version }}
           echo "### 🚀 Release Published" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Version**: ${VERSION}" >> $GITHUB_STEP_SUMMARY
           echo "- **Image**: \`${IMAGE}:${VERSION}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- **Hardened**: ✅ Rapidfort CVE removal applied" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Pull:**" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
