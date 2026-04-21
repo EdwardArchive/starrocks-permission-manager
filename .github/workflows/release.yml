@@ -113,11 +113,32 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Rapidfort CLI
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Rapidfort CLI (if needed)
         run: |
-          curl -s https://us01.rapidfort.com/cli/ | bash
-          # CLI installs into ./rapidfort relative to the workspace
-          echo "${GITHUB_WORKSPACE}/rapidfort" >> $GITHUB_PATH
+          # Reuse pre-installed CLI on self-hosted runner to avoid 128MB download per run
+          if command -v rfstub >/dev/null 2>&1; then
+            echo "Rapidfort CLI already on PATH"
+          elif [ -x "/opt/rapidfort/rfstub" ]; then
+            echo "Using pre-installed CLI at /opt/rapidfort"
+            echo "/opt/rapidfort" >> $GITHUB_PATH
+          elif [ -x "${GITHUB_WORKSPACE}/rapidfort/rfstub" ]; then
+            echo "Using cached CLI in workspace"
+            echo "${GITHUB_WORKSPACE}/rapidfort" >> $GITHUB_PATH
+          else
+            echo "Installing Rapidfort CLI"
+            curl -s https://us01.rapidfort.com/cli/ | bash
+            echo "${GITHUB_WORKSPACE}/rapidfort" >> $GITHUB_PATH
+          fi
+
+      - name: Install smoke test dependencies
+        run: pip install httpx pytest
 
       - name: Generate stub image
         run: |
@@ -125,11 +146,17 @@ jobs:
           rfstub ${IMAGE}:${BASE_TAG}
           docker push ${IMAGE}:${BASE_TAG}-rfstub
 
-      - name: Run stub container for workload profiling
+      - name: Run stub container and profile workload with smoke tests
+        env:
+          SMOKE_BASE_URL: http://localhost:8001
+          SR_TEST_HOST: ${{ secrets.SR_TEST_HOST }}
+          SR_TEST_PORT: ${{ secrets.SR_TEST_PORT }}
+          SR_TEST_USER: ${{ secrets.SR_TEST_USER }}
+          SR_TEST_PASS: ${{ secrets.SR_TEST_PASS }}
         run: |
           docker run -d --name srpm-stub \
             --cap-add SYS_PTRACE \
-            -p 8001:8001 \
+            --network host \
             -e SRPM_JWT_SECRET=ci-test-secret \
             ${IMAGE}:${BASE_TAG}-rfstub
 
@@ -143,11 +170,10 @@ jobs:
             sleep 2
           done
 
-          # Profile: hit key endpoints to cover usage patterns
-          curl -sf http://localhost:8001/api/health || true
-          curl -sf http://localhost:8001/ || true
+          # Run smoke tests to exercise main APIs for Rapidfort profiling
+          cd backend && python -m pytest tests/test_smoke_http.py -v -s || true
 
-          docker stop srpm-stub
+          cd .. && docker stop srpm-stub
           docker rm srpm-stub
 
       - name: Harden image
