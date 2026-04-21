@@ -176,8 +176,10 @@ jobs:
           # Run smoke tests to exercise main APIs for Rapidfort profiling
           cd backend && python -m pytest tests/test_smoke_http.py -v -s || true
 
-          cd .. && docker stop srpm-stub
-          docker rm srpm-stub
+      - name: Stop stub container (before harden)
+        run: |
+          docker stop srpm-stub || true
+          docker rm srpm-stub || true
 
       - name: Harden image
         run: rfharden ${IMAGE}:${BASE_TAG}-rfstub
@@ -192,6 +194,16 @@ jobs:
           docker tag $HARDENED ${IMAGE}:latest
           docker push ${IMAGE}:${VERSION}
           docker push ${IMAGE}:latest
+
+      - name: Cleanup (always)
+        if: always()
+        run: |
+          # Remove stub container if still present (e.g. failed run)
+          docker rm -f srpm-stub 2>/dev/null || true
+          # Remove intermediate local images to save disk on self-hosted runner
+          docker rmi -f ${IMAGE}:${BASE_TAG} 2>/dev/null || true
+          docker rmi -f ${IMAGE}:${BASE_TAG}-rfstub 2>/dev/null || true
+          docker rmi -f ${IMAGE}:${BASE_TAG}-rfstub-rfhardened 2>/dev/null || true
 
   # ── Create GitHub Release ──
   release:
