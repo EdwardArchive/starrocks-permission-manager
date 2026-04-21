@@ -187,7 +187,8 @@ jobs:
       - name: Tag hardened image as release and latest
         run: |
           VERSION=${{ needs.build-base.outputs.version }}
-          HARDENED=${IMAGE}:${BASE_TAG}-rfstub-rfhardened
+          # rfharden transforms :TAG-rfstub → :TAG-rfhardened (strips -rfstub, adds -rfhardened)
+          HARDENED=${IMAGE}:${BASE_TAG}-rfhardened
 
           # Hardened image is already local (produced by rfharden); no pull needed
           docker tag $HARDENED ${IMAGE}:${VERSION}
@@ -203,7 +204,7 @@ jobs:
           # Remove intermediate local images to save disk on self-hosted runner
           docker rmi -f ${IMAGE}:${BASE_TAG} 2>/dev/null || true
           docker rmi -f ${IMAGE}:${BASE_TAG}-rfstub 2>/dev/null || true
-          docker rmi -f ${IMAGE}:${BASE_TAG}-rfstub-rfhardened 2>/dev/null || true
+          docker rmi -f ${IMAGE}:${BASE_TAG}-rfhardened 2>/dev/null || true
 
   # ── Create GitHub Release ──
   release:
