@@ -119,17 +119,6 @@ jobs:
           # CLI installs into ./rapidfort relative to the workspace
           echo "${GITHUB_WORKSPACE}/rapidfort" >> $GITHUB_PATH
 
-      - name: Write Rapidfort credentials
-        run: |
-          mkdir -p $HOME/.rapidfort
-          cat > $HOME/.rapidfort/credentials <<EOF
-          [default]
-          access_id = ${RF_ACCESS_ID}
-          secret_access_key = ${RF_SECRET_ACCESS_KEY}
-          root_url = ${RF_ROOT_URL}
-          EOF
-          chmod 600 $HOME/.rapidfort/credentials
-
       - name: Generate stub image
         run: |
           docker pull ${IMAGE}:${BASE_TAG}
