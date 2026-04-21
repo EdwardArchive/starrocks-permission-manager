@@ -83,7 +83,7 @@ def test_my_permissions(http_client, auth_headers):
     "path",
     [
         "/api/user/objects/catalogs",
-        "/api/user/objects/databases",
+        "/api/user/objects/databases?catalog=default_catalog",
         "/api/user/roles",
         "/api/user/roles/hierarchy",
         "/api/user/dag/object-hierarchy",
