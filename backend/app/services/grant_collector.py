@@ -12,11 +12,21 @@ public API that routers and services import.
 from __future__ import annotations
 
 import logging
+import threading
+from copy import deepcopy
 from dataclasses import dataclass, field
 
+from cachetools import TTLCache
+
+from app.config import settings
 from app.models.schemas import PrivilegeGrant
 
 logger = logging.getLogger("privileges")
+
+# Collecting all grants is expensive (full sys.* scans + a SHOW GRANTS per
+# grantee). Cache the assembled CollectedGrants per (host, username, is_admin).
+_grants_cache: TTLCache = TTLCache(maxsize=256, ttl=settings.cache_ttl_seconds)
+_grants_cache_lock = threading.Lock()
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -47,12 +57,27 @@ class GrantCollector:
         collected = collector.collect()
     """
 
-    def __init__(self, conn, username: str, is_admin: bool):
+    def __init__(self, conn, username: str, is_admin: bool, host: str | None = None):
         self._conn = conn
         self._username = username
         self._is_admin = is_admin
+        self._host = host
 
     def collect(self) -> CollectedGrants:
+        key = (self._host, self._username, self._is_admin)
+        with _grants_cache_lock:
+            cached = _grants_cache.get(key)
+        if cached is not None:
+            # GrantResolver mutates grant.source in place, so every caller must
+            # get an independent deepcopy — never the shared cached object.
+            return deepcopy(cached)
+
+        result = self._collect_uncached()
+        with _grants_cache_lock:
+            _grants_cache[key] = result
+        return deepcopy(result)
+
+    def _collect_uncached(self) -> CollectedGrants:
         if self._is_admin:
             from app.services.admin.sys_collector import collect_admin
 
