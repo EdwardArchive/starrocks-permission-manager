@@ -33,15 +33,10 @@ def get_my_permissions(
 
     # Roles are already activated by the pooled connection reset (get_db).
 
-    # Parse SHOW GRANTS → direct grants + role assignments
-    user_grants = _parse_show_grants(conn, username, "USER")
+    # Parse SHOW GRANTS → direct privilege grants. Role assignments are emitted
+    # only by parse_role_assignments (the parser below never produces them).
     direct_roles: list[str] = []
-    direct_privileges: list[PrivilegeGrant] = []
-    for g in user_grants:
-        if g.object_type == "ROLE_ASSIGNMENT":
-            direct_roles.append(g.privilege_type)
-        else:
-            direct_privileges.append(g)
+    direct_privileges: list[PrivilegeGrant] = _parse_show_grants(conn, username, "USER")
 
     # Also parse raw output for comma-separated role assignments
     for role_name in parse_role_assignments(conn, username, "USER"):
@@ -60,11 +55,7 @@ def get_my_permissions(
         role_grants: list[PrivilegeGrant] = []
         child_roles: list[str] = []
         try:
-            for g in _parse_show_grants(conn, role, "ROLE"):
-                if g.object_type == "ROLE_ASSIGNMENT":
-                    child_roles.append(g.privilege_type)
-                else:
-                    role_grants.append(g)
+            role_grants = _parse_show_grants(conn, role, "ROLE")
         except Exception:
             logger.debug("Cannot access SHOW GRANTS FOR ROLE '%s'", role)
         for rn in parse_role_assignments(conn, role, "ROLE"):

@@ -13,3 +13,7 @@ frontend/coverage/
 reports/
 frontend/mockup-*.html
 backup_temp/
+
+# Vendor binaries (e.g. rapidfort CLI tarball) — must not be committed
+*.tar.gz
+rapidfort_cli-*.tar.gz
