@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from app.dependencies import get_credentials, get_db
 from app.models.schemas import LoginRequest, LoginResponse, UserInfo
 from app.services.starrocks_client import execute_query, get_connection, test_connection
 from app.utils.cache import clear_all_caches
+from app.utils.rate_limit import login_rate_limiter
 from app.utils.role_helpers import get_user_roles
 from app.utils.session import create_token, decode_token
 from app.utils.session_store import session_store
@@ -18,7 +19,13 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(req: LoginRequest):
+def login(req: LoginRequest, request: Request):
+    # Throttle per source IP before doing any work: caps password brute-force and
+    # blocks abuse of the user-supplied host/port as an SSRF / port-scan oracle.
+    client_ip = request.client.host if request.client else "unknown"
+    if not login_rate_limiter.allow(client_ip):
+        raise HTTPException(status_code=429, detail="Too many login attempts. Please wait and try again.")
+
     if not test_connection(req.host, req.port, req.username, req.password):
         raise HTTPException(status_code=401, detail="Failed to connect to StarRocks")
 
