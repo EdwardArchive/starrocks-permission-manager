@@ -141,7 +141,10 @@ export function PermissionMatrixView({ grants, objectType, filterGrantees, objec
                   const badge = isD ? "D" : "I";
                   const bg = isD ? "rgba(34,197,94,0.2)" : "rgba(59,130,246,0.2)";
                   const fg = isD ? "#4ade80" : "#60a5fa";
-                  const revocable = canManageGrants && revokeSupported && isD && grant != null;
+                  // parent-scope rows (e.g. DB-level CREATE TABLE shown in a table's
+                  // matrix) must be revoked at their own scope, not this object's
+                  const scopeMatches = grant != null && (!objectRef || grant.object_type === objectRef.object_type);
+                  const revocable = canManageGrants && revokeSupported && isD && scopeMatches;
                   return (
                     <td key={col} style={{ textAlign: "center", padding: "6px 4px" }}>
                       <span
