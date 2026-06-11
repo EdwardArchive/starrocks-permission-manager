@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { fireEvent } from "@testing-library/react";
 import { render, screen, waitFor, act } from "../../test/test-utils";
 import QueriesPanel from "./QueriesPanel";
 import { ApiError } from "../../api/client";
@@ -8,25 +9,32 @@ import type { ClusterQueriesResponse } from "../../types";
 /* ── Mocks ── */
 
 const mockGetClusterQueries = vi.fn();
+const mockGetClusterQueryHistory = vi.fn();
+const mockKillClusterQuery = vi.fn();
 vi.mock("../../api/cluster", () => ({
   getClusterStatus: vi.fn(),
   getClusterQueries: (...args: unknown[]) => mockGetClusterQueries(...args),
+  getClusterQueryHistory: (...args: unknown[]) => mockGetClusterQueryHistory(...args),
+  killClusterQuery: (...args: unknown[]) => mockKillClusterQuery(...args),
 }));
 
 function makeResponse(overrides: Partial<ClusterQueriesResponse> = {}): ClusterQueriesResponse {
-  return { queries: [makeQuery()], server_now: null, ...overrides };
+  return { queries: [makeQuery()], server_now: null, can_kill: false, ...overrides };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetClusterQueries.mockResolvedValue(makeResponse());
+  mockGetClusterQueryHistory.mockResolvedValue({ available: true, queries: [], server_now: null, reason: null });
+  mockKillClusterQuery.mockResolvedValue({ status: "ok", query_id: "q-001", audit: "ok" });
 });
 
 describe("QueriesPanel", () => {
-  it("renders the Running Queries header with count", async () => {
+  it("renders the Running / Recent subtabs and a running count", async () => {
     render(<QueriesPanel />);
-    await waitFor(() => expect(screen.getByText("Running Queries")).toBeInTheDocument());
-    expect(screen.getByText("(1)")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("queries-tab-running")).toBeInTheDocument());
+    expect(screen.getByTestId("queries-tab-history")).toBeInTheDocument();
+    expect(screen.getByText("1 running")).toBeInTheDocument();
   });
 
   it("renders a query row with user, db, state, and resource values", async () => {
@@ -208,5 +216,106 @@ describe("QueriesPanel — CPU share column", () => {
 
     expect(screen.getByText("Avg CPU (since start)")).toBeInTheDocument();
     expect(screen.getByText("2.4 cores · 5.0% of 48")).toBeInTheDocument();
+  });
+});
+
+describe("QueriesPanel — filter, refresh control, subtabs, KILL", () => {
+  it("filters running rows by the text box (user/db/sql)", async () => {
+    mockGetClusterQueries.mockResolvedValue(
+      makeResponse({
+        queries: [
+          makeQuery({ query_id: "a", user: "alice", sql: "SELECT 1" }),
+          makeQuery({ query_id: "b", user: "bob", sql: "SELECT 2" }),
+        ],
+      }),
+    );
+    render(<QueriesPanel />);
+    await waitFor(() => expect(screen.getByTestId("queries-table")).toBeInTheDocument());
+    expect(screen.getAllByTestId("query-row")).toHaveLength(2);
+
+    fireEvent.change(screen.getByTestId("queries-filter"), { target: { value: "alice" } });
+    expect(screen.getAllByTestId("query-row")).toHaveLength(1);
+    expect(screen.getByText("alice")).toBeInTheDocument();
+  });
+
+  it("Off interval stops polling but manual refresh still works", async () => {
+    render(<QueriesPanel />);
+    await waitFor(() => expect(screen.getByTestId("queries-table")).toBeInTheDocument());
+    const callsAfterMount = mockGetClusterQueries.mock.calls.length;
+
+    fireEvent.change(screen.getByTestId("refresh-interval"), { target: { value: "0" } });
+    act(() => { screen.getByTestId("queries-refresh-btn").click(); });
+    await waitFor(() =>
+      expect(mockGetClusterQueries.mock.calls.length).toBeGreaterThan(callsAfterMount),
+    );
+  });
+
+  it("switching to Recent loads history", async () => {
+    mockGetClusterQueryHistory.mockResolvedValue({
+      available: true,
+      queries: [
+        { query_id: "h1", timestamp: "2026-06-12 01:00:00", user: "root", database: "db1",
+          warehouse: "wh", query_type: "Query", state: "EOF", is_error: false, error_code: null,
+          query_time_ms: 1500, scan_rows: 1000, scan_bytes: 2048, mem_cost_bytes: 1048576, cpu_cost_ns: 5e9,
+          sql: "SELECT * FROM db1.t" },
+      ],
+      server_now: null,
+      reason: null,
+    });
+    render(<QueriesPanel />);
+    await waitFor(() => expect(screen.getByTestId("queries-table")).toBeInTheDocument());
+
+    act(() => { screen.getByTestId("queries-tab-history").click(); });
+    await waitFor(() => expect(screen.getByTestId("history-table")).toBeInTheDocument());
+    expect(screen.getByText("SELECT * FROM db1.t")).toBeInTheDocument();
+    expect(screen.getByText("1.50 s")).toBeInTheDocument();
+  });
+
+  it("Recent shows an unavailable note when the audit table is missing", async () => {
+    mockGetClusterQueryHistory.mockResolvedValue({
+      available: false, queries: [], server_now: null,
+      reason: "Query history requires the StarRocks AuditLoader plugin",
+    });
+    render(<QueriesPanel />);
+    await waitFor(() => expect(screen.getByTestId("queries-table")).toBeInTheDocument());
+
+    act(() => { screen.getByTestId("queries-tab-history").click(); });
+    await waitFor(() => expect(screen.getByText(/AuditLoader plugin/)).toBeInTheDocument());
+  });
+
+  it("errors-only toggle re-fetches history with the flag", async () => {
+    render(<QueriesPanel />);
+    await waitFor(() => expect(screen.getByTestId("queries-table")).toBeInTheDocument());
+    act(() => { screen.getByTestId("queries-tab-history").click(); });
+    await waitFor(() => expect(screen.getByTestId("history-errors-only")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId("history-errors-only"));
+    await waitFor(() =>
+      expect(mockGetClusterQueryHistory).toHaveBeenLastCalledWith(
+        expect.objectContaining({ errorsOnly: true }),
+        expect.anything(),
+      ),
+    );
+  });
+
+  it("hides the KILL action when can_kill is false", async () => {
+    mockGetClusterQueries.mockResolvedValue(makeResponse({ can_kill: false }));
+    render(<QueriesPanel />);
+    await waitFor(() => expect(screen.getByTestId("queries-table")).toBeInTheDocument());
+    act(() => { screen.getByTestId("query-row").click(); });
+    expect(screen.queryByTestId("kill-btn")).not.toBeInTheDocument();
+  });
+
+  it("shows KILL for grant-admins and calls the API on confirm", async () => {
+    mockGetClusterQueries.mockResolvedValue(makeResponse({ can_kill: true }));
+    render(<QueriesPanel />);
+    await waitFor(() => expect(screen.getByTestId("queries-table")).toBeInTheDocument());
+    act(() => { screen.getByTestId("query-row").click(); });
+
+    expect(screen.getByTestId("kill-btn")).toBeInTheDocument();
+    act(() => { screen.getByTestId("kill-btn").click(); });           // step 1: confirm UI
+    act(() => { screen.getByTestId("kill-confirm-btn").click(); });   // step 2: execute
+
+    await waitFor(() => expect(mockKillClusterQuery).toHaveBeenCalledWith("q-001"));
   });
 });

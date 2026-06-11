@@ -264,4 +264,30 @@ export interface RunningQueryInfo {
 export interface ClusterQueriesResponse {
   queries: RunningQueryInfo[];
   server_now: string | null;
+  can_kill: boolean;
+}
+
+export interface HistoryQueryInfo {
+  query_id: string | null;
+  timestamp: string | null;
+  user: string | null;
+  database: string | null;
+  warehouse: string | null;
+  query_type: string | null;
+  state: string | null;
+  is_error: boolean;
+  error_code: string | null;
+  query_time_ms: number | null;
+  scan_rows: number | null;
+  scan_bytes: number | null;
+  mem_cost_bytes: number | null;
+  cpu_cost_ns: number | null;
+  sql: string | null;
+}
+
+export interface ClusterHistoryResponse {
+  available: boolean;
+  queries: HistoryQueryInfo[];
+  server_now: string | null;
+  reason: string | null;
 }
