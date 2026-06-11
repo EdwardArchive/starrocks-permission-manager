@@ -32,6 +32,7 @@ def _collect(conn, credentials: dict) -> GrantCollector:
         conn,
         username=credentials["username"],
         is_admin=True,
+        host=credentials.get("host"),
     )
 
 

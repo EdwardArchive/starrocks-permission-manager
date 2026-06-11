@@ -13,7 +13,7 @@ from app.services.grant_collector import CollectedGrants
 from app.services.common.grant_parser import _parse_show_grants, _row_to_grants
 from app.services.shared.constants import BUILTIN_ROLES
 from app.services.shared.name_utils import normalize_fn_name
-from app.services.shared.role_graph import fetch_role_child_map
+from app.services.shared.role_graph import fetch_role_child_map, fetch_user_role_map
 from app.services.starrocks_client import execute_query
 from app.utils.role_helpers import build_role_chain
 
@@ -59,12 +59,14 @@ def collect_admin(conn, username: str) -> CollectedGrants:
     # 5. Role hierarchy
     role_chain = build_role_chain(conn, username, include_public=True)
     role_child_map = fetch_role_child_map(conn)
+    user_role_map = fetch_user_role_map(conn)
 
     return CollectedGrants(
         grants=grants,
         user_role_chain=role_chain,
         role_child_map=role_child_map,
         all_users=all_users,
+        user_role_map=user_role_map,
     )
 
 

@@ -45,9 +45,29 @@ def _bfs_child_roles(
     return result
 
 
-def _bfs_user_privs(conn, user: str, role_privs: dict[str, set[str]]) -> dict[str, str]:
-    """Check if user's roles intersect with role_privs. Returns {priv: source_role}."""
-    user_roles = get_user_roles(conn, user)
+def invert_child_map(children_of: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Invert {parent: [children]} → {child: [parents]} for in-memory upward BFS."""
+    parents_of: dict[str, list[str]] = {}
+    for parent, children in children_of.items():
+        for child in children:
+            parents_of.setdefault(child, []).append(parent)
+    return parents_of
+
+
+def _bfs_user_privs(
+    conn,
+    user: str,
+    role_privs: dict[str, set[str]],
+    user_role_map: dict[str, list[str]] | None = None,
+    parent_map: dict[str, list[str]] | None = None,
+) -> dict[str, str]:
+    """Check if user's roles intersect with role_privs. Returns {priv: source_role}.
+
+    When user_role_map / parent_map are provided (admin path), the user's direct
+    roles and parent edges are read from memory — no per-user DB query (avoids the
+    N+1 over all org users). Otherwise falls back to querying via conn.
+    """
+    user_roles = user_role_map.get(user, []) if user_role_map is not None else get_user_roles(conn, user)
     if not user_roles:
         return {}
     # Fast path: direct role check (covers most cases since role_privs already includes inherited roles)
@@ -69,7 +89,8 @@ def _bfs_user_privs(conn, user: str, role_privs: dict[str, set[str]]) -> dict[st
         if role in role_privs:
             for priv in role_privs[role]:
                 result.setdefault(priv, origin)
-        queue.extend((p, origin) for p in get_parent_roles(conn, role))
+        parents = parent_map.get(role, []) if parent_map is not None else (get_parent_roles(conn, role) if conn else [])
+        queue.extend((p, origin) for p in parents)
     return result
 
 

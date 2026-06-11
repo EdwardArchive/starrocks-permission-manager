@@ -17,7 +17,7 @@ from app.services.common.grant_parser import _parse_show_grants
 from app.services.shared.name_utils import normalize_fn_name
 from app.services.starrocks_client import execute_query
 from app.utils.role_helpers import parse_role_assignments
-from app.utils.sql_safety import safe_name
+from app.utils.sql_safety import safe_identifier
 
 logger = logging.getLogger("privileges")
 router = APIRouter()
@@ -31,20 +31,12 @@ def get_my_permissions(
     """Build the current user's full permission tree using only SHOW GRANTS."""
     username = credentials["username"]
 
-    try:
-        execute_query(conn, "SET ROLE ALL")
-    except Exception:
-        logger.debug("Failed to SET ROLE ALL for user %s", username)
+    # Roles are already activated by the pooled connection reset (get_db).
 
-    # Parse SHOW GRANTS → direct grants + role assignments
-    user_grants = _parse_show_grants(conn, username, "USER")
+    # Parse SHOW GRANTS → direct privilege grants. Role assignments are emitted
+    # only by parse_role_assignments (the parser below never produces them).
     direct_roles: list[str] = []
-    direct_privileges: list[PrivilegeGrant] = []
-    for g in user_grants:
-        if g.object_type == "ROLE_ASSIGNMENT":
-            direct_roles.append(g.privilege_type)
-        else:
-            direct_privileges.append(g)
+    direct_privileges: list[PrivilegeGrant] = _parse_show_grants(conn, username, "USER")
 
     # Also parse raw output for comma-separated role assignments
     for role_name in parse_role_assignments(conn, username, "USER"):
@@ -63,11 +55,7 @@ def get_my_permissions(
         role_grants: list[PrivilegeGrant] = []
         child_roles: list[str] = []
         try:
-            for g in _parse_show_grants(conn, role, "ROLE"):
-                if g.object_type == "ROLE_ASSIGNMENT":
-                    child_roles.append(g.privilege_type)
-                else:
-                    role_grants.append(g)
+            role_grants = _parse_show_grants(conn, role, "ROLE")
         except Exception:
             logger.debug("Cannot access SHOW GRANTS FOR ROLE '%s'", role)
         for rn in parse_role_assignments(conn, role, "ROLE"):
@@ -161,7 +149,7 @@ def get_my_permissions(
         if cat_name == "default_catalog":
             for db in cat_databases:
                 try:
-                    fn_rows = execute_query(conn, f"SHOW FULL FUNCTIONS FROM `{safe_name(db)}`")
+                    fn_rows = execute_query(conn, f"SHOW FULL FUNCTIONS FROM `{safe_identifier(db)}`")
                     seen_fns: set[str] = set()
                     for r in fn_rows:
                         sig = r.get("Signature") or r.get("Function Name") or ""
@@ -246,7 +234,7 @@ def get_my_permissions(
         logger.debug("Query failed, skipping")
     for sv_name in sv_names:
         try:
-            rows = execute_query(conn, f"DESC STORAGE VOLUME `{safe_name(sv_name)}`")
+            rows = execute_query(conn, f"DESC STORAGE VOLUME `{safe_identifier(sv_name)}`")
             if rows:
                 r = rows[0]
                 _add_sys(

@@ -21,7 +21,7 @@ function getNodeContext(node: { label: string; metadata?: Record<string, unknown
 }
 
 export default function ObjectDetailPanel() {
-  const { selectedNode } = useDagStore();
+  const selectedNode = useDagStore((s) => s.selectedNode);
   const canManageGrants = useAuthStore((s) => s.user?.can_manage_grants ?? false);
   const openWizard = useGrantStore((s) => s.openWizard);
   const [tab, setTab] = useState<"privileges" | "details">("privileges");

@@ -36,6 +36,25 @@ class TestSafeName:
         with pytest.raises(ValueError):
             safe_name("admin()")
 
+    def test_valid_with_hyphen_and_dot(self):
+        assert safe_name("analyst-role") == "analyst-role"
+        assert safe_name("my.role") == "my.role"
+
+    def test_rejects_quote_breakout(self):
+        # The core fix: a bare value carrying a quote must not pass and break
+        # out of SHOW GRANTS FOR '<value>'.
+        with pytest.raises(ValueError):
+            safe_name("kate'@'%")
+
+    def test_rejects_embedded_quote_in_bare_name(self):
+        with pytest.raises(ValueError):
+            safe_name("ka'te")
+
+    def test_rejects_unbalanced_quoted_form(self):
+        # Looks like the user@host form but the inner part smuggles a quote.
+        with pytest.raises(ValueError):
+            safe_name("'a''b'@'%'")
+
 
 class TestSafeIdentifier:
     def test_normal_name(self):

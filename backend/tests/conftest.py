@@ -150,6 +150,12 @@ DEFAULT_QUERY_MAP: dict[str, list[dict[str, Any]]] = {
     "SELECT TO_USER FROM sys.role_edges WHERE FROM_ROLE": [
         {"TO_USER": "analyst_kim"},
     ],
+    "SELECT FROM_ROLE, TO_USER FROM sys.role_edges WHERE TO_USER": [
+        {"FROM_ROLE": "analyst_role", "TO_USER": "analyst_kim"},
+        {"FROM_ROLE": "root", "TO_USER": "test_admin"},
+        {"FROM_ROLE": "public", "TO_USER": "test_admin"},
+        {"FROM_ROLE": "public", "TO_USER": "analyst_kim"},
+    ],
     "SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.tables": [
         {"TABLE_NAME": "user_events", "TABLE_TYPE": "BASE TABLE"},
         {"TABLE_NAME": "page_views", "TABLE_TYPE": "BASE TABLE"},
@@ -342,6 +348,7 @@ def client(mock_db, query_map):
     from app.routers.user_dag import _dag_cache as user_dag_cache
     from app.services.admin.user_service import _user_cache
     from app.routers.cluster import _cluster_cache
+    from app.services.grant_collector import _grants_cache
     _catalog_cache.clear()
     admin_role_cache.clear()
     user_role_cache.clear()
@@ -349,6 +356,11 @@ def client(mock_db, query_map):
     user_dag_cache.clear()
     _user_cache.clear()
     _cluster_cache.clear()
+    _grants_cache.clear()
+
+    # Reset the login rate limiter so attempts don't accumulate across tests
+    from app.utils.rate_limit import login_rate_limiter
+    login_rate_limiter.reset()
 
     def _override_credentials(authorization: str = Header(default="")):
         _default = {"host": TEST_HOST, "port": TEST_PORT, "username": TEST_USER,

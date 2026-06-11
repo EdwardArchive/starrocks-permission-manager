@@ -12,9 +12,12 @@ def clear_all_caches() -> None:
     from app.routers.user_objects import _catalog_cache, _catalog_cache_lock
     from app.routers.user_roles import _role_cache as user_role_cache, _role_cache_lock as user_role_lock
     from app.services.admin.user_service import _user_cache, _user_cache_lock
+    from app.services.grant_collector import _grants_cache, _grants_cache_lock
 
     admin_dag_cache.clear()
     user_dag_cache.clear()
+    with _grants_cache_lock:
+        _grants_cache.clear()
     with _catalog_cache_lock:
         _catalog_cache.clear()
     with admin_role_lock:

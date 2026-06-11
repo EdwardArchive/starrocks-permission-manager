@@ -45,6 +45,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   │   ├── user_roles.py        # GET /api/user/roles/* (Layer 1, all users)
 │   │   │   ├── user_dag.py          # GET /api/user/dag/* (Layer 1, all users)
 │   │   │   ├── user_search.py       # GET /api/user/search (Layer 1, all users)
+│   │   │   ├── user_privileges.py   # GET /api/user/privileges/* (facade: admin→sys.*, non-admin→SHOW GRANTS)
 │   │   │   ├── admin_privileges.py  # GET /api/admin/privileges/* (Layer 1+2, admin only)
 │   │   │   ├── admin_roles.py       # GET /api/admin/roles/* (Layer 1+2, admin only)
 │   │   │   ├── admin_dag.py         # GET /api/admin/dag/* (Layer 1+2, admin only)
@@ -52,8 +53,9 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   │   ├── cluster.py           # GET /api/cluster/status (no require_admin; SR enforces cluster_admin)
 │   │   │   └── admin_grants.py      # GRANT/REVOKE write routes (require_grant_admin)
 │   │   ├── services/
-│   │   │   ├── starrocks_client.py        # MySQL connector wrapper + parallel_queries
-│   │   │   ├── grant_collector.py         # Facade: delegates to common or admin collector
+│   │   │   ├── starrocks_client.py        # MySQL connector wrapper + connection pool + parallel_queries
+│   │   │   ├── grant_collector.py         # Facade: delegates to common or admin collector (TTL-cached)
+│   │   │   ├── fe_metrics.py              # FE /metrics HTTP probe for cluster status (limited mode)
 │   │   │   ├── shared/                    # Shared constants and utilities
 │   │   │   │   ├── constants.py           # BUILTIN_ROLES, BFS_MAX_DEPTH
 │   │   │   │   ├── grant_spec.py          # object_type → grantable privileges allowlist (docs-derived)
@@ -81,7 +83,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │       └── role_helpers.py # Shared: get_user_roles, get_parent_roles, parse_role_assignments
 │   └── tests/
 │       ├── conftest.py           # FakeConnection mock + fixtures
-│       ├── test_*.py             # Unit tests (57 original)
+│       ├── test_*.py             # Unit tests
 │       ├── test_admin_guard.py   # Admin route 403 guard tests (14 parametrized cases)
 │       └── test_integration.py   # Integration tests (26, requires real SR)
 └── frontend/
@@ -178,12 +180,12 @@ When code or project structure changes, run a sub-agent after completing the tas
   - `/api/admin/*`: Calls Common + Admin Tier. Requires `require_admin` middleware for authorization. Returns organization-wide data.
 
 - **Privilege Resolution Pipeline**: ← CHANGED (replaces previous "2-layer" description)
-  - **Admin path** (`services/admin/grant_collector.py`):
+  - **Admin path** (facade `services/grant_collector.py` → `services/admin/sys_collector.py`):
     - Collects all grants from `sys.grants_to_users` + `sys.grants_to_roles`
     - Maps full role hierarchy from `sys.role_edges`
     - Supplements builtin role/user grants via `SHOW GRANTS`
     - → `GrantResolver` interprets collected grants per query type (`for_user()`, `for_user_effective()`, `for_role()`, `for_object()`)
-  - **User path** (`services/common/grant_service.py`):
+  - **User path** (facade `services/grant_collector.py` → `services/common/show_grants_collector.py`; `routers/user_permissions.py` for the my-permissions tree):
     - Collects current user's grants via `SHOW GRANTS FOR {current_user}`
     - Traverses role chain via `SHOW GRANTS FOR ROLE {role}` with BFS
     - Enumerates accessible objects via `INFORMATION_SCHEMA`
@@ -194,7 +196,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 
 - **Implicit USAGE**: TABLE-level grant → implicit DATABASE USAGE + CATALOG USAGE (StarRocks behavior). (unchanged)
 
-- **SHOW GRANTS Parsing**: Consolidated into a single parser at `services/shared/grant_parser.py`. ← CHANGED
+- **SHOW GRANTS Parsing**: Consolidated into a single parser at `services/common/grant_parser.py`. ← CHANGED
   - `_parse_show_grants()`: Converts `SHOW GRANTS` output → `PrivilegeGrant` objects
   - `_row_to_grants()`: Converts `sys.*` table rows → `PrivilegeGrant` objects
   - Handles catalog context extraction, comma-separated roles, and wildcard patterns
@@ -206,7 +208,7 @@ When code or project structure changes, run a sub-agent after completing the tas
   - `services/shared/constants.py`:
     - `BUILTIN_ROLES`: frozenset (previously hardcoded in 4 separate files → now single source)
     - `BFS_MAX_DEPTH`: 100 (previously hardcoded in 2 files → now single source)
-  - `utils/normalize.py`:
+  - `services/shared/name_utils.py`:
     - `normalize_fn_name()`: Function signature normalization (previously duplicated in 4 files → now single source)
 
 - **Frontend API Pattern**: ← NEW
@@ -240,9 +242,9 @@ When code or project structure changes, run a sub-agent after completing the tas
 - /api/admin/grants/* is the write route category — require_grant_admin (admin + user_admin in role chain via can_manage_grants session flag); statements run under the user's own credentials, StarRocks is the final gate; all attempts audited to srpm_audit.grant_log (see docs/sql/setup_grant_admin.sql)
 
 ### Code Quality
-- No duplicate grant parsing logic — use services/shared/grant_parser.py
+- No duplicate grant parsing logic — use services/common/grant_parser.py
 - No hardcoded builtin roles — use constants.BUILTIN_ROLES
-- No duplicate function name normalization — use utils/normalize.py
+- No duplicate function name normalization — use services/shared/name_utils.py
 - All new endpoints must have pytest tests
 - Router files must NOT contain business logic (delegate to services)
 
@@ -319,10 +321,12 @@ cd frontend && E2E_SR_PASS=... npx playwright test
 - Auth: POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me
 - Health: GET /api/health
 
-### User Routes (`/api/user/*` — all users, Layer 1 only)
+### User Routes (`/api/user/*` — all users, Layer 1; `user_privileges` is a facade exception)
 - Objects: GET /api/user/objects/catalogs, databases, tables, table-detail
 - Permissions: GET /api/user/my-permissions
 - Roles: GET /api/user/roles, /api/user/roles/hierarchy
+- Privileges: GET /api/user/privileges/user/{name}/effective, role/{name}, object
+  (facade `GrantCollector`: admin → sys.* path, non-admin → SHOW GRANTS path)
 - DAG: GET /api/user/dag/object-hierarchy, /api/user/dag/role-hierarchy
 - Search: GET /api/user/search
 

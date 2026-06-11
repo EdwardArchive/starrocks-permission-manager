@@ -17,3 +17,7 @@ backup_temp/
 # Playwright artifacts
 frontend/test-results/
 frontend/playwright-report/
+
+# Vendor binaries (e.g. rapidfort CLI tarball) — must not be committed
+*.tar.gz
+rapidfort_cli-*.tar.gz

@@ -32,6 +32,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup: warn loudly if running on the placeholder JWT secret
+    if settings.is_default_secret:
+        logger.warning(
+            "SRPM_JWT_SECRET is the built-in placeholder. Set a strong, unique secret "
+            "(SRPM_ENVIRONMENT=production refuses to start without one)."
+        )
+
     # Startup: periodic cleanup of expired sessions
     async def _cleanup_loop():
         while True:
@@ -47,13 +54,28 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 
+# Auth is via the Authorization header (not cookies), so credentialed CORS is
+# unnecessary; restrict origins to an explicit allowlist instead of "*".
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.cors_origin_list,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    # frame-ancestors blocks clickjacking without constraining the SPA's own
+    # script/style loading (a stricter CSP is left to a follow-up).
+    response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+    return response
+
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 
@@ -93,3 +115,9 @@ async def mysql_error_handler(request: Request, exc: mysql.connector.errors.Erro
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+# Mount the built SPA (production only — no-op when ./static is absent)
+from app.static_mount import mount_static  # noqa: E402
+
+mount_static(app)
