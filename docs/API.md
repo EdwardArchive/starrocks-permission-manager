@@ -709,7 +709,7 @@ Returns the queries currently running on the cluster with per-query resource usa
 **Auth**: Requires JWT Bearer token. The underlying `SHOW PROC '/current_queries'` requires the OPERATE privilege (`cluster_admin`); when StarRocks denies it the endpoint returns **403** (no limited fallback — unlike `/status`).
 
 **Data sources** (validated on StarRocks 4.0.8):
-- `SHOW PROC '/current_queries'` — resource stats per running query. Carries no SQL text; FE-only statements (e.g. `SELECT SLEEP(n)`) do not appear.
+- `SHOW PROC '/global_current_queries'` — resource stats per running query, aggregated across **all FEs**. (`'/current_queries'` is FE-local: behind a load balancer each request lands on a random FE and misses queries coordinated elsewhere — it is used only as a fallback for versions without the global variant.) Carries no SQL text; FE-only statements (e.g. `SELECT SLEEP(n)`) do not appear.
 - `SHOW FULL PROCESSLIST` — joined on `ConnectionId` to attach the SQL text (`sql` is null if the connection already left the processlist; the processlist call failing is tolerated).
 
 **Query Parameters**

@@ -77,10 +77,10 @@ cd backend
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8001
+uvicorn app.main:app --reload --port 8888
 ```
-- API server: http://localhost:8001
-- Swagger UI: http://localhost:8001/docs
+- API server: http://localhost:8888
+- Swagger UI: http://localhost:8888/docs
 
 **Frontend (Terminal 2):**
 ```bash
@@ -89,7 +89,7 @@ npm install
 npm run dev
 ```
 - App: http://localhost:5173
-- API requests are proxied to the backend (`/api/*` → `localhost:8001`)
+- API requests are proxied to the backend (`/api/*` → `localhost:8888`)
 
 ### Production Build
 
@@ -148,6 +148,11 @@ Every GRANT/REVOKE attempt (including denied ones) recorded in `srpm_audit.grant
 
 ### Resource Groups
 ![Resource Groups](docs/screenshots/resource-groups.png)
+
+### Cluster Monitor
+Node health cards + Running Queries with live resource usage (issue #15).
+
+![Cluster Monitor](docs/screenshots/cluster-monitor.png)
 
 ### Object Detail — Permission Matrix
 ![Permission Matrix](docs/screenshots/permission-matrix.png)

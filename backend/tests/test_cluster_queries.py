@@ -58,7 +58,7 @@ IDLE_PROCESSLIST_ROW = {**PROCESSLIST_ROW, "Id": 16780544, "Command": "Sleep", "
 @pytest.fixture()
 def query_map():
     qm = dict(DEFAULT_QUERY_MAP)
-    qm["SHOW PROC '/current_queries'"] = [CURRENT_QUERY_ROW]
+    qm["SHOW PROC '/global_current_queries'"] = [CURRENT_QUERY_ROW]
     qm["SHOW FULL PROCESSLIST"] = [PROCESSLIST_ROW, IDLE_PROCESSLIST_ROW]
     qm["SELECT NOW()"] = [{"server_now": "2026-06-12 01:25:04"}]
     return qm
@@ -131,10 +131,30 @@ def test_queries_processlist_failure_is_tolerated(client, auth_header, monkeypat
 
 
 def test_queries_empty(client, auth_header, query_map):
-    query_map["SHOW PROC '/current_queries'"] = []
+    query_map["SHOW PROC '/global_current_queries'"] = []
     resp = client.get("/api/cluster/queries", headers=auth_header)
     assert resp.status_code == 200
     assert resp.json()["queries"] == []
+
+
+def test_queries_falls_back_to_fe_local_view(client, auth_header, query_map, monkeypatch):
+    """Versions without '/global_current_queries' fall back to '/current_queries'."""
+    import app.services.cluster_queries as cq
+
+    del query_map["SHOW PROC '/global_current_queries'"]
+    query_map["SHOW PROC '/current_queries'"] = [CURRENT_QUERY_ROW]
+
+    original = cq.execute_query
+
+    def _no_global(conn, sql, params=None):
+        if "global_current_queries" in sql:
+            raise mysql.connector.errors.ProgrammingError(msg="Unknown proc path", errno=1064)
+        return original(conn, sql, params)
+
+    monkeypatch.setattr(cq, "execute_query", _no_global)
+    resp = client.get("/api/cluster/queries", headers=auth_header)
+    assert resp.status_code == 200
+    assert resp.json()["queries"][0]["query_id"] == "019eb77f-e2a6-794c-aab1-00e0ac3d0036"
 
 
 # ── Permission: access denied maps to 403 via the global handler ──

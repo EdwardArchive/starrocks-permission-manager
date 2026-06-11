@@ -58,7 +58,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   │   ├── grant_collector.py         # Facade: delegates to common or admin collector (TTL-cached)
 │   │   │   ├── fe_metrics.py              # FE /metrics HTTP probe for cluster status (limited mode)
 │   │   │   ├── be_metrics.py              # BE /metrics probe: CPU % from starrocks_be_cpu counter deltas
-│   │   │   ├── cluster_queries.py         # Running queries: SHOW PROC '/current_queries' + PROCESSLIST join, server_now
+│   │   │   ├── cluster_queries.py         # Running queries: SHOW PROC '/global_current_queries' + PROCESSLIST join, server_now
 │   │   │   ├── shared/                    # Shared constants and utilities
 │   │   │   │   ├── constants.py           # BUILTIN_ROLES, BFS_MAX_DEPTH
 │   │   │   │   ├── grant_spec.py          # object_type → grantable privileges allowlist (docs-derived)
@@ -94,7 +94,7 @@ When code or project structure changes, run a sub-agent after completing the tas
     ├── package.json
     ├── playwright.config.ts    # E2E config (auto-starts backend :8888 + vite :5199)
     ├── e2e/                    # Playwright E2E specs vs live SR cluster + docs screenshot capture
-    ├── vite.config.ts          # Tailwind + API proxy → localhost:8001
+    ├── vite.config.ts          # Tailwind + API proxy → localhost:8888
     ├── icons/                  # Customizable SVG icons (single source)
     │   ├── app-logo.svg ~ role.svg  # Per-node-type icons (stroke-based, 24x24)
     │   └── README.md
@@ -229,7 +229,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 
 - **Cluster Monitoring**: `/api/cluster/*` is a third route category (neither user nor admin). StarRocks enforces `cluster_admin` / SYSTEM OPERATE privilege; the backend maps access-denied errno {1044, 1045, 1227, 1142} to HTTP 403 (global handler) or falls back to `mode="limited"` for `/status`. UI has two surfaces: the **Cluster Monitor tab** (full dashboard: summary band, node card grid, Running Queries panel; status polls 30s / queries 10s, paused when `document.hidden`) and the **header drawer** (quick glance: summary + alerts + link to the tab; header icon shows a red badge when `has_errors`, polled every 60s against the server cache).
   - `/api/cluster/status`: per-username+mode TTL cache (`SRPM_CACHE_TTL_SECONDS`); includes `server_now`.
-  - `/api/cluster/queries` (issue #15): `SHOW PROC '/current_queries'` joined with `SHOW FULL PROCESSLIST` on ConnectionId for SQL text; numeric sort keys parsed server-side; 5s per-user TTL cache; denied → 403, rendered in place (no limited fallback). See docs/QUERY_MONITORING_DESIGN.md for live-validation evidence.
+  - `/api/cluster/queries` (issue #15): `SHOW PROC '/global_current_queries'` (all-FE view; `'/current_queries'` is **FE-local** and misses queries behind a load balancer — fallback only) joined with `SHOW FULL PROCESSLIST` on ConnectionId for SQL text; numeric sort keys parsed server-side; 5s per-user TTL cache; denied → 403, rendered in place (no limited fallback). See docs/QUERY_MONITORING_DESIGN.md for live-validation evidence.
   - **Cluster timezone**: SHOW timestamps are naive strings in the *cluster's* TZ. `server_now` is the reference clock; frontend computes skew via `clockSkewMs()`/`skewedNow()` so relative labels are correct regardless of zone. Never compare cluster timestamps against the browser clock directly.
   - **BE CPU**: SHOW BACKENDS lacks CPU; `be_metrics.py` probes BE `/metrics` and derives utilization from `starrocks_be_cpu` counter deltas between scrapes (first scrape → None). CN reports CpuUsedPct natively.
 
@@ -288,12 +288,12 @@ When code or project structure changes, run a sub-agent after completing the tas
 # Backend (Terminal 1)
 cd backend
 source venv/bin/activate
-uvicorn app.main:app --reload --port 8001
+uvicorn app.main:app --reload --port 8888
 
 # Frontend (Terminal 2)
 cd frontend
 npm run dev
-# → http://localhost:5173 (API proxy → localhost:8001)
+# → http://localhost:5173 (API proxy → localhost:8888)
 ```
 
 ## Linting

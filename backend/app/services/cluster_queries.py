@@ -1,14 +1,17 @@
 """Collect currently running queries with resource usage.
 
 Data sources (validated against StarRocks 4.0.8):
-* ``SHOW PROC '/current_queries'`` — per-query resource stats (ScanBytes,
-  ScanRows, MemoryUsage, DiskSpillSize, CPUTime, ExecTime, ExecState, ...).
-  Carries **no SQL text**, and FE-only statements (e.g. ``SELECT sleep()``)
-  do not appear.
-* ``SHOW FULL PROCESSLIST`` — connection list whose ``Info`` column holds the
-  SQL text. Joined on ConnectionId to attach the statement to each query.
+* ``SHOW PROC '/global_current_queries'`` — per-query resource stats
+  (ScanBytes, ScanRows, MemoryUsage, DiskSpillSize, CPUTime, ExecTime,
+  ExecState, ...) aggregated across **all frontends**. Carries **no SQL
+  text**, and FE-only statements (e.g. ``SELECT sleep()``) do not appear.
+  ``'/current_queries'`` is FE-local — behind a load balancer each request
+  lands on a random FE and would miss queries coordinated elsewhere — so it
+  is only used as a fallback for versions without the global variant.
+* ``SHOW FULL PROCESSLIST`` — connection list (all FEs) whose ``Info`` column
+  holds the SQL text. Joined on ConnectionId to attach the statement.
 
-StarRocks gates both commands behind the OPERATE (cluster_admin) privilege;
+StarRocks gates these commands behind the OPERATE (cluster_admin) privilege;
 access-denied errors propagate to the global errno→403 handler in main.py.
 
 Numeric sort keys (``*_bytes``, ``*_ms``, ``scan_rows``) are parsed from the
@@ -22,9 +25,12 @@ import logging
 import re
 from datetime import datetime
 
+import mysql.connector.errors
+
 from app.models.schemas import RunningQueryInfo
 from app.services.shared.size_utils import parse_size_bytes
 from app.services.starrocks_client import execute_query
+from app.utils.sys_access import is_access_denied
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +110,14 @@ def _row_to_query(row: dict, sql_by_conn: dict[str, str]) -> RunningQueryInfo:
 
 def collect_running_queries(conn) -> list[RunningQueryInfo]:
     """Fetch running queries and attach SQL text via the processlist join."""
-    rows = execute_query(conn, "SHOW PROC '/current_queries'")
+    try:
+        rows = execute_query(conn, "SHOW PROC '/global_current_queries'")
+    except mysql.connector.errors.Error as exc:
+        if is_access_denied(exc):
+            raise
+        # Older versions lack the global variant — fall back to the FE-local view.
+        logger.info("global_current_queries unavailable, falling back to FE-local: %s", exc)
+        rows = execute_query(conn, "SHOW PROC '/current_queries'")
 
     sql_by_conn: dict[str, str] = {}
     try:
