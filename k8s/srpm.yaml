@@ -1,0 +1,65 @@
+# StarRocks Permission Manager — k8s deployment
+# Image: docker.io/kjjs1996/starrocks-permission-manager (public Docker Hub).
+# Exposed via the existing Cloudflare Tunnel (remote-managed):
+#   srpm.cshift.co → http://srpm.srpm.svc.cluster.local:8001
+#
+# Prereqs (one-time, done via kubectl):
+#   - secret srpm-jwt (SRPM_JWT_SECRET, random hex)
+#
+# Note: sessions/caches are in-memory per process → keep replicas: 1
+# (or add sticky sessions before scaling out).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: srpm
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: srpm
+  namespace: srpm
+  labels: { app: srpm }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: srpm }
+  template:
+    metadata:
+      labels: { app: srpm }
+    spec:
+      containers:
+        - name: srpm
+          image: docker.io/kjjs1996/starrocks-permission-manager:dev_v2.0.0
+          ports:
+            - containerPort: 8001
+          env:
+            - name: SRPM_JWT_SECRET
+              valueFrom:
+                secretKeyRef: { name: srpm-jwt, key: SRPM_JWT_SECRET }
+            - name: SRPM_JWT_EXPIRE_MINUTES
+              value: "60"
+          readinessProbe:
+            httpGet: { path: /api/health, port: 8001 }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: 8001 }
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: srpm
+  namespace: srpm
+  labels: { app: srpm }
+spec:
+  type: ClusterIP
+  selector: { app: srpm }
+  ports:
+    - name: http
+      port: 8001
+      targetPort: 8001
