@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: srpm
-          image: docker.io/kjjs1996/starrocks-permission-manager:dev_v2.0.0
+          image: docker.io/kjjs1996/starrocks-permission-manager:dev_v2.0.1
           ports:
             - containerPort: 8001
           env:

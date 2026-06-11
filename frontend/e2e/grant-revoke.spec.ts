@@ -201,3 +201,17 @@ test("non-admin user sees neither the button nor the audit tab", async ({ page }
   await expect(page.getByTestId("manage-privileges-btn")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Grant Audit" })).toHaveCount(0);
 });
+
+test("built-in role grantee shows warning and scope grants are not selectable", async ({ page }) => {
+  await login(page, USER, PASS);
+  await openWizard(page);
+  await page.getByTestId("mp-action-revoke").check();
+  await page.getByTestId("mp-grantee-type-role").check();
+  await fillGrantee(page, "root");
+
+  await expect(page.getByTestId("mp-builtin-warning")).toBeVisible({ timeout: 10_000 });
+  // root's wildcard grants (ON ALL ...) are listed as non-selectable scope rows
+  await expect(page.getByTestId("mp-scope-grant").first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("mp-direct-grant")).toHaveCount(0);
+  await expect(page.getByTestId("mp-execute")).toBeDisabled();
+});

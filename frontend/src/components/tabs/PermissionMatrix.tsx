@@ -6,6 +6,7 @@ import { C, PRIV_BY_TYPE, PRIV_KEY_MAP, matrixTh } from "../../utils/inventory-h
 import { Loader } from "./inventory-ui";
 import { useAuthStore } from "../../stores/authStore";
 import { useGrantStore } from "../../stores/grantStore";
+import type { GrantObjectRef } from "../../types";
 
 /* ── GranteeName ── */
 export function GranteeName({ name, grants }: { name: string; grants: PrivilegeGrant[] }) {
@@ -33,23 +34,31 @@ export function GranteeName({ name, grants }: { name: string; grants: PrivilegeG
 }
 
 /* ── PermissionMatrixView — pure render, no API calls ── */
-export function PermissionMatrixView({ grants, objectType, filterGrantees }: {
+const REVOCABLE_TYPES = new Set(["CATALOG", "DATABASE", "TABLE", "VIEW", "MATERIALIZED VIEW", "FUNCTION"]);
+
+export function PermissionMatrixView({ grants, objectType, filterGrantees, objectRef }: {
   grants: PrivilegeGrant[];
   objectType: string;
   filterGrantees?: Set<string>;
+  /** The concrete object this matrix is rendered for. Preferred over the grant
+   * row's own fields, which can be null for wildcard grants (e.g. root's
+   * ON ALL TABLES IN ALL DATABASES). */
+  objectRef?: GrantObjectRef;
 }) {
   const privKey = PRIV_KEY_MAP[objectType] || "table";
   const columns = PRIV_BY_TYPE[privKey] || [];
   const canManageGrants = useAuthStore((s) => s.user?.can_manage_grants ?? false);
   const openWizard = useGrantStore((s) => s.openWizard);
 
+  const revokeSupported = REVOCABLE_TYPES.has((objectRef?.object_type ?? objectType).toUpperCase());
+
   const revokeFromCell = (grant: PrivilegeGrant) =>
     openWizard({
       action: "REVOKE",
       grantee: { name: grant.grantee, type: grant.grantee_type === "ROLE" ? "ROLE" : "USER" },
-      object: {
+      object: objectRef ?? {
         object_type: grant.object_type,
-        catalog: grant.object_catalog,
+        catalog: grant.object_catalog ?? "default_catalog",
         database: grant.object_database,
         name: grant.object_name,
       },
@@ -132,7 +141,7 @@ export function PermissionMatrixView({ grants, objectType, filterGrantees }: {
                   const badge = isD ? "D" : "I";
                   const bg = isD ? "rgba(34,197,94,0.2)" : "rgba(59,130,246,0.2)";
                   const fg = isD ? "#4ade80" : "#60a5fa";
-                  const revocable = canManageGrants && isD && grant != null;
+                  const revocable = canManageGrants && revokeSupported && isD && grant != null;
                   return (
                     <td key={col} style={{ textAlign: "center", padding: "6px 4px" }}>
                       <span
@@ -179,5 +188,16 @@ export function ObjectPrivilegesPane({ catalog, database, name, objectType }: {
 
   if (state.loading) return <Loader />;
 
-  return <PermissionMatrixView grants={state.grants} objectType={objectType} />;
+  return (
+    <PermissionMatrixView
+      grants={state.grants}
+      objectType={objectType}
+      objectRef={{
+        object_type: objectType,
+        catalog: objectType === "CATALOG" ? name : catalog || "default_catalog",
+        database: objectType === "CATALOG" ? null : objectType === "DATABASE" ? name : database,
+        name: objectType === "CATALOG" || objectType === "DATABASE" ? null : name,
+      }}
+    />
+  );
 }

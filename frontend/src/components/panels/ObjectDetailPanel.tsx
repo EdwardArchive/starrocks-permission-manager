@@ -172,6 +172,12 @@ export default function ObjectDetailPanel() {
             <PermissionMatrixView
               grants={grants}
               objectType={srObjectType}
+              objectRef={{
+                object_type: srObjectType,
+                catalog: nodeType === "catalog" ? selectedNode.label : (parsed.catalog ?? "default_catalog"),
+                database: nodeType === "catalog" ? null : nodeType === "database" ? selectedNode.label : parsed.database,
+                name: ["catalog", "database"].includes(nodeType) ? null : selectedNode.label,
+              }}
             />
           )}
         </div>

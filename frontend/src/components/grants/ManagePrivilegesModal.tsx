@@ -17,6 +17,19 @@ import type { GrantRequest, GrantSpec, PrivilegeGrant } from "../../types";
 
 const OBJECT_TYPE_ORDER = ["CATALOG", "DATABASE", "TABLE", "VIEW", "MATERIALIZED VIEW", "FUNCTION"];
 
+// StarRocks rejects any grant change on these ("role X is not mutable")
+const BUILTIN_ROLES = new Set(["root", "cluster_admin", "db_admin", "user_admin", "security_admin", "public"]);
+
+/** A grant row is only revocable per-object when it carries a concrete object path.
+ * Wildcard scope grants (e.g. root's ON ALL TABLES IN ALL DATABASES) come back with
+ * null catalog/db/name and cannot be revoked through a single-object REVOKE. */
+function isRevocableRow(g: PrivilegeGrant): boolean {
+  if (!OBJECT_TYPE_ORDER.includes(g.object_type)) return false;
+  if (g.object_type === "CATALOG") return !!g.object_catalog;
+  if (g.object_type === "DATABASE") return !!g.object_database;
+  return !!g.object_database && !!g.object_name;
+}
+
 // intent-level privilege presets (intersected with the object type's allowlist)
 const PRESETS: { label: string; privs: string[] }[] = [
   { label: "Read-only", privs: ["SELECT", "USAGE"] },
@@ -188,13 +201,22 @@ function WizardBody() {
   const allowedPrivs = useMemo(() => spec?.object_types[objectType] ?? [], [spec, objectType]);
 
   const directGrants = useMemo(
-    () => (granteeGrants ?? []).filter((g) => g.source === "direct" && OBJECT_TYPE_ORDER.includes(g.object_type)),
+    () => (granteeGrants ?? []).filter((g) => g.source === "direct" && isRevocableRow(g)),
+    [granteeGrants]
+  );
+  // direct but wildcard/scope grants — shown for context, not selectable
+  const scopeGrants = useMemo(
+    () =>
+      (granteeGrants ?? []).filter(
+        (g) => g.source === "direct" && OBJECT_TYPE_ORDER.includes(g.object_type) && !isRevocableRow(g)
+      ),
     [granteeGrants]
   );
   const inheritedGrants = useMemo(
     () => (granteeGrants ?? []).filter((g) => g.source !== "direct" && OBJECT_TYPE_ORDER.includes(g.object_type)),
     [granteeGrants]
   );
+  const builtinGrantee = granteeType === "ROLE" && BUILTIN_ROLES.has(granteeName.trim().toLowerCase());
 
   // privileges the grantee already holds on the currently selected object
   const alreadyGranted = useMemo(() => {
@@ -255,7 +277,8 @@ function WizardBody() {
         grantee,
         object: {
           object_type: g.object_type,
-          catalog: g.object_catalog,
+          // SHOW GRANTS-parsed rows may omit the catalog for the internal catalog
+          catalog: g.object_catalog ?? "default_catalog",
           database: g.object_database,
           name: g.object_name,
         },
@@ -433,10 +456,17 @@ function WizardBody() {
           </div>
         ) : (
           <>
+            {/* Built-in roles cannot be modified at all */}
+            {builtinGrantee && (
+              <div data-testid="mp-builtin-warning" style={{ marginBottom: 14, padding: "8px 10px", border: "1px solid #f59e0b", borderRadius: 6, fontSize: 12.5, color: "#fde68a" }}>
+                ⚠ <strong>{granteeName.trim()}</strong> is a built-in role — StarRocks rejects any grant change on it ("role is not mutable").
+              </div>
+            )}
+
             {/* Revoke helper: existing direct grants (multi-select) + inherited (jump to source) */}
             {action === "REVOKE" && granteeGrants !== null && (
               <div style={{ marginBottom: 14, border: `1px solid ${C.borderLight}`, borderRadius: 6, maxHeight: 180, overflowY: "auto" }}>
-                {directGrants.length === 0 && inheritedGrants.length === 0 ? (
+                {directGrants.length === 0 && inheritedGrants.length === 0 && scopeGrants.length === 0 ? (
                   <div style={{ padding: 10, fontSize: 12, color: C.text3 }}>No grants found for this grantee.</div>
                 ) : (
                   <>
@@ -458,6 +488,19 @@ function WizardBody() {
                           {[g.object_catalog, g.object_database, g.object_name].filter(Boolean).join(".")}
                         </span>
                       </label>
+                    ))}
+                    {scopeGrants.map((g, i) => (
+                      <div
+                        key={`s${i}`}
+                        data-testid="mp-scope-grant"
+                        title="Wildcard scope grant (e.g. ON ALL TABLES IN ALL DATABASES) — cannot be revoked per-object"
+                        style={{ padding: "6px 10px", fontSize: 12, color: C.text3, borderBottom: `1px solid ${C.borderLight}`, display: "flex", gap: 8, alignItems: "center", opacity: 0.6 }}
+                      >
+                        <span style={{ width: 13 }} />
+                        <strong>{g.privilege_type}</strong>
+                        <span>{g.object_type}</span>
+                        <span style={{ fontStyle: "italic" }}>ALL (scope grant — not revocable per-object)</span>
+                      </div>
                     ))}
                     {inheritedGrants.map((g, i) => (
                       <div
