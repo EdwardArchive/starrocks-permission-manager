@@ -22,16 +22,37 @@ export function UtilBar({ pct, variant = "pressure" }: { pct: number; variant?: 
   );
 }
 
-/* ── Labelled utilization row (metric name + bar) ── */
-export function MetricRow({ label, pct, extra, variant }: { label: string; pct: number; extra?: React.ReactNode; variant?: "pressure" | "info" }) {
+/* ── Labelled utilization row (metric name + bar, optional trend sparkline) ── */
+export function MetricRow({ label, pct, extra, variant, spark }: { label: string; pct: number; extra?: React.ReactNode; variant?: "pressure" | "info"; spark?: number[] }) {
   return (
     <div style={{ marginBottom: 6 }}>
-      <div style={{ fontSize: 11, color: C.text2, display: "flex", justifyContent: "space-between" }}>
+      <div style={{ fontSize: 11, color: C.text2, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <span>{label} <span style={{ color: C.text3 }}>{extra}</span></span>
-        <strong style={{ color: C.text1 }}>{pct.toFixed(1)}%</strong>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          {spark && spark.length >= 2 && <Sparkline values={spark} />}
+          <strong style={{ color: C.text1 }}>{pct.toFixed(1)}%</strong>
+        </span>
       </div>
       <UtilBar pct={pct} variant={variant} />
     </div>
+  );
+}
+
+/* ── Sparkline (session-accumulated metric trend) ──
+ * A tiny inline SVG line for the last N samples; 0–100 domain. */
+export function Sparkline({ values, width = 56, height = 16 }: { values: number[]; width?: number; height?: number }) {
+  if (values.length < 2) return null;
+  const max = Math.max(100, ...values);
+  const step = width / (values.length - 1);
+  const pts = values
+    .map((v, i) => `${(i * step).toFixed(1)},${(height - (Math.min(v, max) / max) * height).toFixed(1)}`)
+    .join(" ");
+  const last = values[values.length - 1];
+  const color = last > 85 ? "#ef4444" : last > 70 ? C.warning : C.green;
+  return (
+    <svg width={width} height={height} style={{ display: "block", flexShrink: 0 }} aria-hidden>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
   );
 }
 
@@ -59,7 +80,7 @@ function roleBadgeColor(role: string): string {
 
 /* ── FE Node card — resource metrics come from /metrics endpoint ──
  * `now` is the (clock-skew corrected) reference for relative timestamps. */
-export function FENodeCard({ node, expanded, onToggle, now }: { node: FENodeInfo; expanded: boolean; onToggle: () => void; now?: Date }) {
+export function FENodeCard({ node, expanded, onToggle, now, heapHistory }: { node: FENodeInfo; expanded: boolean; onToggle: () => void; now?: Date; heapHistory?: number[] }) {
   const hasMetrics = node.jvm_heap_used_pct != null;
   const displayName = shortenNodeName(node.name);
   const displayIp = shortenNodeName(node.ip);
@@ -94,7 +115,7 @@ export function FENodeCard({ node, expanded, onToggle, now }: { node: FENodeInfo
       {(hasMetrics || node.metrics_error) && (
         <div style={{ padding: "4px 12px 8px" }}>
           {hasMetrics ? (
-            <MetricRow label="Heap" pct={node.jvm_heap_used_pct ?? 0} />
+            <MetricRow label="Heap" pct={node.jvm_heap_used_pct ?? 0} spark={heapHistory} />
           ) : (
             <div
               style={{
@@ -146,7 +167,7 @@ export function FENodeCard({ node, expanded, onToggle, now }: { node: FENodeInfo
 }
 
 /* ── BE/CN Node card — branches on node_type, resource-focused ── */
-export function BENodeCard({ node, expanded, onToggle, now }: { node: BENodeInfo; expanded: boolean; onToggle: () => void; now?: Date }) {
+export function BENodeCard({ node, expanded, onToggle, now, cpuHistory, memHistory }: { node: BENodeInfo; expanded: boolean; onToggle: () => void; now?: Date; cpuHistory?: number[]; memHistory?: number[] }) {
   const isCompute = node.node_type === "compute";
   const diskPct = node.used_pct ?? 0;
   const diskLabel =
@@ -205,6 +226,7 @@ export function BENodeCard({ node, expanded, onToggle, now }: { node: BENodeInfo
             label="CPU"
             pct={node.cpu_used_pct}
             extra={node.cpu_cores != null ? `${node.cpu_cores} cores` : undefined}
+            spark={cpuHistory}
           />
         )}
 
@@ -214,6 +236,7 @@ export function BENodeCard({ node, expanded, onToggle, now }: { node: BENodeInfo
             label="Memory"
             pct={node.mem_used_pct}
             extra={node.mem_limit ? `of ${node.mem_limit}` : undefined}
+            spark={memHistory}
           />
         )}
       </div>

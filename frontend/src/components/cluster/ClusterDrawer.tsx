@@ -1,83 +1,104 @@
 /**
  * Cluster status quick glance — right-side drawer opened from the header icon.
- * Shows the summary card + alerts; the full dashboard (node cards + running
- * queries) lives in the Cluster Monitor tab, linked from here.
+ * Shows gauge KPIs + alerts + a top-running-queries preview; the full
+ * dashboard (node cards + queries) lives in the Cluster Monitor tab, and every
+ * element here jumps straight to the matching section/node there.
+ *
+ * Auto-refreshes every 15s while open (paused when the page is hidden).
  */
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useClusterStore } from "../../stores/clusterStore";
+import { useClusterStore, type ClusterFocus } from "../../stores/clusterStore";
 import { useDagStore } from "../../stores/dagStore";
-import { getClusterStatus } from "../../api/cluster";
-import type { ClusterStatusResponse } from "../../types";
+import { getClusterStatus, getClusterQueries } from "../../api/cluster";
+import { fmtCpuShare } from "../../utils/queryFormat";
+import type { ClusterStatusResponse, RunningQueryInfo } from "../../types";
 import { C } from "../../utils/colors";
 import { Loader } from "../tabs/inventory-ui";
 import InlineIcon from "../common/InlineIcon";
-import { ClusterSummary, ClusterAlerts, ClusterBanners } from "./ClusterSummary";
+import { ClusterKpiBand, ClusterAlerts, ClusterBanners } from "./ClusterSummary";
+
+const DRAWER_POLL_MS = 15_000;
+const PREVIEW_COUNT = 3;
 
 export default function ClusterDrawer() {
-  const { isOpen, closeDrawer } = useClusterStore(
+  const { isOpen, closeDrawer, requestFocus } = useClusterStore(
     useShallow((s) => ({
       isOpen: s.isOpen,
       closeDrawer: s.closeDrawer,
+      requestFocus: s.requestFocus,
     })),
   );
   const setActiveTab = useDagStore((s) => s.setActiveTab);
   const [data, setData] = useState<ClusterStatusResponse | null>(null);
+  const [queries, setQueries] = useState<RunningQueryInfo[] | null>(null);
+  const [totalCores, setTotalCores] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const qAbortRef = useRef<AbortController | null>(null);
 
-  const fetchData = useCallback((refresh = false) => {
-    // Cancel any in-flight request
+  const fetchData = useCallback((refresh = false, withSpinner = true) => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    if (withSpinner) { setLoading(true); setError(null); }
 
-    setLoading(true);
-    setError(null);
-
-    getClusterStatus(controller.signal, refresh)
+    getClusterStatus(controller.signal, refresh, /* quiet */ true)
       .then((res) => {
         setData(res);
+        setTotalCores(res.backends.reduce((s, b) => s + (b.alive && b.cpu_cores != null ? b.cpu_cores : 0), 0) || null);
         setLoading(false);
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        setError(msg);
+        setError(err instanceof Error ? err.message : "Unknown error");
         setLoading(false);
       });
+
+    // running-queries preview — best effort, quiet (403 → just hide)
+    qAbortRef.current?.abort();
+    const qc = new AbortController();
+    qAbortRef.current = qc;
+    getClusterQueries(qc.signal, refresh)
+      .then((res) => setQueries(res.queries))
+      .catch(() => setQueries(null));
   }, []);
 
-  // Fetch on open
+  // Fetch on open + 15s auto-refresh while open and visible
   useEffect(() => {
-    if (isOpen) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchData's sync setState(true/null) is intentional: drawer must enter loading state on open
-      fetchData();
-    } else {
-      // Cancel any in-flight request when closed
+    if (!isOpen) {
       abortRef.current?.abort();
-      abortRef.current = null;
+      qAbortRef.current?.abort();
+      return;
     }
-    return () => {
-      abortRef.current?.abort();
-    };
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: enter loading on open
+    fetchData();
+    const id = setInterval(() => { if (!document.hidden) fetchData(true, /* withSpinner */ false); }, DRAWER_POLL_MS);
+    return () => { clearInterval(id); abortRef.current?.abort(); qAbortRef.current?.abort(); };
   }, [isOpen, fetchData]);
 
-  // ESC key handler
+  // ESC closes
   useEffect(() => {
     if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeDrawer();
-    };
+    const handleKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") closeDrawer(); };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, closeDrawer]);
 
-  const openClusterTab = () => {
+  const openClusterTab = () => { setActiveTab("cluster"); closeDrawer(); };
+
+  // Jump to a section/node in the Cluster Monitor tab, then focus it there.
+  const jumpTo = (f: Omit<ClusterFocus, "nonce">) => {
     setActiveTab("cluster");
+    requestFocus(f);
     closeDrawer();
   };
+
+  const topQueries = (queries ?? [])
+    .filter((q) => q.exec_time_ms != null)
+    .sort((a, b) => (b.exec_time_ms ?? 0) - (a.exec_time_ms ?? 0))
+    .slice(0, PREVIEW_COUNT);
 
   return (
     <>
@@ -176,12 +197,53 @@ export default function ClusterDrawer() {
             </div>
           )}
 
-          {/* Data content — quick glance: banners + summary + alerts */}
+          {/* Data content — gauges + alerts + query preview, all jump to the tab */}
           {!loading && data && (
             <>
               <ClusterBanners data={data} />
-              <ClusterSummary data={data} />
-              <ClusterAlerts data={data} />
+              <ClusterKpiBand data={data} onJump={(target) => jumpTo({ kind: "section", id: target })} />
+              <ClusterAlerts data={data} onJumpNode={(id) => jumpTo({ kind: "node", id })} />
+
+              {/* Running queries preview */}
+              <div style={{ marginBottom: 14 }}>
+                <button
+                  onClick={() => jumpTo({ kind: "section", id: "queries" })}
+                  data-testid="drawer-queries-preview"
+                  style={{
+                    width: "100%", textAlign: "left", background: "transparent", border: "none",
+                    padding: 0, cursor: "pointer", fontFamily: "inherit",
+                    display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
+                  }}
+                >
+                  <span style={{ fontSize: 13, fontWeight: 700, color: C.text1 }}>Running Queries</span>
+                  {queries != null && <span style={{ fontSize: 11, color: C.text3 }}>({queries.length})</span>}
+                  <span style={{ marginLeft: "auto", color: C.accent, fontSize: 12 }}>View all →</span>
+                </button>
+                {queries == null ? (
+                  <div style={{ fontSize: 12, color: C.text3 }}>Requires cluster_admin</div>
+                ) : topQueries.length === 0 ? (
+                  <div style={{ fontSize: 12, color: C.text3 }}>No queries running</div>
+                ) : (
+                  topQueries.map((q) => (
+                    <div
+                      key={q.query_id}
+                      onClick={() => jumpTo({ kind: "section", id: "queries" })}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 8, padding: "6px 10px",
+                        borderRadius: 4, border: `1px solid ${C.borderLight}`, background: C.card,
+                        marginBottom: 4, fontSize: 12, cursor: "pointer",
+                      }}
+                    >
+                      <span style={{ fontWeight: 600, color: C.text1, flexShrink: 0 }}>{q.user}</span>
+                      <span style={{ color: C.text2, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "ui-monospace, monospace" }}>{q.sql ?? "—"}</span>
+                      <span style={{ color: C.text2, flexShrink: 0, fontVariantNumeric: "tabular-nums" }}>{q.exec_time_display ?? "—"}</span>
+                      <span title="CPU share" style={{ color: C.text3, flexShrink: 0, fontVariantNumeric: "tabular-nums", minWidth: 36, textAlign: "right" }}>
+                        {fmtCpuShare(q.cpu_avg_cores, totalCores)}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
 
               {/* Full dashboard link */}
               <button
