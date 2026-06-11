@@ -8,7 +8,7 @@ import { buildGrantDisplay, extractSourceRoles } from "../../utils/grantDisplay"
 import type { PrivilegeGrant } from "../../types";
 
 export default function UserDetailPanel() {
-  const { selectedNode } = useDagStore();
+  const selectedNode = useDagStore((s) => s.selectedNode);
   const [state, setState] = useState<{ grants: PrivilegeGrant[]; loading: boolean; loadedNodeId: string | null }>({
     grants: [], loading: false, loadedNodeId: null,
   });

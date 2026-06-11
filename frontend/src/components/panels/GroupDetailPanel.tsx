@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useDagStore } from "../../stores/dagStore";
 import { NODE_COLORS } from "../dag/nodeIcons";
 import InlineIcon from "../common/InlineIcon";
@@ -7,7 +8,14 @@ import { C } from "../../utils/colors";
 const PAGE_SIZE = 20;
 
 export default function GroupDetailPanel() {
-  const { selectedNode, groupChildren, setSelectedNode, setPanelMode } = useDagStore();
+  const { selectedNode, groupChildren, setSelectedNode, setPanelMode } = useDagStore(
+    useShallow((s) => ({
+      selectedNode: s.selectedNode,
+      groupChildren: s.groupChildren,
+      setSelectedNode: s.setSelectedNode,
+      setPanelMode: s.setPanelMode,
+    })),
+  );
   const [page, setPage] = useState(0);
 
   if (!selectedNode) return null;

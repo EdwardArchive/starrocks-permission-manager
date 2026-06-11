@@ -17,6 +17,7 @@ import CustomNode from "./CustomNode";
 import GroupNode from "./GroupNode";
 import { applyDagreLayout } from "./dagLayout";
 import { EDGE_COLORS, NODE_COLORS, ROLE_CATEGORY_COLORS } from "./nodeIcons";
+import { useShallow } from "zustand/react/shallow";
 import { C } from "../../utils/colors";
 import { useDagStore } from "../../stores/dagStore";
 import type { DAGGraph } from "../../types";
@@ -33,7 +34,16 @@ interface Props {
 export default function DAGView({ data, direction = "TB", loading, hiddenNodes }: Props) {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  const { selectedNode, setSelectedNode, setPanelMode, setGroupChildren, visibleTypes, groupsOnly } = useDagStore();
+  const { selectedNode, setSelectedNode, setPanelMode, setGroupChildren, visibleTypes, groupsOnly } = useDagStore(
+    useShallow((s) => ({
+      selectedNode: s.selectedNode,
+      setSelectedNode: s.setSelectedNode,
+      setPanelMode: s.setPanelMode,
+      setGroupChildren: s.setGroupChildren,
+      visibleTypes: s.visibleTypes,
+      groupsOnly: s.groupsOnly,
+    })),
+  );
 
   // Track clicked node ID for highlight
   const [clickedNodeId, setClickedNodeId] = useState<string | null>(null);
@@ -246,6 +256,7 @@ export default function DAGView({ data, direction = "TB", loading, hiddenNodes }
         minZoom={0.1}
         maxZoom={3}
         proOptions={{ hideAttribution: true }}
+        onlyRenderVisibleElements
       >
         <Background color={C.border} gap={24} size={1} />
         <MiniMap
