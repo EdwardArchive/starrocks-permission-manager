@@ -42,6 +42,7 @@ class CollectedGrants:
     user_role_chain: dict[str, str] = field(default_factory=dict)  # {role: origin}
     role_child_map: dict[str, list[str]] = field(default_factory=dict)  # {parent: [children]}
     all_users: set[str] = field(default_factory=set)
+    user_role_map: dict[str, list[str]] = field(default_factory=dict)  # {user: [direct roles]}
 
 
 # ══════════════════════════════════════════════════════════════════════

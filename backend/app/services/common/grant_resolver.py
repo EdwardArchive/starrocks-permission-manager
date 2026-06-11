@@ -22,6 +22,7 @@ from app.services.admin.bfs_resolver import (
     _bfs_user_privs,
     _finalize,
     _find_ancestors_with_grants,
+    invert_child_map,
 )
 from app.services.common.grant_classifier import (
     ObjectQuery,
@@ -139,13 +140,19 @@ class GrantResolver:
                     )
                     classified.append((ig, classify_grant(ig, q)))
 
-        # Step 3: BFS — find users with inherited access
+        # Step 3: BFS — find users with inherited access.
+        # When the collector captured the user→role and role→child maps (admin),
+        # resolve each user in memory instead of one DB query per org user (N+1).
         if role_privs and self._c.all_users:
             existing_users = {g.grantee for g, _ in classified if g.grantee_type == "USER"}
+            user_role_map = self._c.user_role_map or None
+            parent_map = invert_child_map(self._c.role_child_map) if user_role_map is not None else None
             for user in self._c.all_users - existing_users:
-                if not self._conn:
+                if user_role_map is None and not self._conn:
                     continue
-                user_privs = _bfs_user_privs(self._conn, user, role_privs)
+                user_privs = _bfs_user_privs(
+                    self._conn, user, role_privs, user_role_map=user_role_map, parent_map=parent_map
+                )
                 for priv, src in user_privs.items():
                     ig = _make_inherited_grant(
                         user,

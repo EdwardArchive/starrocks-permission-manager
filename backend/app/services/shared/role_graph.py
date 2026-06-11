@@ -28,3 +28,25 @@ def fetch_role_child_map(conn) -> dict[str, list[str]]:
     except Exception:
         logger.debug("Failed to query sys.role_edges for role child map")
     return children_of
+
+
+def fetch_user_role_map(conn) -> dict[str, list[str]]:
+    """Fetch sys.role_edges → {user: [direct roles]} in one query.
+
+    Lets the object-privilege resolver look up each user's roles in memory
+    instead of issuing one SHOW/SELECT per user. Empty for non-admin (no access).
+    """
+    user_roles: dict[str, list[str]] = {}
+    try:
+        rows = execute_query(
+            conn,
+            "SELECT FROM_ROLE, TO_USER FROM sys.role_edges WHERE TO_USER IS NOT NULL AND TO_USER != ''",
+        )
+        for e in rows:
+            role = e.get("FROM_ROLE") or ""
+            user = e.get("TO_USER") or ""
+            if role and user:
+                user_roles.setdefault(user, []).append(role)
+    except Exception:
+        logger.debug("Failed to query sys.role_edges for user role map")
+    return user_roles

@@ -146,6 +146,12 @@ DEFAULT_QUERY_MAP: dict[str, list[dict[str, Any]]] = {
     "SELECT TO_USER FROM sys.role_edges WHERE FROM_ROLE": [
         {"TO_USER": "analyst_kim"},
     ],
+    "SELECT FROM_ROLE, TO_USER FROM sys.role_edges WHERE TO_USER": [
+        {"FROM_ROLE": "analyst_role", "TO_USER": "analyst_kim"},
+        {"FROM_ROLE": "root", "TO_USER": "test_admin"},
+        {"FROM_ROLE": "public", "TO_USER": "test_admin"},
+        {"FROM_ROLE": "public", "TO_USER": "analyst_kim"},
+    ],
     "SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.tables": [
         {"TABLE_NAME": "user_events", "TABLE_TYPE": "BASE TABLE"},
         {"TABLE_NAME": "page_views", "TABLE_TYPE": "BASE TABLE"},
