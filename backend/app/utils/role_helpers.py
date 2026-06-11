@@ -12,39 +12,34 @@ logger = logging.getLogger(__name__)
 
 
 def get_user_roles(conn, username: str) -> list[str]:
-    """Get roles assigned to a user. Tries sys.role_edges first, falls back to SHOW GRANTS."""
-    roles: list[str] = []
+    """Get roles assigned to a user. Tries sys.role_edges first, falls back to
+    SHOW GRANTS only when the sys query is inaccessible.
+
+    A successful sys query that returns zero rows is a valid answer ("no roles")
+    and must NOT trigger the fallback — doing so doubled the round-trips for the
+    common case.
+    """
     try:
         rows = execute_query(conn, "SELECT FROM_ROLE FROM sys.role_edges WHERE TO_USER = %s", (username,))
-        for r in rows:
-            role = r.get("FROM_ROLE") or r.get("ROLE_NAME")
-            if role:
-                roles.append(role)
     except Exception:
         logger.debug("sys.role_edges failed for user %s, falling back to SHOW GRANTS", username)
-    if not roles:
-        roles = parse_role_assignments(conn, username, "USER")
-    return roles
+        return parse_role_assignments(conn, username, "USER")
+    return [role for r in rows if (role := r.get("FROM_ROLE") or r.get("ROLE_NAME"))]
 
 
 def get_parent_roles(conn, role_name: str) -> list[str]:
-    """Get parent roles inherited by a role. Tries sys.role_edges first, falls back to SHOW GRANTS."""
-    parents: list[str] = []
+    """Get parent roles inherited by a role. Tries sys.role_edges first, falls
+    back to SHOW GRANTS only when the sys query is inaccessible.
+
+    A successful sys query that returns zero rows is a valid answer (leaf role)
+    and must NOT trigger the fallback.
+    """
     try:
-        rows = execute_query(
-            conn,
-            "SELECT FROM_ROLE FROM sys.role_edges WHERE TO_ROLE = %s",
-            (role_name,),
-        )
-        for r in rows:
-            p = r.get("FROM_ROLE") or r.get("PARENT_ROLE_NAME")
-            if p:
-                parents.append(p)
+        rows = execute_query(conn, "SELECT FROM_ROLE FROM sys.role_edges WHERE TO_ROLE = %s", (role_name,))
     except Exception:
         logger.debug("sys.role_edges failed for role %s, falling back to SHOW GRANTS", role_name)
-    if not parents:
-        parents = parse_role_assignments(conn, role_name, "ROLE")
-    return parents
+        return parse_role_assignments(conn, role_name, "ROLE")
+    return [p for r in rows if (p := r.get("FROM_ROLE") or r.get("PARENT_ROLE_NAME"))]
 
 
 def parse_role_assignments(conn, grantee: str, grantee_type: str) -> list[str]:
