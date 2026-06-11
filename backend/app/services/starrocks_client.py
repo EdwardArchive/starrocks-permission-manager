@@ -106,5 +106,5 @@ def parallel_queries(
                         if key not in results:
                             results[key] = result
                     except Exception:
-                        logger.debug("Parallel query failed for key %s", key if "key" in dir() else "?")
+                        logger.debug("Parallel query failed for key %s", futures[future])
     return results
