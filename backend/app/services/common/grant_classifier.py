@@ -11,7 +11,6 @@ from app.models.schemas import PrivilegeGrant
 # ══════════════════════════════════════════════════════════════════════
 # Module-level constants
 # ══════════════════════════════════════════════════════════════════════
-
 from app.services.shared.constants import BUILTIN_ROLES
 from app.services.shared.name_utils import normalize_fn_name
 

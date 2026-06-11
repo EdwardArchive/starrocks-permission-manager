@@ -82,6 +82,14 @@ def _row_to_query(row: dict, sql_by_conn: dict[str, str]) -> RunningQueryInfo:
     scan_bytes_raw = _clean(row.get("ScanBytes"))
     memory_raw = _clean(row.get("MemoryUsage"))
     spill_raw = _clean(row.get("DiskSpillSize"))
+    cpu_time_ms = parse_duration_ms(row.get("CPUTime"))
+    exec_time_ms = parse_duration_ms(row.get("ExecTime"))
+    # cumulative CPU / wall time = average cores kept busy since the query started
+    cpu_avg_cores = (
+        round(cpu_time_ms / exec_time_ms, 2)
+        if cpu_time_ms is not None and exec_time_ms is not None and exec_time_ms > 0
+        else None
+    )
     return RunningQueryInfo(
         query_id=str(row.get("QueryId") or ""),
         connection_id=int(conn_id_str) if conn_id_str and conn_id_str.isdigit() else None,
@@ -100,10 +108,11 @@ def _row_to_query(row: dict, sql_by_conn: dict[str, str]) -> RunningQueryInfo:
         memory_display=memory_raw,
         spill_bytes=_parse_size(spill_raw),
         spill_display=spill_raw,
-        cpu_time_ms=parse_duration_ms(row.get("CPUTime")),
+        cpu_time_ms=cpu_time_ms,
         cpu_time_display=_clean(row.get("CPUTime")),
-        exec_time_ms=parse_duration_ms(row.get("ExecTime")),
+        exec_time_ms=exec_time_ms,
         exec_time_display=_clean(row.get("ExecTime")),
+        cpu_avg_cores=cpu_avg_cores,
         sql=sql_by_conn.get(conn_id_str) if conn_id_str else None,
     )
 

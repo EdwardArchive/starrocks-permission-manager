@@ -5,7 +5,7 @@ def test_login_success(client):
     with patch("app.routers.auth.test_connection", return_value=True):
         with patch("app.routers.auth.get_connection") as mock_gc:
             # Mock the connection context manager
-            from tests.conftest import FakeConnection, DEFAULT_QUERY_MAP
+            from tests.conftest import DEFAULT_QUERY_MAP, FakeConnection
 
             fake = FakeConnection(DEFAULT_QUERY_MAP)
             mock_gc.return_value.__enter__ = lambda s: fake
@@ -76,7 +76,7 @@ def test_login_token_has_no_password(client):
 
     with patch("app.routers.auth.test_connection", return_value=True):
         with patch("app.routers.auth.get_connection") as mock_gc:
-            from tests.conftest import FakeConnection, DEFAULT_QUERY_MAP
+            from tests.conftest import DEFAULT_QUERY_MAP, FakeConnection
 
             fake = FakeConnection(DEFAULT_QUERY_MAP)
             mock_gc.return_value.__enter__ = lambda s: fake

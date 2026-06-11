@@ -1,12 +1,14 @@
 """Shared helpers for user/role discovery from StarRocks system tables."""
 
 from __future__ import annotations
-import threading
-from cachetools import TTLCache
-from app.config import settings
-from app.services.starrocks_client import execute_query
 
 import logging
+import threading
+
+from cachetools import TTLCache
+
+from app.config import settings
+from app.services.starrocks_client import execute_query
 
 logger = logging.getLogger(__name__)
 

@@ -37,17 +37,29 @@ function QSortTH({ label, active, dir, onClick }: { label: string; active: boole
   );
 }
 
-function CellTD({ children }: { children: React.ReactNode }) {
+/* One base style for every data cell so font size, line height, and vertical
+ * alignment stay identical across text, badge, numeric, and SQL columns. */
+const CELL_BASE: React.CSSProperties = {
+  padding: "8px 10px",
+  fontSize: 12,
+  lineHeight: "18px",
+  color: C.text1,
+  borderBottom: `1px solid ${C.border}`,
+  verticalAlign: "middle",
+  whiteSpace: "nowrap",
+};
+
+function CellTD({ children, muted, title }: { children: React.ReactNode; muted?: boolean; title?: string }) {
   return (
-    <td style={{ padding: "8px 10px", fontSize: 12, color: C.text1, borderBottom: `1px solid ${C.border}`, whiteSpace: "nowrap" }}>
+    <td title={title} style={{ ...CELL_BASE, color: muted ? C.text3 : C.text1 }}>
       {children}
     </td>
   );
 }
 
-function NumTD({ children }: { children: React.ReactNode }) {
+function NumTD({ children, title }: { children: React.ReactNode; title?: string }) {
   return (
-    <td style={{ padding: "8px 10px", fontSize: 12, color: C.text1, borderBottom: `1px solid ${C.border}`, textAlign: "right", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+    <td title={title} style={{ ...CELL_BASE, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
       {children}
     </td>
   );
@@ -61,8 +73,16 @@ function fmtRows(n: number | null): string {
   return String(n);
 }
 
+/* CPU share: avg busy cores / total cluster cores. Falls back to a cores
+ * multiplier when the cluster core count is unknown (e.g. limited mode). */
+function fmtCpuShare(avgCores: number | null, totalCores: number | null): string {
+  if (avgCores == null) return "—";
+  if (totalCores && totalCores > 0) return `${((avgCores / totalCores) * 100).toFixed(1)}%`;
+  return `×${avgCores.toFixed(1)}`;
+}
+
 /* Expanded row detail: full SQL + all stats */
-function QueryDetail({ q, now }: { q: RunningQueryInfo; now: Date }) {
+function QueryDetail({ q, now, totalCores }: { q: RunningQueryInfo; now: Date; totalCores: number | null }) {
   const [copied, setCopied] = useState(false);
   return (
     <div style={{ padding: "10px 12px", background: "rgba(59,130,246,0.04)", borderBottom: `1px solid ${C.border}` }}>
@@ -73,6 +93,12 @@ function QueryDetail({ q, now }: { q: RunningQueryInfo; now: Date }) {
         {q.fe_ip && <Detail label="Frontend" value={q.fe_ip} />}
         {q.warehouse && <Detail label="Warehouse" value={q.warehouse} />}
         {q.resource_group && <Detail label="Resource Group" value={q.resource_group} />}
+        {q.cpu_avg_cores != null && (
+          <Detail
+            label="Avg CPU (since start)"
+            value={`${q.cpu_avg_cores} cores${totalCores ? ` · ${((q.cpu_avg_cores / totalCores) * 100).toFixed(1)}% of ${totalCores}` : ""}`}
+          />
+        )}
         {q.exec_progress && <Detail label="Progress" value={q.exec_progress} />}
         {q.spill_display && <Detail label="Disk Spill" value={q.spill_display} />}
       </div>
@@ -110,7 +136,9 @@ function QueryDetail({ q, now }: { q: RunningQueryInfo; now: Date }) {
   );
 }
 
-export default function QueriesPanel() {
+// totalCores: sum of alive BE/CN cores from cluster status — used to turn the
+// per-query "avg cores busy" into a cluster-wide CPU share percentage.
+export default function QueriesPanel({ totalCores = null }: { totalCores?: number | null }) {
   const [data, setData] = useState<ClusterQueriesResponse | null>(null);
   const [error, setError] = useState<{ status: number | null; message: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -244,7 +272,8 @@ export default function QueriesPanel() {
                 <TH>DB</TH>
                 <TH>State</TH>
                 <QSortTH label="Exec Time" active={sortKey === "exec_time_ms"} dir={sortDir} onClick={() => toggleSort("exec_time_ms")} />
-                <QSortTH label="CPU" active={sortKey === "cpu_time_ms"} dir={sortDir} onClick={() => toggleSort("cpu_time_ms")} />
+                <QSortTH label="CPU Time" active={sortKey === "cpu_time_ms"} dir={sortDir} onClick={() => toggleSort("cpu_time_ms")} />
+                <QSortTH label="CPU %" active={sortKey === "cpu_avg_cores"} dir={sortDir} onClick={() => toggleSort("cpu_avg_cores")} />
                 <QSortTH label="Memory" active={sortKey === "memory_bytes"} dir={sortDir} onClick={() => toggleSort("memory_bytes")} />
                 <QSortTH label="Scan Rows" active={sortKey === "scan_rows"} dir={sortDir} onClick={() => toggleSort("scan_rows")} />
                 <QSortTH label="Scan Bytes" active={sortKey === "scan_bytes"} dir={sortDir} onClick={() => toggleSort("scan_bytes")} />
@@ -263,19 +292,26 @@ export default function QueriesPanel() {
                     style={{ cursor: "pointer", background: expanded ? "rgba(59,130,246,0.06)" : "transparent" }}
                   >
                     <CellTD>{q.user}</CellTD>
-                    <CellTD>{q.database ?? "—"}</CellTD>
-                    <td style={{ padding: "8px 10px", borderBottom: `1px solid ${C.border}` }}>
+                    {q.database ? (
+                      <CellTD>{q.database}</CellTD>
+                    ) : (
+                      <CellTD muted title="No current database — the connection ran a fully-qualified query without USE">—</CellTD>
+                    )}
+                    <td style={{ ...CELL_BASE, lineHeight: 1 }}>
                       <Badge text={q.exec_state ?? "?"} color={q.exec_state === "RUNNING" ? C.green : C.text2} />
                     </td>
                     <NumTD>{q.exec_time_display ?? "—"}</NumTD>
                     <NumTD>{q.cpu_time_display ?? "—"}</NumTD>
+                    <NumTD title={q.cpu_avg_cores != null ? `≈${q.cpu_avg_cores} cores busy (avg since start)` : undefined}>
+                      {fmtCpuShare(q.cpu_avg_cores, totalCores)}
+                    </NumTD>
                     <NumTD>{q.memory_display ?? "—"}</NumTD>
                     <NumTD>{fmtRows(q.scan_rows)}</NumTD>
                     <NumTD>{q.scan_bytes_display ?? "—"}</NumTD>
                     <NumTD>{q.spill_display ?? "—"}</NumTD>
                     <td style={{
-                      padding: "8px 10px", fontSize: 12, color: C.text2, borderBottom: `1px solid ${C.border}`,
-                      maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      ...CELL_BASE, color: C.text2,
+                      maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis",
                       fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
                     }} title={q.sql ?? undefined}>
                       {q.sql ?? "—"}
@@ -283,8 +319,8 @@ export default function QueriesPanel() {
                   </tr>,
                   expanded ? (
                     <tr key={`${q.query_id}:detail`}>
-                      <td colSpan={10} style={{ padding: 0 }}>
-                        <QueryDetail q={q} now={now} />
+                      <td colSpan={11} style={{ padding: 0 }}>
+                        <QueryDetail q={q} now={now} totalCores={totalCores} />
                       </td>
                     </tr>
                   ) : null,

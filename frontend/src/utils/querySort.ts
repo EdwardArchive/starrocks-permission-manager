@@ -3,6 +3,7 @@ import type { RunningQueryInfo } from "../types";
 export type QuerySortKey =
   | "exec_time_ms"
   | "cpu_time_ms"
+  | "cpu_avg_cores"
   | "memory_bytes"
   | "scan_rows"
   | "scan_bytes"

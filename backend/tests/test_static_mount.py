@@ -1,10 +1,9 @@
 """Tests for the production SPA static handler — path-traversal confinement."""
 from __future__ import annotations
 
+from app.static_mount import mount_static
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from app.static_mount import mount_static
 
 
 def _make_app(tmp_path) -> TestClient:

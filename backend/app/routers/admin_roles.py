@@ -14,9 +14,9 @@ from fastapi import APIRouter, Depends, Query
 from app.config import settings
 from app.dependencies import get_db, require_admin
 from app.models.schemas import DAGEdge, DAGGraph, DAGNode, RoleItem
+from app.services.admin.user_service import get_all_users
 from app.services.shared.constants import BUILTIN_ROLES
 from app.services.starrocks_client import execute_query
-from app.services.admin.user_service import get_all_users
 from app.utils.role_helpers import get_parent_roles, get_user_roles
 
 logger = logging.getLogger("admin_roles")

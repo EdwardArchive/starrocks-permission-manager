@@ -66,6 +66,11 @@ export default function ClusterTab() {
   const now = skewedNow(clockSkewMs(data?.server_now));
   const frontends = data?.frontends ?? [];
   const backends = data?.backends ?? [];
+  // Total compute cores (alive BE+CN) — lets the queries panel show CPU share %
+  const totalCores = backends.reduce(
+    (sum, b) => sum + (b.alive && b.cpu_cores != null ? b.cpu_cores : 0),
+    0,
+  ) || null;
 
   return (
     <div data-testid="cluster-tab" style={{ flex: 1, overflowY: "auto", background: C.bg, padding: "16px 20px" }}>
@@ -168,7 +173,7 @@ export default function ClusterTab() {
 
           {/* ── Running Queries (issue #15) ── */}
           <div style={{ marginTop: 16 }}>
-            <QueriesPanel />
+            <QueriesPanel totalCores={totalCores} />
           </div>
         </>
       )}

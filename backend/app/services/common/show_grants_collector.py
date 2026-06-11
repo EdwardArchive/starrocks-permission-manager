@@ -8,8 +8,8 @@ from __future__ import annotations
 import logging
 
 from app.models.schemas import PrivilegeGrant
-from app.services.grant_collector import CollectedGrants
 from app.services.common.grant_parser import _parse_show_grants
+from app.services.grant_collector import CollectedGrants
 from app.services.shared.role_graph import fetch_role_child_map
 from app.services.starrocks_client import execute_query
 from app.utils.role_helpers import build_role_chain

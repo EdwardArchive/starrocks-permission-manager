@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 
 from app.models.schemas import PrivilegeGrant
+from app.services.common.grant_parser import _parse_show_grants, _row_to_grants
 from app.services.common.show_grants_collector import _probe_public_defaults
 from app.services.grant_collector import CollectedGrants
-from app.services.common.grant_parser import _parse_show_grants, _row_to_grants
 from app.services.shared.constants import BUILTIN_ROLES
 from app.services.shared.name_utils import normalize_fn_name
 from app.services.shared.role_graph import fetch_role_child_map, fetch_user_role_map

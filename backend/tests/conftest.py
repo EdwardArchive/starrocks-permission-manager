@@ -10,13 +10,12 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from fastapi import Header
-from fastapi.testclient import TestClient
-
 from app.dependencies import get_credentials, get_db
 from app.main import app
 from app.utils.session import create_token, decode_token
 from app.utils.session_store import session_store
+from fastapi import Header
+from fastapi.testclient import TestClient
 
 # ── Test credentials ──
 TEST_HOST = "test-sr-host"
@@ -341,13 +340,13 @@ def client(mock_db, query_map):
     """FastAPI TestClient with mocked DB dependency."""
 
     # Clear TTL caches to prevent cross-test leakage
-    from app.routers.user_objects import _catalog_cache
-    from app.routers.admin_roles import _role_cache as admin_role_cache
-    from app.routers.user_roles import _role_cache as user_role_cache
     from app.routers.admin_dag import _dag_cache as admin_dag_cache
-    from app.routers.user_dag import _dag_cache as user_dag_cache
-    from app.services.admin.user_service import _user_cache
+    from app.routers.admin_roles import _role_cache as admin_role_cache
     from app.routers.cluster import _cluster_cache, _queries_cache
+    from app.routers.user_dag import _dag_cache as user_dag_cache
+    from app.routers.user_objects import _catalog_cache
+    from app.routers.user_roles import _role_cache as user_role_cache
+    from app.services.admin.user_service import _user_cache
     from app.services.grant_collector import _grants_cache
     _catalog_cache.clear()
     admin_role_cache.clear()
@@ -387,11 +386,11 @@ def client(mock_db, query_map):
 
     # Mock parallel_queries to use FakeConnection instead of real connections
     # Patch the module attr AND the already-imported references in routers
-    import app.services.starrocks_client as sc
-    import app.routers.user_dag as user_dag_mod
     import app.routers.admin_dag as admin_dag_mod
-    import app.routers.user_search as user_search_mod
     import app.routers.admin_search as admin_search_mod
+    import app.routers.user_dag as user_dag_mod
+    import app.routers.user_search as user_search_mod
+    import app.services.starrocks_client as sc
     _orig_sc = sc.parallel_queries
     _orig_user_dag = user_dag_mod.parallel_queries
     _orig_admin_dag = admin_dag_mod.parallel_queries

@@ -233,6 +233,9 @@ class RunningQueryInfo(BaseModel):
     cpu_time_display: str | None = None
     exec_time_ms: float | None = None
     exec_time_display: str | None = None
+    # Average parallelism since the query started: cumulative CPU time / wall
+    # time = cores kept busy. The UI divides by total cluster cores for a %.
+    cpu_avg_cores: float | None = None
     sql: str | None = None  # from processlist Info; None if the connection vanished
 
 

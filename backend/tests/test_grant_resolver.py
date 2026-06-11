@@ -8,8 +8,8 @@ from app.models.schemas import PrivilegeGrant
 from app.services.common.grant_classifier import ObjectQuery
 from app.services.common.grant_resolver import GrantResolver
 from app.services.grant_collector import CollectedGrants
-from tests.conftest import FakeConnection
 
+from tests.conftest import FakeConnection
 
 # ── Helpers ──
 

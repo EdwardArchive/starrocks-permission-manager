@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import mysql.connector.errors
 import pytest
-
 from app.services.cluster_queries import parse_duration_ms, parse_row_count
 
 from tests.conftest import DEFAULT_QUERY_MAP
@@ -95,6 +94,8 @@ def test_queries_happy_path(client, auth_header):
     assert q["spill_bytes"] == pytest.approx(0.0)
     assert q["cpu_time_ms"] == pytest.approx(478.0)
     assert q["exec_time_ms"] == pytest.approx(2126.0)
+    # avg cores busy = cpu_time / exec_time, rounded to 2 decimals
+    assert q["cpu_avg_cores"] == pytest.approx(0.22)
 
     # Raw display strings preserved
     assert q["scan_bytes_display"] == "13.319 GB"

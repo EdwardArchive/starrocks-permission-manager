@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.services.be_metrics import (
     BECpuSample,
     _last_samples,

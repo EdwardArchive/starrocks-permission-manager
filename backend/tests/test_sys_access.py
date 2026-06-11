@@ -6,9 +6,7 @@ from unittest.mock import MagicMock
 
 import mysql.connector.errors
 import pytest
-
-from app.utils.sys_access import is_access_denied, can_access_sys
-
+from app.utils.sys_access import can_access_sys, is_access_denied
 
 # ── is_access_denied ──
 

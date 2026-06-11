@@ -19,6 +19,7 @@ import logging
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from typing import Literal
 
 import mysql.connector.errors
 from cachetools import TTLCache
@@ -309,6 +310,7 @@ def _inject_be_metrics(backends: list[BENodeInfo]) -> None:
         return
 
     def _probe(be: BENodeInfo) -> tuple[BENodeInfo, float | None]:
+        assert be.http_port is not None  # guaranteed by the `targets` filter above
         return be, fetch_be_cpu_pct(be.ip, be.http_port, timeout=_METRICS_TIMEOUT_SECONDS)
 
     futures = [_metrics_executor.submit(_probe, be) for be in targets]
@@ -392,7 +394,7 @@ def get_cluster_status(
 
     # get_db() already runs SET ROLE ALL; no need to repeat it here.
 
-    mode = "full"
+    mode: Literal["full", "limited"] = "full"
     fe_rows: list[dict] = []
     be_rows: list[dict] = []
     cn_rows: list[dict] = []

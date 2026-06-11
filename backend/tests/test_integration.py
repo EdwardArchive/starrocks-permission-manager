@@ -17,13 +17,12 @@ from __future__ import annotations
 import os
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.dependencies import get_credentials, get_db
 from app.main import app
 from app.services.starrocks_client import execute_query, get_connection, get_pooled_connection
 from app.utils.session import create_token
 from app.utils.session_store import session_store
+from fastapi.testclient import TestClient
 
 SR_HOST = os.environ.get("SR_TEST_HOST", "")
 SR_PORT = int(os.environ.get("SR_TEST_PORT", "9030"))

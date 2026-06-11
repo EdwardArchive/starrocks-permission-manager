@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from app.models.schemas import PrivilegeGrant
 from app.services.common.show_grants_collector import _probe_public_defaults, collect_non_admin
+
 from tests.conftest import FakeConnection
 
 

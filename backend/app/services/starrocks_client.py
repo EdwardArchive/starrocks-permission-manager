@@ -1,14 +1,15 @@
 from __future__ import annotations
+
+import logging
 import os
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from threading import Lock, Semaphore
-from collections.abc import Callable
 from typing import Any
+
 import mysql.connector
 import mysql.connector.pooling
-
-import logging
 
 logger = logging.getLogger(__name__)
 

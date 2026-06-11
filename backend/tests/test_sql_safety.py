@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.utils.sql_safety import safe_identifier, safe_name
 
 

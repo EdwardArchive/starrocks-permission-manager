@@ -7,8 +7,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from tests.conftest import FakeConnection
 import app.services.starrocks_client as sc_module
+
+from tests.conftest import FakeConnection
 
 execute_query = sc_module.execute_query
 execute_single = sc_module.execute_single

@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.dependencies import get_credentials, get_db
 from app.main import app
 from app.utils.session import create_token
 from app.utils.session_store import session_store
+from fastapi.testclient import TestClient
 
-from tests.conftest import FakeConnection, DEFAULT_QUERY_MAP
+from tests.conftest import DEFAULT_QUERY_MAP, FakeConnection
 
 
 def _make_non_admin_client():

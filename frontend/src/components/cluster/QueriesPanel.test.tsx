@@ -158,3 +158,55 @@ describe("QueriesPanel", () => {
     });
   });
 });
+
+describe("QueriesPanel — CPU share column", () => {
+  it("shows CPU % relative to totalCores when provided", async () => {
+    mockGetClusterQueries.mockResolvedValue(
+      makeResponse({ queries: [makeQuery({ cpu_avg_cores: 2.4 })] }),
+    );
+    render(<QueriesPanel totalCores={48} />);
+    await waitFor(() => expect(screen.getByTestId("queries-table")).toBeInTheDocument());
+    // 2.4 / 48 = 5.0%
+    expect(screen.getByText("5.0%")).toBeInTheDocument();
+  });
+
+  it("falls back to a cores multiplier without totalCores", async () => {
+    mockGetClusterQueries.mockResolvedValue(
+      makeResponse({ queries: [makeQuery({ cpu_avg_cores: 2.4 })] }),
+    );
+    render(<QueriesPanel />);
+    await waitFor(() => expect(screen.getByTestId("queries-table")).toBeInTheDocument());
+    expect(screen.getByText("×2.4")).toBeInTheDocument();
+  });
+
+  it("sorts by the CPU % column", async () => {
+    mockGetClusterQueries.mockResolvedValue(
+      makeResponse({
+        queries: [
+          makeQuery({ query_id: "light", user: "user_light", cpu_avg_cores: 0.3, exec_time_ms: 9000 }),
+          makeQuery({ query_id: "heavy", user: "user_heavy", cpu_avg_cores: 8.1, exec_time_ms: 100 }),
+        ],
+      }),
+    );
+    render(<QueriesPanel totalCores={48} />);
+    await waitFor(() => expect(screen.getByTestId("queries-table")).toBeInTheDocument());
+
+    act(() => { screen.getByText("CPU %").click(); });
+
+    const rows = screen.getAllByTestId("query-row");
+    expect(rows[0].textContent).toContain("user_heavy");
+  });
+
+  it("shows avg cores in the expanded detail", async () => {
+    mockGetClusterQueries.mockResolvedValue(
+      makeResponse({ queries: [makeQuery({ cpu_avg_cores: 2.4 })] }),
+    );
+    render(<QueriesPanel totalCores={48} />);
+    await waitFor(() => expect(screen.getByTestId("queries-table")).toBeInTheDocument());
+
+    act(() => { screen.getByTestId("query-row").click(); });
+
+    expect(screen.getByText("Avg CPU (since start)")).toBeInTheDocument();
+    expect(screen.getByText("2.4 cores · 5.0% of 48")).toBeInTheDocument();
+  });
+});

@@ -12,8 +12,8 @@ from app.services.admin.bfs_resolver import (
     _find_ancestors_with_grants,
 )
 from app.services.common.grant_classifier import ObjectQuery, Relevance
-from tests.conftest import FakeConnection
 
+from tests.conftest import FakeConnection
 
 # ── _bfs_child_roles tests ──
 

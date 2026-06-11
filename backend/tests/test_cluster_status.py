@@ -6,7 +6,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 import mysql.connector.errors
 import pytest
-
 from app.services.fe_metrics import FEMetricsData, FEMetricsError
 
 

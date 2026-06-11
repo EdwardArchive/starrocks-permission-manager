@@ -6,14 +6,12 @@ import urllib.error
 from unittest.mock import patch
 
 import pytest
-
 from app.services.fe_metrics import (
     FEMetricsData,
     FEMetricsError,
     _parse_metrics_body,
     fetch_fe_metrics,
 )
-
 
 SAMPLE_FULL = """\
 jvm_heap_size_bytes{type="used"} 400000000

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from app.services.common.grant_parser import _parse_grant_statement, _parse_show_grants, _row_to_grants
-from tests.conftest import FakeConnection
 
+from tests.conftest import FakeConnection
 
 # ── _parse_grant_statement tests ──
 

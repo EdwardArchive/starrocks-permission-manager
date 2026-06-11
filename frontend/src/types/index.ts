@@ -256,6 +256,8 @@ export interface RunningQueryInfo {
   cpu_time_display: string | null;
   exec_time_ms: number | null;
   exec_time_display: string | null;
+  // avg cores kept busy since the query started (cumulative CPU / wall time)
+  cpu_avg_cores: number | null;
   sql: string | null;
 }
 

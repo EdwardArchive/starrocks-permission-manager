@@ -9,11 +9,9 @@ import logging
 import threading
 
 from cachetools import TTLCache
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.config import settings
-from fastapi import Query
-
 from app.dependencies import get_credentials, get_db
 from app.models.schemas import DAGEdge, DAGGraph, DAGNode, RoleItem
 from app.services.shared.constants import BUILTIN_ROLES

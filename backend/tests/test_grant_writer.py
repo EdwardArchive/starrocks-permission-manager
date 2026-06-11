@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.models.schemas import GranteeRef, GrantObjectRef, GrantRequest
 from app.services.admin.grant_writer import build_statements, parse_user_identity
 from app.services.shared.grant_spec import validate_privileges

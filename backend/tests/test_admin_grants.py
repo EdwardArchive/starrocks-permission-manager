@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import mysql.connector.errors
 import pytest
-from fastapi.testclient import TestClient
-
 from app.dependencies import get_credentials, get_db
 from app.main import app
+from fastapi.testclient import TestClient
 
 from tests.conftest import DEFAULT_QUERY_MAP, TEST_HOST, TEST_PORT, FakeConnection
 

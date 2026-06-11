@@ -111,6 +111,7 @@ export function makeQuery(overrides: Partial<RunningQueryInfo> = {}): RunningQue
     cpu_time_display: "0.478 s",
     exec_time_ms: 2126,
     exec_time_display: "2.126 s",
+    cpu_avg_cores: 0.22,
     sql: "SELECT count(*) FROM sales.orders",
     ...overrides,
   };

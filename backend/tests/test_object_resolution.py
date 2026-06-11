@@ -3,9 +3,8 @@ without a per-user DB query (no N+1 over org users)."""
 
 from __future__ import annotations
 
-import pytest
-
 import app.services.admin.bfs_resolver as bfs
+import pytest
 from app.models.schemas import PrivilegeGrant
 from app.services.common.grant_classifier import ObjectQuery
 from app.services.common.grant_resolver import GrantResolver

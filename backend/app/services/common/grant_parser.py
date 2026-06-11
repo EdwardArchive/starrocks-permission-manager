@@ -57,7 +57,7 @@ def _parse_show_grants(conn, grantee: str, grantee_type: str) -> list[PrivilegeG
 
 def _parse_grant_statement(stmt: str, grantee: str, grantee_type: str) -> list[PrivilegeGrant]:
     """Best-effort parse of various GRANT statement formats."""
-    grants = []
+    grants: list[PrivilegeGrant] = []
     m = _RE_GRANT_ON.match(stmt)
     if not m:
         return grants
@@ -129,6 +129,9 @@ def _parse_grant_statement(stmt: str, grantee: str, grantee_type: str) -> list[P
         obj_type = "POLICY"
 
     parts = obj_path.split(".") if obj_path else []
+    catalog: str | None
+    database: str | None
+    name: str | None
     if len(parts) == 3:
         catalog, database, name = parts[0], parts[1], parts[2]
         if catalog == "*":
