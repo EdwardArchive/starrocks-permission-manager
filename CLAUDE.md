@@ -22,8 +22,12 @@ When code or project structure changes, run a sub-agent after completing the tas
 ├── PRD.md                     # Product Requirements Document
 ├── README.md                  # Project overview + quick start guide
 ├── pyproject.toml             # Ruff + Bandit + mypy config
+├── k8s/
+│   └── srpm.yaml              # k8s Deployment/Service (exposed via Cloudflare Tunnel: srpm.cshift.co)
 ├── docs/
 │   ├── API.md                 # Full API documentation (moved from backend/)
+│   ├── GRANT_REVOKE_DESIGN.md # v2.0 GRANT/REVOKE design + live-cluster validation evidence
+│   ├── sql/setup_grant_admin.sql # Operator setup: audit table + srpm_grant_admin bundle role
 │   ├── CONTRIBUTING.md        # Contributing guide
 │   ├── TESTING.md             # Testing guide
 │   └── screenshots/           # UI screenshots
@@ -46,13 +50,15 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   │   ├── admin_roles.py       # GET /api/admin/roles/* (Layer 1+2, admin only)
 │   │   │   ├── admin_dag.py         # GET /api/admin/dag/* (Layer 1+2, admin only)
 │   │   │   ├── admin_search.py      # GET /api/admin/search/* (Layer 1+2, admin only)
-│   │   │   └── cluster.py           # GET /api/cluster/status (no require_admin; SR enforces cluster_admin)
+│   │   │   ├── cluster.py           # GET /api/cluster/status (no require_admin; SR enforces cluster_admin)
+│   │   │   └── admin_grants.py      # GRANT/REVOKE write routes (require_grant_admin)
 │   │   ├── services/
 │   │   │   ├── starrocks_client.py        # MySQL connector wrapper + connection pool + parallel_queries
 │   │   │   ├── grant_collector.py         # Facade: delegates to common or admin collector (TTL-cached)
 │   │   │   ├── fe_metrics.py              # FE /metrics HTTP probe for cluster status (limited mode)
 │   │   │   ├── shared/                    # Shared constants and utilities
 │   │   │   │   ├── constants.py           # BUILTIN_ROLES, BFS_MAX_DEPTH
+│   │   │   │   ├── grant_spec.py          # object_type → grantable privileges allowlist (docs-derived)
 │   │   │   │   ├── name_utils.py          # normalize_fn_name()
 │   │   │   │   └── role_graph.py          # fetch_role_child_map()
 │   │   │   ├── common/                    # Layer 1: SHOW + INFORMATION_SCHEMA only
@@ -62,6 +68,8 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   │   │   └── show_grants_collector.py # Non-admin grant collection
 │   │   │   ├── admin/                     # Layer 2: sys.* tables (admin only)
 │   │   │   │   ├── sys_collector.py       # Admin grant collection via sys.*
+│   │   │   │   ├── grant_writer.py        # GRANT/REVOKE SQL builder (strict identity validation, SET CATALOG pair)
+│   │   │   │   ├── audit.py               # Best-effort audit log (srpm_audit.grant_log; failures logged too)
 │   │   │   │   ├── bfs_resolver.py        # BFS traversal: child roles, user privs, ancestors
 │   │   │   │   └── user_service.py        # get_all_users (cached)
 │   │   ├── models/
@@ -80,6 +88,8 @@ When code or project structure changes, run a sub-agent after completing the tas
 │       └── test_integration.py   # Integration tests (26, requires real SR)
 └── frontend/
     ├── package.json
+    ├── playwright.config.ts    # E2E config (auto-starts backend :8888 + vite :5199)
+    ├── e2e/                    # Playwright E2E specs vs live SR cluster + docs screenshot capture
     ├── vite.config.ts          # Tailwind + API proxy → localhost:8001
     ├── icons/                  # Customizable SVG icons (single source)
     │   ├── app-logo.svg ~ role.svg  # Per-node-type icons (stroke-based, 24x24)
@@ -94,8 +104,9 @@ When code or project structure changes, run a sub-agent after completing the tas
         │   ├── user.ts              # /api/user/* endpoints (all users)
         │   ├── admin.ts             # /api/admin/* endpoints (admin only)
         │   └── cluster.ts           # /api/cluster/* (new category, separate from user/admin)
-        ├── stores/              # Zustand (authStore, dagStore, clusterStore)
-        │   └── clusterStore.ts      # Drawer open state + expanded nodes
+        ├── stores/              # Zustand (authStore, dagStore, clusterStore, grantStore)
+        │   ├── clusterStore.ts      # Drawer open state + expanded nodes
+        │   └── grantStore.ts        # Manage Privileges wizard open/prefill + refreshTick
         ├── utils/
         │   ├── grantDisplay.ts      # buildGrantDisplay() — unified grant grouping + implicit USAGE
         │   ├── inventory-helpers.ts  # SubTab/AllTab types, SUB_TAB_META, formatSQL/Bytes
@@ -107,6 +118,8 @@ When code or project structure changes, run a sub-agent after completing the tas
             ├── auth/LoginForm.tsx
             ├── cluster/
             │   └── ClusterDrawer.tsx  # Right-side drawer for FE/BE node health (440px)
+            ├── grants/
+            │   └── ManagePrivilegesModal.tsx  # GRANT/REVOKE wizard (presets, multi-revoke, keep-open)
             ├── layout/Header.tsx, Sidebar.tsx  # Sidebar uses isAdmin-conditional APIs; Header has cluster icon
             ├── common/
             │   ├── InlineIcon.tsx     # SVG icon renderer
@@ -123,6 +136,7 @@ When code or project structure changes, run a sub-agent after completing the tas
             │   ├── PermissionMatrix.tsx     # GranteeName, PermissionMatrixView, ObjectPrivilegesPane
             │   ├── InventoryTab.tsx         # My Inventory (isAdmin-conditional API for roles/users)
             │   ├── InventoryDetailPanel.tsx # Detail panel for inventory items (privs, members, objects)
+            │   ├── AuditTab.tsx             # Grant Audit history table (can_manage_grants only)
             │   └── inventory-ui.tsx         # Shared UI: SearchInput, Chip, Badge, SortTH, etc.
             └── panels/
                 ├── ObjectDetailPanel.tsx  # Permission matrix + Details
@@ -225,6 +239,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 - /api/admin/* routes must verify is_admin via middleware
 - /api/auth/* routes are shared (no layer restriction)
 - /api/cluster/* is a new route category — no require_admin; StarRocks enforces privilege, backend maps access-denied errors to 403
+- /api/admin/grants/* is the write route category — require_grant_admin (admin + user_admin in role chain via can_manage_grants session flag); statements run under the user's own credentials, StarRocks is the final gate; all attempts audited to srpm_audit.grant_log (see docs/sql/setup_grant_admin.sql)
 
 ### Code Quality
 - No duplicate grant parsing logic — use services/common/grant_parser.py
@@ -240,6 +255,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 | Role Map | Role inheritance DAG with full BFS child traversal | No |
 | Permission Focus | Search user/role → inheritance DAG + privilege list | Yes |
 | My Inventory | Sub-tab browser: Roles/Users/Catalogs/DBs/Tables/MVs/Views/Functions + detail panel | No |
+| Grant Audit | GRANT/REVOKE history table (srpm_audit.grant_log) | can_manage_grants only |
 
 ## My Inventory Sub-tabs
 | Sub-tab | Data Source | Detail Panel |
@@ -283,6 +299,9 @@ npx eslint src/ --max-warnings 0
 cd backend
 python -m pytest tests/ -v --ignore=tests/test_integration.py  # Unit tests
 python -m pytest tests/test_integration.py -v -s               # Integration (needs SR env vars)
+
+# E2E (Playwright, live cluster — see frontend/e2e/README.md)
+cd frontend && E2E_SR_PASS=... npx playwright test
 ```
 
 ## Environment Variables
@@ -319,4 +338,7 @@ python -m pytest tests/test_integration.py -v -s               # Integration (ne
 
 ### Cluster Routes (`/api/cluster/*` — any logged-in user; StarRocks enforces privilege, 403 on denied)
 - Status: GET /api/cluster/status — FE/BE node list + aggregate metrics + has_errors flag
+
+### Grant Routes (`/api/admin/grants/*` — `require_grant_admin`; see docs/API.md)
+- GET spec · POST preview · POST execute · GET audit
 

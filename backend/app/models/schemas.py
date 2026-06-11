@@ -25,6 +25,7 @@ class UserInfo(BaseModel):
     roles: list[str]
     default_role: str | None = None
     is_user_admin: bool = False
+    can_manage_grants: bool = False
 
 
 # ── Objects ──
@@ -199,3 +200,47 @@ class ClusterStatusResponse(BaseModel):
     has_errors: bool
     mode: Literal["full", "limited"] = "full"  # "full" = SHOW succeeded; "limited" = access-denied fallback
     metrics_warning: str | None = None  # set iff all FE /metrics fetches failed
+
+
+# ── Grant management (write operations) ──
+class GranteeRef(BaseModel):
+    name: str
+    type: Literal["USER", "ROLE"]
+
+
+class GrantObjectRef(BaseModel):
+    object_type: str  # validated against grant_spec.GRANTABLE_PRIVILEGES
+    catalog: str | None = None
+    database: str | None = None
+    name: str | None = None  # for FUNCTION, carries the full signature: my_udf(int,int)
+
+
+class GrantRequest(BaseModel):
+    action: Literal["GRANT", "REVOKE"]
+    type: Literal["PRIVILEGE", "ROLE"]
+    grantee: GranteeRef
+    object: GrantObjectRef | None = None  # required when type == PRIVILEGE
+    privileges: list[str] = []  # required when type == PRIVILEGE
+    role: str | None = None  # required when type == ROLE
+    with_grant_option: bool = False  # GRANT + PRIVILEGE only
+
+
+class GrantPreviewResponse(BaseModel):
+    sql: list[str]  # statement sequence (SET CATALOG pair for catalog-scoped objects)
+    warnings: list[str] = []
+
+
+class GrantExecuteResponse(BaseModel):
+    sql: list[str]
+    status: Literal["ok"]
+    audit: Literal["ok", "failed"]
+
+
+class AuditEntry(BaseModel):
+    log_time: str
+    actor: str
+    action: str
+    grant_type: str
+    sql_text: str
+    result: str
+    error_msg: str | None = None

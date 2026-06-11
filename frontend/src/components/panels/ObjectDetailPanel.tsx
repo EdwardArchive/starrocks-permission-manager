@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useDagStore } from "../../stores/dagStore";
+import { useAuthStore } from "../../stores/authStore";
+import { useGrantStore } from "../../stores/grantStore";
 import { getObjectPrivileges, getRolePrivileges, getTableDetail } from "../../api/user";
 import GrantTreeView from "../common/GrantTreeView";
 import { buildGrantDisplay, extractSourceRoles } from "../../utils/grantDisplay";
@@ -20,6 +22,8 @@ function getNodeContext(node: { label: string; metadata?: Record<string, unknown
 
 export default function ObjectDetailPanel() {
   const selectedNode = useDagStore((s) => s.selectedNode);
+  const canManageGrants = useAuthStore((s) => s.user?.can_manage_grants ?? false);
+  const openWizard = useGrantStore((s) => s.openWizard);
   const [tab, setTab] = useState<"privileges" | "details">("privileges");
 
   interface PanelData {
@@ -108,10 +112,30 @@ export default function ObjectDetailPanel() {
         ))}
       </div>
 
-      {/* Type badge */}
-      <span style={{ display: "inline-block", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, marginBottom: 16, background: `${color}20`, color }}>
-        {selectedNode.type.toUpperCase()}
-      </span>
+      {/* Type badge + grant entry */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+        <span style={{ display: "inline-block", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 500, background: `${color}20`, color }}>
+          {selectedNode.type.toUpperCase()}
+        </span>
+        {canManageGrants && ["catalog", "database", "table", "view", "mv", "function"].includes(nodeType) && (
+          <button
+            data-testid="panel-grant-btn"
+            onClick={() =>
+              openWizard({
+                object: {
+                  object_type: srObjectType,
+                  catalog: nodeType === "catalog" ? selectedNode.label : (parsed.catalog ?? "default_catalog"),
+                  database: nodeType === "catalog" ? null : nodeType === "database" ? selectedNode.label : parsed.database,
+                  name: ["catalog", "database"].includes(nodeType) ? null : selectedNode.label,
+                },
+              })
+            }
+            style={{ padding: "3px 10px", fontSize: 11, borderRadius: 6, border: `1px solid ${C.accent}`, background: "transparent", color: C.accent, cursor: "pointer", fontFamily: "inherit" }}
+          >
+            ⚙ Grant…
+          </button>
+        )}
+      </div>
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 0, borderBottom: `1px solid ${C.borderLight}`, marginBottom: 16 }}>
@@ -148,6 +172,12 @@ export default function ObjectDetailPanel() {
             <PermissionMatrixView
               grants={grants}
               objectType={srObjectType}
+              objectRef={{
+                object_type: srObjectType,
+                catalog: nodeType === "catalog" ? selectedNode.label : (parsed.catalog ?? "default_catalog"),
+                database: nodeType === "catalog" ? null : nodeType === "database" ? selectedNode.label : parsed.database,
+                name: ["catalog", "database"].includes(nodeType) ? null : selectedNode.label,
+              }}
             />
           )}
         </div>

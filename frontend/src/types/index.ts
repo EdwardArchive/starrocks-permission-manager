@@ -16,6 +16,55 @@ export interface UserInfo {
   roles: string[];
   default_role: string | null;
   is_user_admin: boolean;
+  can_manage_grants: boolean;
+}
+
+// ── Grant management (write operations) ──
+export interface GranteeRef {
+  name: string;
+  type: "USER" | "ROLE";
+}
+
+export interface GrantObjectRef {
+  object_type: string;
+  catalog?: string | null;
+  database?: string | null;
+  name?: string | null; // for FUNCTION, carries the full signature: my_udf(INT,INT)
+}
+
+export interface GrantRequest {
+  action: "GRANT" | "REVOKE";
+  type: "PRIVILEGE" | "ROLE";
+  grantee: GranteeRef;
+  object?: GrantObjectRef | null;
+  privileges?: string[];
+  role?: string | null;
+  with_grant_option?: boolean;
+}
+
+export interface GrantSpec {
+  object_types: Record<string, string[]>;
+}
+
+export interface GrantPreviewResponse {
+  sql: string[];
+  warnings: string[];
+}
+
+export interface GrantExecuteResponse {
+  sql: string[];
+  status: "ok";
+  audit: "ok" | "failed";
+}
+
+export interface AuditEntry {
+  log_time: string;
+  actor: string;
+  action: string;
+  grant_type: string;
+  sql_text: string;
+  result: string;
+  error_msg: string | null;
 }
 
 // ── Objects ──

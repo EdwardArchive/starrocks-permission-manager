@@ -9,7 +9,7 @@ from app.models.schemas import LoginRequest, LoginResponse, UserInfo
 from app.services.starrocks_client import execute_query, get_connection, test_connection
 from app.utils.cache import clear_all_caches
 from app.utils.rate_limit import login_rate_limiter
-from app.utils.role_helpers import get_user_roles
+from app.utils.role_helpers import collect_all_roles_via_grants, get_user_roles
 from app.utils.session import create_token, decode_token
 from app.utils.session_store import session_store
 from app.utils.sys_access import can_access_sys
@@ -33,8 +33,16 @@ def login(req: LoginRequest, request: Request):
         is_admin = can_access_sys(conn)
         roles = get_user_roles(conn, req.username)
         default_role = _get_default_role(conn)
+        can_manage_grants = is_admin and _detect_grant_capability(conn, req.username)
 
-    session_id = session_store.create(req.host, req.port, req.username, req.password, is_admin=is_admin)
+    session_id = session_store.create(
+        req.host,
+        req.port,
+        req.username,
+        req.password,
+        is_admin=is_admin,
+        can_manage_grants=can_manage_grants,
+    )
     token = create_token(session_id, req.username)
     clear_all_caches()
 
@@ -57,6 +65,7 @@ def me(credentials: dict = Depends(get_credentials), conn=Depends(get_db)):
         roles=roles,
         default_role=default_role,
         is_user_admin=is_admin,
+        can_manage_grants=credentials.get("can_manage_grants", False),
     )
 
 
@@ -72,6 +81,22 @@ def logout(authorization: str = Header(None)):
         except Exception:
             logger.debug("Failed to decode token during logout")
     return {"detail": "Logged out"}
+
+
+def _detect_grant_capability(conn, username: str) -> bool:
+    """True if user_admin is in the user's role chain (direct or nested).
+
+    StarRocks' GRANT ON SYSTEM (carried by user_admin) is the only capability
+    that allows granting/revoking privileges on arbitrary objects, so the
+    Manage Privileges UI is gated on it. root holds it implicitly.
+    """
+    if username == "root":
+        return True
+    try:
+        return "user_admin" in collect_all_roles_via_grants(conn, username)
+    except Exception:
+        logger.debug("Grant capability detection failed for %s — defaulting to False", username)
+        return False
 
 
 def _get_default_role(conn) -> str | None:

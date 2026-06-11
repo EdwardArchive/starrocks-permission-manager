@@ -34,6 +34,19 @@ def require_admin(credentials: dict = Depends(get_credentials)) -> dict:
     return credentials
 
 
+def require_grant_admin(credentials: dict = Depends(get_credentials)) -> dict:
+    """Dependency for write (GRANT/REVOKE) routes.
+
+    Admin alone is not enough: a security_admin-only user passes require_admin
+    but lacks StarRocks' GRANT ON SYSTEM capability (carried by user_admin).
+    """
+    if not credentials.get("is_admin", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if not credentials.get("can_manage_grants", False):
+        raise HTTPException(status_code=403, detail="Grant management requires the user_admin role")
+    return credentials
+
+
 def get_db(credentials: dict = Depends(get_credentials)):
     # Pooled connection; get_pooled_connection resets the session on borrow
     # (SET CATALOG default_catalog + SET ROLE ALL), so role activation and a

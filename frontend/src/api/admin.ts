@@ -3,7 +3,16 @@
  * Uses sys.* tables + INFORMATION_SCHEMA + SHOW commands.
  */
 import { apiFetch } from "./client";
-import type { DAGGraph, PrivilegeGrant, RoleItem } from "../types";
+import type {
+  AuditEntry,
+  DAGGraph,
+  GrantExecuteResponse,
+  GrantPreviewResponse,
+  GrantRequest,
+  GrantSpec,
+  PrivilegeGrant,
+  RoleItem,
+} from "../types";
 
 // ── Privileges ──
 export const getUserPrivileges = (username: string, signal?: AbortSignal) =>
@@ -53,3 +62,19 @@ export const searchAll = (q: string, limit = 50) =>
 
 export const searchUsersRoles = (q: string, limit = 50) =>
   apiFetch<SearchResult[]>(`/admin/search/users-roles?q=${encodeURIComponent(q)}&limit=${limit}`);
+
+// ── Grant management (write operations; requires can_manage_grants) ──
+export const getGrantSpec = () => apiFetch<GrantSpec>("/admin/grants/spec");
+
+export const previewGrant = (req: GrantRequest) =>
+  apiFetch<GrantPreviewResponse>("/admin/grants/preview", { method: "POST", body: JSON.stringify(req) });
+
+export const executeGrant = (req: GrantRequest) =>
+  apiFetch<GrantExecuteResponse>("/admin/grants/execute", { method: "POST", body: JSON.stringify(req) });
+
+export const getAuditLog = (limit = 100, actor?: string, action?: string) => {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (actor) params.set("actor", actor);
+  if (action) params.set("action", action);
+  return apiFetch<AuditEntry[]>(`/admin/grants/audit?${params}`);
+};

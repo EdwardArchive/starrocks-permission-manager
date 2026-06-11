@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import type { DAGGraph, DAGNode } from "../types";
 
-export type TabId = "obj" | "role" | "perm" | "myperm";
+export type TabId = "obj" | "role" | "perm" | "myperm" | "audit";
 export type PanelMode = "object" | "user" | "group" | null;
 
 interface DagState {

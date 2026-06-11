@@ -25,6 +25,32 @@ A web UI for visually exploring user, role, and object permission structures acr
 - **Export** — Download DAG as high-resolution PNG
 
 
+### Manage Privileges (v2.0)
+
+Administrators holding the `user_admin` capability can GRANT/REVOKE privileges and role
+assignments directly from the UI (`⚙ Manage Privileges` in the header), with a live SQL
+preview and a confirmation step. Every attempt — including denied ones — is recorded in
+the `srpm_audit.grant_log` table and browsable in the **Grant Audit** tab.
+
+One-time operator setup (audit table + `srpm_grant_admin` bundle role):
+
+```bash
+mysql -h <fe-host> -P 9030 -uroot -p < docs/sql/setup_grant_admin.sql
+# then, per administrator:
+#   GRANT srpm_grant_admin TO USER 'alice'@'%';
+```
+
+![Manage Privileges Wizard](docs/screenshots/manage-privileges-wizard.png)
+
+Design and validation notes: `docs/GRANT_REVOKE_DESIGN.md`.
+
+### Kubernetes Deployment
+
+`k8s/srpm.yaml` deploys the app (image: `docker.io/kjjs1996/starrocks-permission-manager`)
+behind the existing Cloudflare Tunnel. One-time: create the `srpm-jwt` secret, then add the
+tunnel public hostname → `srpm.<ns>.svc.cluster.local:8001`. Keep `replicas: 1`
+(in-memory sessions). Recommended: gate the public hostname with a Cloudflare Access policy.
+
 ## Quick Start
 
 ### Docker (Recommended)
@@ -95,6 +121,17 @@ server {
 ```
 
 ## UI Guide
+
+### Manage Privileges (GRANT/REVOKE)
+Wizard for granting/revoking object privileges and role assignments with a live SQL preview.
+In Revoke mode, the grantee's existing direct grants are listed so only real grants can be revoked.
+
+![Revoke Direct Grants](docs/screenshots/revoke-direct-grants.png)
+
+### Grant Audit
+Every GRANT/REVOKE attempt (including denied ones) recorded in `srpm_audit.grant_log`.
+
+![Grant Audit](docs/screenshots/grant-audit-tab.png)
 
 ### Object Hierarchy
 ![Object Hierarchy](docs/screenshots/object-hierarchy.png)

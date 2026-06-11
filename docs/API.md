@@ -748,3 +748,37 @@ All errors follow this format:
 | Role list | `SHOW ROLES` | Yes |
 
 When unsupported views fail on External Catalogs, those fields return `null` and the frontend automatically hides the corresponding sections.
+
+## Grant Management Routes (`/api/admin/grants/*` — requires `can_manage_grants`)
+
+Write operations (v2.0). Guarded by `require_grant_admin` = admin + `user_admin` in the
+user's role chain. Statements run under the logged-in user's own credentials; StarRocks is
+the final authorization gate. See `docs/GRANT_REVOKE_DESIGN.md` and
+`docs/sql/setup_grant_admin.sql` (operator setup: audit table + `srpm_grant_admin` bundle role).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/admin/grants/spec` | object_type → allowed privileges allowlist (single source for the wizard) |
+| POST | `/api/admin/grants/preview` | Build SQL from a structured `GrantRequest` without executing (`{ sql: [...], warnings: [...] }`) |
+| POST | `/api/admin/grants/execute` | Rebuild + execute + audit + cache invalidation (`{ sql, status, audit: "ok"\|"failed" }`) |
+| GET | `/api/admin/grants/audit?limit&actor&action` | Recent GRANT/REVOKE history from `srpm_audit.grant_log` |
+
+`GrantRequest` (discriminated on `type`):
+
+```jsonc
+// type = "PRIVILEGE"
+{ "action": "GRANT|REVOKE", "type": "PRIVILEGE",
+  "grantee": { "name": "alice", "type": "USER|ROLE" },
+  "object": { "object_type": "TABLE", "catalog": "default_catalog", "database": "sales", "name": "orders" },
+  "privileges": ["SELECT"], "with_grant_option": false }
+
+// type = "ROLE"
+{ "action": "GRANT|REVOKE", "type": "ROLE", "role": "analyst",
+  "grantee": { "name": "alice", "type": "USER|ROLE" } }
+```
+
+Notes: first-cut object types are CATALOG / DATABASE / TABLE / VIEW / MATERIALIZED VIEW /
+FUNCTION (+ role assignment). The builder emits a `SET CATALOG` + GRANT/REVOKE statement
+pair (the GRANT parser rejects 3-part names). FUNCTION grants require the exact signature.
+Failed attempts are audited too (`result = 'error'`). 422 = validation error; 403 = denied
+by guard or StarRocks; 400 = StarRocks rejected the statement.

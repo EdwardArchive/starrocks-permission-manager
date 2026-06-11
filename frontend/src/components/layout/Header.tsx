@@ -2,10 +2,24 @@ import { useAuthStore } from "../../stores/authStore";
 import { APP_LOGO_SVG } from "../dag/nodeIcons";
 import { C } from "../../utils/colors";
 import { useClusterStore } from "../../stores/clusterStore";
+import { useGrantStore } from "../../stores/grantStore";
+import { useDagStore } from "../../stores/dagStore";
 
 export default function Header() {
   const { user, connectionInfo, logout } = useAuthStore();
   const toggleDrawer = useClusterStore((s) => s.toggleDrawer);
+  const openWizard = useGrantStore((s) => s.openWizard);
+
+  const handleManagePrivileges = () => {
+    // Prefill from the Permission Focus tab's currently-viewed user/role
+    const node = useDagStore.getState().selectedNode;
+    const nodeType = node?.type?.toUpperCase();
+    if (node && (nodeType === "USER" || nodeType === "ROLE")) {
+      openWizard({ grantee: { name: node.label, type: nodeType } });
+    } else {
+      openWizard();
+    }
+  };
 
   return (
     <header style={{
@@ -27,6 +41,23 @@ export default function Header() {
           <strong style={{ color: C.text1 }}>{user?.username}</strong>
           {connectionInfo && `@${connectionInfo.host}:${connectionInfo.port}`}
         </span>
+        {user?.can_manage_grants && (
+          <button
+            onClick={handleManagePrivileges}
+            data-testid="manage-privileges-btn"
+            style={{
+              padding: "6px 12px", background: "transparent", border: `1px solid ${C.accent}`,
+              borderRadius: 6, color: C.accent, fontSize: 13, cursor: "pointer", fontFamily: "inherit",
+              display: "flex", alignItems: "center", gap: 6,
+            }}
+          >
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+            Manage Privileges
+          </button>
+        )}
         <button
           onClick={toggleDrawer}
           aria-label="Cluster Status"
