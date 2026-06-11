@@ -14,7 +14,7 @@ Provides a web UI for **visually querying** the privilege relationships between 
 - **Security / Compliance Team**: Permission auditing and detecting excessive privileges
 
 ### 1.4 Scope (v1.0)
-- **Read-only**: Only permission querying/visualization is provided (GRANT/REVOKE deferred to v2.0)
+- **Read-only (v1.x)**: Only permission querying/visualization. v2.0 adds GRANT/REVOKE for grant-capable admins (user_admin)
 - **Authentication**: Uses StarRocks native user credentials
 - **2 DAG Views**: Object Hierarchy, Role Hierarchy
 
@@ -50,15 +50,15 @@ SYSTEM (Top-level)
 
 | Object Type | Privileges |
 |-------------|-----------|
-| **SYSTEM** | NODE, GRANT, CREATE RESOURCE GROUP, CREATE RESOURCE, CREATE EXTERNAL CATALOG, PLUGIN, REPOSITORY, BLACKLIST, FILE, OPERATE, CREATE GLOBAL FUNCTION, CREATE STORAGE VOLUME, SECURITY |
+| **SYSTEM** | NODE _(not directly grantable — cluster_admin only)_, GRANT, CREATE RESOURCE GROUP, CREATE RESOURCE, CREATE EXTERNAL CATALOG, PLUGIN, REPOSITORY, BLACKLIST, FILE, OPERATE, CREATE GLOBAL FUNCTION, CREATE STORAGE VOLUME, SECURITY |
 | **CATALOG** | USAGE, CREATE DATABASE, DROP |
 | **DATABASE** | CREATE TABLE, CREATE VIEW, CREATE FUNCTION, CREATE MATERIALIZED VIEW, ALTER, DROP, ALL |
 | **TABLE** | SELECT, INSERT, UPDATE, DELETE, ALTER, DROP, EXPORT, ALL |
 | **VIEW** | SELECT, ALTER, DROP, ALL |
 | **MATERIALIZED VIEW** | SELECT, ALTER, REFRESH, DROP, ALL |
-| **FUNCTION** | EXECUTE |
+| **FUNCTION** | USAGE, DROP, ALL _(signature required, e.g. `fn(INT,INT)`)_ |
 | **RESOURCE GROUP** | USAGE, ALTER, DROP |
-| **USER** | OPERATE |
+| **USER** | IMPERSONATE _(TO USER only)_ |
 | **STORAGE VOLUME** | USAGE, MODIFY |
 
 ### 2.4 Built-in Roles
@@ -462,7 +462,7 @@ Sidebar:
 
 | Version | Feature |
 |---------|---------|
-| v2.0 | GRANT/REVOKE UI (privilege granting/revocation) |
+| v2.0 | ✅ GRANT/REVOKE UI (privilege granting/revocation) — **delivered 2026-06-11** (see docs/GRANT_REVOKE_DESIGN.md) |
 | v2.0 | Bulk Operations (mass privilege management) |
 | v2.0 | Implicit DB Access Display - Show whether users with table-level privileges have implicit access (USE) to the corresponding database |
 | v2.0 | Per-user Connection Pooling - JWT credentials-based per-user TTL connection pool (current: new TCP connection per request) |
