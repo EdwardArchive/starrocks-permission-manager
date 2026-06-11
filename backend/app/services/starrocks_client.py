@@ -94,9 +94,7 @@ def get_pooled_connection(host: str, port: int, username: str, password: str):
             except Exception:
                 logger.debug("Failed to return stale pooled connection")
         logger.debug("Pool unavailable/stale; using a direct connection")
-        conn = mysql.connector.connect(
-            host=host, port=port, user=username, password=password, connection_timeout=10
-        )
+        conn = mysql.connector.connect(host=host, port=port, user=username, password=password, connection_timeout=10)
     try:
         _reset_session(conn)
         yield conn
