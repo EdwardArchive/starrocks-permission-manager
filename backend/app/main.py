@@ -75,6 +75,7 @@ async def security_headers(request: Request, call_next):
     response.headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
     return response
 
+
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 
 # User routes (Layer 1 — all users)
