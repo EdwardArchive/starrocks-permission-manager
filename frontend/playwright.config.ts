@@ -29,6 +29,8 @@ export default defineConfig({
       url: "http://localhost:8888/api/health",
       reuseExistingServer: true,
       timeout: 30_000,
+      // the suite logs in once per test — don't trip the login rate limiter
+      env: { SRPM_LOGIN_MAX_ATTEMPTS: "1000" },
     },
     {
       command: "npm run dev -- --host 0.0.0.0 --port 5199 --strictPort",
