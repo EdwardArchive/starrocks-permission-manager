@@ -32,7 +32,7 @@ export default function PermissionDetailTab() {
   });
 
   // Clicked DAG node detail panel
-  const { selectedNode } = useDagStore();
+  const selectedNode = useDagStore((s) => s.selectedNode);
   const [clicked, setClicked] = useState<{ node: DAGNode | null; grants: PrivilegeGrant[]; loading: boolean }>({
     node: null, grants: [], loading: false,
   });

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useClusterStore } from "../../stores/clusterStore";
 import { getClusterStatus } from "../../api/cluster";
 import { formatRelativeTime } from "../../utils/relativeTime";
@@ -254,7 +255,14 @@ function SectionHeader({ title, count }: { title: string; count: number }) {
 
 /* ── Main ClusterDrawer ── */
 export default function ClusterDrawer() {
-  const { isOpen, closeDrawer, expandedNodes, toggleNodeExpansion } = useClusterStore();
+  const { isOpen, closeDrawer, expandedNodes, toggleNodeExpansion } = useClusterStore(
+    useShallow((s) => ({
+      isOpen: s.isOpen,
+      closeDrawer: s.closeDrawer,
+      expandedNodes: s.expandedNodes,
+      toggleNodeExpansion: s.toggleNodeExpansion,
+    })),
+  );
   const [data, setData] = useState<ClusterStatusResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

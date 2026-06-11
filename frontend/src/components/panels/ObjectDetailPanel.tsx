@@ -19,7 +19,7 @@ function getNodeContext(node: { label: string; metadata?: Record<string, unknown
 }
 
 export default function ObjectDetailPanel() {
-  const { selectedNode } = useDagStore();
+  const selectedNode = useDagStore((s) => s.selectedNode);
   const [tab, setTab] = useState<"privileges" | "details">("privileges");
 
   interface PanelData {

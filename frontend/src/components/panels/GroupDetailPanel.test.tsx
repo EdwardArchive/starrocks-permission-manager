@@ -38,21 +38,24 @@ const mockSetSelectedNode = vi.fn();
 const mockSetPanelMode = vi.fn();
 
 vi.mock("../../stores/dagStore", () => ({
-  useDagStore: vi.fn(() => ({
-    selectedNode: {
-      id: "group-1",
-      label: "Tables",
-      type: "table",
-      color: null,
-    },
-    groupChildren: [
-      { id: "t1", label: "orders", type: "table" },
-      { id: "t2", label: "products", type: "table" },
-      { id: "t3", label: "users", type: "table" },
-    ],
-    setSelectedNode: mockSetSelectedNode,
-    setPanelMode: mockSetPanelMode,
-  })),
+  // Apply the selector so the component's useShallow projection is exercised.
+  useDagStore: vi.fn((sel) =>
+    sel({
+      selectedNode: {
+        id: "group-1",
+        label: "Tables",
+        type: "table",
+        color: null,
+      },
+      groupChildren: [
+        { id: "t1", label: "orders", type: "table" },
+        { id: "t2", label: "products", type: "table" },
+        { id: "t3", label: "users", type: "table" },
+      ],
+      setSelectedNode: mockSetSelectedNode,
+      setPanelMode: mockSetPanelMode,
+    }),
+  ),
 }));
 
 beforeEach(() => {

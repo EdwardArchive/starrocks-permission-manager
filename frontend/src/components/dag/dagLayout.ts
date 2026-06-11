@@ -334,9 +334,10 @@ export function applyDagreLayout(
     }
   }
 
-  // Build final nodes
+  // Build final nodes (Map lookup avoids an O(N) find per placed node)
+  const nodeById = new Map(nodes.map((nd) => [nd.id, nd]));
   for (const p of placed) {
-    const n = nodes.find((nd) => nd.id === p.id)!;
+    const n = nodeById.get(p.id)!;
     laid.push({
       ...n,
       type: p.isGroup ? "group" : "custom",
@@ -370,7 +371,7 @@ export function applyDagreLayout(
     const cellPadY = (cellH - CHILD_H) / 2;
 
     childIds.forEach((cid, i) => {
-      const orig = nodes.find((nd) => nd.id === cid);
+      const orig = nodeById.get(cid);
       if (!orig) return;
 
       laid.push({

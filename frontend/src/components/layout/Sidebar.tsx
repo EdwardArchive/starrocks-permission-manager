@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { getCatalogs, getDatabases, getTables, getRoles as userGetRoles, searchAll as userSearchAll, type SearchResult } from "../../api/user";
 import { getRoles as adminGetRoles, searchAll as adminSearchAll } from "../../api/admin";
+import { useShallow } from "zustand/react/shallow";
 import { useDagStore } from "../../stores/dagStore";
 import { useAuthStore } from "../../stores/authStore";
 import { colorizedSvg, NODE_COLORS } from "../dag/nodeIcons";
@@ -87,7 +88,31 @@ function EyeToggle({ label, hidden, onToggle }: { label: string; hidden: boolean
 }
 
 export default function Sidebar() {
-  const { activeTab, searchQuery, setSearchQuery, setSelectedNode, setPanelMode, activeCatalog, setActiveCatalog, setActiveTab, hiddenNodes, toggleNodeVisibility } = useDagStore();
+  const {
+    activeTab,
+    searchQuery,
+    setSearchQuery,
+    setSelectedNode,
+    setPanelMode,
+    activeCatalog,
+    setActiveCatalog,
+    setActiveTab,
+    hiddenNodes,
+    toggleNodeVisibility,
+  } = useDagStore(
+    useShallow((s) => ({
+      activeTab: s.activeTab,
+      searchQuery: s.searchQuery,
+      setSearchQuery: s.setSearchQuery,
+      setSelectedNode: s.setSelectedNode,
+      setPanelMode: s.setPanelMode,
+      activeCatalog: s.activeCatalog,
+      setActiveCatalog: s.setActiveCatalog,
+      setActiveTab: s.setActiveTab,
+      hiddenNodes: s.hiddenNodes,
+      toggleNodeVisibility: s.toggleNodeVisibility,
+    })),
+  );
   const { user } = useAuthStore();
   const isAdmin = user?.is_user_admin ?? false;
 

@@ -17,7 +17,6 @@
     "@tailwindcss/vite": "^4.2.2",
     "@xyflow/react": "^12.10.2",
     "html-to-image": "^1.11.13",
-    "nearley": "^2.20.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "sql-formatter": "^15.7.3",
@@ -26,6 +25,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.60.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
