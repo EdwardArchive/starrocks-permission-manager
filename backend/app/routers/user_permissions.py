@@ -31,10 +31,7 @@ def get_my_permissions(
     """Build the current user's full permission tree using only SHOW GRANTS."""
     username = credentials["username"]
 
-    try:
-        execute_query(conn, "SET ROLE ALL")
-    except Exception:
-        logger.debug("Failed to SET ROLE ALL for user %s", username)
+    # Roles are already activated by the pooled connection reset (get_db).
 
     # Parse SHOW GRANTS → direct grants + role assignments
     user_grants = _parse_show_grants(conn, username, "USER")

@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 
 from app.dependencies import get_credentials, get_db
 from app.main import app
-from app.services.starrocks_client import get_connection
+from app.services.starrocks_client import execute_query, get_connection, get_pooled_connection
 from app.utils.session import create_token
 from app.utils.session_store import session_store
 
@@ -56,7 +56,8 @@ def real_client():
         }
 
     def _real_db():
-        with get_connection(SR_HOST, SR_PORT, SR_USER, SR_PASS) as conn:
+        # Exercise the production pooled path (reset on borrow handles SET ROLE ALL).
+        with get_pooled_connection(SR_HOST, SR_PORT, SR_USER, SR_PASS) as conn:
             yield conn
 
     app.dependency_overrides[get_credentials] = _real_credentials
@@ -513,3 +514,43 @@ def test_real_health(real_client):
     resp = real_client.get("/api/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
+
+
+# ── Connection pooling (#52) ──
+
+
+@skip_no_sr
+def test_pool_resets_session_state_no_leak():
+    """A pooled connection dirtied with USE must NOT leak that context to the
+    next borrow — get_pooled_connection resets to a clean baseline."""
+    # Dirty the session on one borrow.
+    with get_pooled_connection(SR_HOST, SR_PORT, SR_USER, SR_PASS) as conn:
+        cur = conn.cursor()
+        cur.execute("USE information_schema")
+        cur.execute("SELECT DATABASE()")
+        assert cur.fetchall()[0][0] == "information_schema"
+        cur.close()
+    # Next borrow (likely the same physical connection) must start clean.
+    with get_pooled_connection(SR_HOST, SR_PORT, SR_USER, SR_PASS) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT DATABASE()")
+        db = cur.fetchall()[0][0]
+        cur.close()
+        assert db in ("", None), f"session state leaked across pool borrows: DATABASE()={db!r}"
+
+
+@skip_no_sr
+def test_pool_activates_roles_on_borrow():
+    """The borrow-time reset runs SET ROLE ALL, so a pooled connection has its
+    roles active without the route doing it."""
+    with get_pooled_connection(SR_HOST, SR_PORT, SR_USER, SR_PASS) as conn:
+        rows = execute_query(conn, "SELECT CURRENT_ROLE() AS r")
+        assert rows and rows[0].get("r"), "no active role after pooled reset"
+
+
+@skip_no_sr
+def test_pool_reuse_returns_working_connections():
+    """Borrowing repeatedly returns usable connections."""
+    for _ in range(5):
+        with get_pooled_connection(SR_HOST, SR_PORT, SR_USER, SR_PASS) as conn:
+            assert execute_query(conn, "SELECT 1 AS one")[0]["one"] == 1

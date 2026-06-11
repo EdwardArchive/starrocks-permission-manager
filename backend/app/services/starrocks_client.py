@@ -1,10 +1,12 @@
 from __future__ import annotations
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
-from threading import Semaphore
+from threading import Lock, Semaphore
 from collections.abc import Callable
 from typing import Any
 import mysql.connector
+import mysql.connector.pooling
 
 import logging
 
@@ -13,6 +15,14 @@ logger = logging.getLogger(__name__)
 # Max parallel DB connections per request (prevents connection flood)
 _MAX_PARALLEL = 10
 _semaphore = Semaphore(_MAX_PARALLEL)
+
+# ── Connection pooling ──
+# Pool physical connections per (host, port, user) so each request avoids the
+# TCP + auth handshake (~2-5 RTT). mysql-connector's pool reset is a no-op
+# against StarRocks, so we explicitly reset session state on every borrow.
+_POOL_SIZE = int(os.getenv("SRPM_DB_POOL_SIZE", "16"))
+_pools: dict[tuple, mysql.connector.pooling.MySQLConnectionPool] = {}
+_pools_lock = Lock()
 
 
 @contextmanager
@@ -28,6 +38,70 @@ def get_connection(host: str, port: int, username: str, password: str):
         yield conn
     finally:
         conn.close()
+
+
+def _get_pool(host: str, port: int, username: str, password: str):
+    key = (host, port, username)
+    with _pools_lock:
+        pool = _pools.get(key)
+        if pool is None:
+            pool = mysql.connector.pooling.MySQLConnectionPool(
+                pool_name=f"srpm_pool_{len(_pools)}",
+                pool_size=_POOL_SIZE,
+                pool_reset_session=False,  # StarRocks ignores the driver reset; we reset explicitly
+                host=host,
+                port=port,
+                user=username,
+                password=password,
+                connection_timeout=10,
+            )
+            _pools[key] = pool
+    return pool
+
+
+def _reset_session(conn) -> None:
+    """Return a borrowed connection to a clean baseline that mimics a fresh one:
+    reset catalog/database context and re-activate all roles. Both are non-fatal."""
+    cur = conn.cursor()
+    try:
+        try:
+            cur.execute("SET CATALOG default_catalog")
+        except Exception:
+            logger.debug("SET CATALOG default_catalog failed on pooled connection")
+        try:
+            cur.execute("SET ROLE ALL")
+        except Exception:
+            logger.debug("SET ROLE ALL failed on pooled connection")
+    finally:
+        cur.close()
+
+
+@contextmanager
+def get_pooled_connection(host: str, port: int, username: str, password: str):
+    """Yield a pooled connection reset to a clean baseline (catalog + roles).
+
+    Falls back to a direct connection if the pool is exhausted or a borrowed
+    connection is stale (e.g. after a StarRocks restart).
+    """
+    conn = None
+    try:
+        conn = _get_pool(host, port, username, password).get_connection()
+        conn.ping(reconnect=True, attempts=1, delay=0)  # revive stale pooled connections
+    except Exception:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                logger.debug("Failed to return stale pooled connection")
+        logger.debug("Pool unavailable/stale; using a direct connection")
+        conn = mysql.connector.connect(
+            host=host, port=port, user=username, password=password, connection_timeout=10
+        )
+    try:
+        _reset_session(conn)
+        yield conn
+    finally:
+        conn.close()  # pooled connection returns to the pool; direct one closes
 
 
 def execute_query(conn, sql: str, params: tuple | None = None) -> list[dict[str, Any]]:
@@ -69,22 +143,17 @@ def parallel_queries(
     """
     workers = min(max_workers or _MAX_PARALLEL, len(tasks), _MAX_PARALLEL)
     results: dict[str, Any] = {}
-    conn_timeout = min(int(timeout), 3)
 
     def _run(key: str, fn: Callable):
         _semaphore.acquire()
         try:
-            conn = mysql.connector.connect(
-                host=credentials["host"],
-                port=credentials["port"],
-                user=credentials["username"],
-                password=credentials["password"],
-                connection_timeout=conn_timeout,
-            )
-            try:
+            with get_pooled_connection(
+                credentials["host"],
+                credentials["port"],
+                credentials["username"],
+                credentials["password"],
+            ) as conn:
                 return key, fn(conn)
-            finally:
-                conn.close()
         finally:
             _semaphore.release()
 
