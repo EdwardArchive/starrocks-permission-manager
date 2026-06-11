@@ -200,6 +200,45 @@ class ClusterStatusResponse(BaseModel):
     has_errors: bool
     mode: Literal["full", "limited"] = "full"  # "full" = SHOW succeeded; "limited" = access-denied fallback
     metrics_warning: str | None = None  # set iff all FE /metrics fetches failed
+    # Cluster wall clock ("YYYY-MM-DD HH:MM:SS", cluster timezone). Reference for
+    # relative-time labels — node timestamps are naive strings in the same zone.
+    server_now: str | None = None
+
+
+class RunningQueryInfo(BaseModel):
+    """One row of SHOW PROC '/current_queries', joined with SHOW FULL PROCESSLIST.
+
+    ``*_display`` fields keep StarRocks' human-readable strings ("13.319 GB");
+    the numeric counterparts are parsed sort keys.
+    """
+
+    query_id: str
+    connection_id: int | None = None
+    user: str
+    database: str | None = None
+    start_time: str | None = None
+    fe_ip: str | None = None
+    warehouse: str | None = None
+    resource_group: str | None = None
+    exec_state: str | None = None  # e.g. RUNNING
+    exec_progress: str | None = None
+    scan_rows: int | None = None
+    scan_bytes: float | None = None
+    scan_bytes_display: str | None = None
+    memory_bytes: float | None = None
+    memory_display: str | None = None
+    spill_bytes: float | None = None
+    spill_display: str | None = None
+    cpu_time_ms: float | None = None
+    cpu_time_display: str | None = None
+    exec_time_ms: float | None = None
+    exec_time_display: str | None = None
+    sql: str | None = None  # from processlist Info; None if the connection vanished
+
+
+class ClusterQueriesResponse(BaseModel):
+    queries: list[RunningQueryInfo]
+    server_now: str | None = None
 
 
 # ── Grant management (write operations) ──

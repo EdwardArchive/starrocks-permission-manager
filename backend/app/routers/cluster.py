@@ -29,10 +29,15 @@ from app.dependencies import get_credentials, get_db
 from app.models.schemas import (
     BENodeInfo,
     ClusterMetrics,
+    ClusterQueriesResponse,
     ClusterStatusResponse,
     FENodeInfo,
 )
+from app.services.be_metrics import fetch_be_cpu_pct
+from app.services.cluster_queries import collect_running_queries, fetch_server_now
 from app.services.fe_metrics import FEMetricsData, FEMetricsError, fetch_fe_metrics
+from app.services.shared.size_utils import bytes_to_human as _bytes_to_human
+from app.services.shared.size_utils import parse_size_bytes as _parse_size_bytes
 from app.services.starrocks_client import execute_query
 from app.utils.sys_access import is_access_denied
 
@@ -42,6 +47,11 @@ logger = logging.getLogger(__name__)
 # ── TTL cache (per username) ──
 _cluster_cache: TTLCache = TTLCache(maxsize=256, ttl=settings.cache_ttl_seconds)
 _cluster_cache_lock = threading.Lock()
+
+# Running queries change fast — much shorter TTL than node status.
+_QUERIES_CACHE_TTL_SECONDS = 5
+_queries_cache: TTLCache = TTLCache(maxsize=256, ttl=_QUERIES_CACHE_TTL_SECONDS)
+_queries_cache_lock = threading.Lock()
 
 # Module-level executor — reused across requests to avoid per-request thread-pool creation overhead.
 _metrics_executor = ThreadPoolExecutor(max_workers=6, thread_name_prefix="fe-metrics")
@@ -82,40 +92,7 @@ def _parse_float(val) -> float | None:
 
 
 # ── Human-readable size helpers ──
-
-_SIZE_UNITS = {
-    "b": 1,
-    "kb": 1024,
-    "mb": 1024**2,
-    "gb": 1024**3,
-    "tb": 1024**4,
-    "pb": 1024**5,
-}
-
-
-def _parse_size_bytes(s: str) -> float:
-    """Convert a size string like '256.78 GB' to bytes (float)."""
-    s = s.strip()
-    for unit, factor in sorted(_SIZE_UNITS.items(), key=lambda x: -x[1]):
-        if s.lower().endswith(unit):
-            try:
-                return float(s[: -len(unit)].strip()) * factor
-            except ValueError:
-                return 0.0
-    # Assume bytes if no unit
-    try:
-        return float(s)
-    except ValueError:
-        return 0.0
-
-
-def _bytes_to_human(total_bytes: float) -> str:
-    """Convert bytes to a human-readable string (up to PB)."""
-    for unit in ("PB", "TB", "GB", "MB", "KB"):
-        divisor = _SIZE_UNITS[unit.lower()]
-        if total_bytes >= divisor:
-            return f"{total_bytes / divisor:.2f} {unit}"
-    return f"{int(total_bytes)} B"
+# (parse/format primitives live in services/shared/size_utils.py)
 
 
 def _human_size_sum(sizes: list[str]) -> str | None:
@@ -320,6 +297,27 @@ def _limited_mode_fe(host: str) -> FENodeInfo:
     )
 
 
+def _inject_be_metrics(backends: list[BENodeInfo]) -> None:
+    """Probe BE /metrics in parallel to fill cpu_used_pct (SHOW BACKENDS lacks it).
+
+    Compute nodes already report CpuUsedPct via SHOW COMPUTE NODES, so only
+    node_type == "backend" is probed. Best-effort: failures and first-scrape
+    (no delta baseline yet) leave the field None.
+    """
+    targets = [be for be in backends if be.node_type == "backend" and be.alive and be.http_port]
+    if not targets:
+        return
+
+    def _probe(be: BENodeInfo) -> tuple[BENodeInfo, float | None]:
+        return be, fetch_be_cpu_pct(be.ip, be.http_port, timeout=_METRICS_TIMEOUT_SECONDS)
+
+    futures = [_metrics_executor.submit(_probe, be) for be in targets]
+    for future in futures:
+        be, pct = future.result()
+        if pct is not None:
+            be.cpu_used_pct = pct
+
+
 def _inject_metrics(frontends: list[FENodeInfo]) -> str | None:
     """Probe each FE's /metrics in parallel and populate the matching fields.
 
@@ -444,6 +442,7 @@ def get_cluster_status(
 
     # Inject /metrics-derived resource fields.
     metrics_warning = _inject_metrics(frontends)
+    _inject_be_metrics(backends)
 
     # Compute aggregate metrics.
     metrics = _compute_metrics(frontends, backends)
@@ -462,7 +461,39 @@ def get_cluster_status(
         has_errors=has_errors,
         mode=mode,
         metrics_warning=metrics_warning,
+        server_now=fetch_server_now(conn),
     )
 
     _save(mode, result)
+    return result
+
+
+@router.get("/queries", response_model=ClusterQueriesResponse)
+def get_cluster_queries(
+    conn=Depends(get_db),
+    credentials: dict = Depends(get_credentials),
+    refresh: bool = Query(False, description="Bypass per-user cache and force a live query"),
+):
+    """Return currently running queries with resource usage.
+
+    No require_admin guard — StarRocks gates SHOW PROC '/current_queries'
+    behind the OPERATE (cluster_admin) privilege; access-denied errors map to
+    HTTP 403 via the global handler in main.py.
+    """
+    username = credentials["username"]
+    cache_key = f"cluster_queries_{username}"
+
+    if not refresh:
+        with _queries_cache_lock:
+            hit = _queries_cache.get(cache_key)
+        if hit is not None:
+            return hit
+
+    result = ClusterQueriesResponse(
+        queries=collect_running_queries(conn),
+        server_now=fetch_server_now(conn),
+    )
+
+    with _queries_cache_lock:
+        _queries_cache[cache_key] = result
     return result

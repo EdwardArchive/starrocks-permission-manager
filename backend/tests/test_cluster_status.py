@@ -33,6 +33,8 @@ def _stub_fe_metrics(monkeypatch):
         )
 
     monkeypatch.setattr(cluster_mod, "fetch_fe_metrics", _fake)
+    # BE probe is delta-based; default stub = no value (first scrape behavior).
+    monkeypatch.setattr(cluster_mod, "fetch_be_cpu_pct", lambda host, port, timeout=2.0: None)
     # Provide a fresh executor so that lifespan-shutdown from a previous test
     # doesn't leave the singleton in a shut-down state.
     fresh_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="fe-metrics-test")
@@ -441,5 +443,48 @@ def test_cluster_status_cn_silent_on_generic_error(client, auth_header, monkeypa
     assert any("SHOW COMPUTE NODES failed" in m for m in warning_msgs), (
         f"Expected 'SHOW COMPUTE NODES failed' in warnings; got: {warning_msgs}"
     )
+
+    cluster_mod._cluster_cache.clear()
+
+
+# ── server_now: cluster clock attached for relative-time labels ──
+
+def test_cluster_status_server_now(client, auth_header, query_map):
+    query_map["SELECT NOW()"] = [{"server_now": "2026-06-12 01:25:04"}]
+    resp = client.get("/api/cluster/status", headers=auth_header)
+    assert resp.status_code == 200
+    assert resp.json()["server_now"] == "2026-06-12 01:25:04"
+
+
+def test_cluster_status_server_now_absent_is_none(client, auth_header):
+    """SELECT NOW() failing/empty must not break the endpoint."""
+    resp = client.get("/api/cluster/status", headers=auth_header)
+    assert resp.status_code == 200
+    assert resp.json()["server_now"] is None
+
+
+# ── BE /metrics CPU injection ──
+
+def test_cluster_status_be_cpu_injected(client, auth_header, monkeypatch):
+    """fetch_be_cpu_pct fills cpu_used_pct for backend nodes only."""
+    import app.routers.cluster as cluster_mod
+
+    monkeypatch.setattr(cluster_mod, "fetch_be_cpu_pct", lambda host, port, timeout=2.0: 42.5)
+    cluster_mod._cluster_cache.clear()
+
+    resp = client.get("/api/cluster/status", headers=auth_header)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    be_nodes = [b for b in data["backends"] if b["node_type"] == "backend"]
+    cn_nodes = [b for b in data["backends"] if b["node_type"] == "compute"]
+    assert be_nodes and cn_nodes
+
+    for be in be_nodes:
+        if be["alive"] and be["http_port"]:
+            assert be["cpu_used_pct"] == pytest.approx(42.5)
+    # CN keeps its own SHOW COMPUTE NODES value, not the probe's
+    for cn in cn_nodes:
+        assert cn["cpu_used_pct"] != pytest.approx(42.5) or cn["cpu_used_pct"] is None
 
     cluster_mod._cluster_cache.clear()

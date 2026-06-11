@@ -83,12 +83,15 @@ def _parse_metrics_body(body: str) -> FEMetricsData:
     )
 
 
-def fetch_fe_metrics(
+def fetch_metrics_body(
     host: str,
     http_port: int,
     timeout: float = 2.0,
-) -> FEMetricsData | FEMetricsError:
-    """Fetch and parse FE /metrics. Returns FEMetricsError on any failure."""
+) -> str | FEMetricsError:
+    """Fetch the raw Prometheus text body from a node's /metrics endpoint.
+
+    Shared by the FE probe (this module) and the BE probe (be_metrics.py).
+    """
     url = f"http://{host}:{http_port}/metrics"
     try:
         req = urllib.request.Request(url, headers={"Accept": "text/plain"})
@@ -96,7 +99,7 @@ def fetch_fe_metrics(
             status = resp.status
             if status != 200:
                 return FEMetricsError(reason="http_status", message=f"HTTP {status}")
-            body = resp.read().decode("utf-8", errors="replace")
+            return resp.read().decode("utf-8", errors="replace")
     except TimeoutError:
         return FEMetricsError(reason="timeout", message=f"timeout after {timeout}s")
     except urllib.error.HTTPError as exc:
@@ -104,8 +107,19 @@ def fetch_fe_metrics(
     except (urllib.error.URLError, ConnectionError, OSError) as exc:
         return FEMetricsError(reason="network", message=str(exc))
     except Exception as exc:  # noqa: BLE001  - last-resort fallback; unexpected errors logged
-        logger.exception("Unexpected error fetching FE metrics from %s:%s", host, http_port)
+        logger.exception("Unexpected error fetching metrics from %s:%s", host, http_port)
         return FEMetricsError(reason="unknown", message=str(exc))
+
+
+def fetch_fe_metrics(
+    host: str,
+    http_port: int,
+    timeout: float = 2.0,
+) -> FEMetricsData | FEMetricsError:
+    """Fetch and parse FE /metrics. Returns FEMetricsError on any failure."""
+    body = fetch_metrics_body(host, http_port, timeout=timeout)
+    if isinstance(body, FEMetricsError):
+        return body
 
     try:
         return _parse_metrics_body(body)
