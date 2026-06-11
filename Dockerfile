@@ -55,6 +55,8 @@ except Exception:\n\
 
 EXPOSE 8001
 
-ENV SRPM_JWT_SECRET=change-me-in-production
+# Production refuses to start unless a strong SRPM_JWT_SECRET is supplied at
+# runtime (no secret is baked into the image).
+ENV SRPM_ENVIRONMENT=production
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "1"]
