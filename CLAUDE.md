@@ -116,16 +116,17 @@ When code or project structure changes, run a sub-agent after completing the tas
         │   ├── inventory-helpers.ts  # SubTab/AllTab types, SUB_TAB_META, formatSQL/Bytes
         │   ├── privColors.ts        # Privilege tag color map
         │   ├── relativeTime.ts      # formatRelativeTime + clockSkewMs/skewedNow (cluster-TZ correction)
-        │   ├── querySort.ts         # sortQueries() for the Running Queries table
+        │   ├── querySort.ts         # sortQueries/sortHistory for the queries panel
+        │   ├── queryFormat.ts       # fmtRows/fmtBytes/fmtDurationMs/fmtCpuShare
         │   ├── scopeConfig.ts       # SCOPE_ORDER, SCOPE_ICONS
         │   └── toast.ts             # Deduplicating toast
         └── components/
             ├── auth/LoginForm.tsx
             ├── cluster/
-            │   ├── ClusterDrawer.tsx  # Quick-glance drawer (summary + alerts + link to Cluster tab)
-            │   ├── ClusterSummary.tsx # Shared summary card / alerts / banners (drawer + tab)
-            │   ├── NodeCards.tsx      # FENodeCard/BENodeCard/UtilBar(variant)/StatusDot (shared)
-            │   └── QueriesPanel.tsx   # Running Queries table (10s poll, sort, SQL detail, 403 in place)
+            │   ├── ClusterDrawer.tsx  # Live gauge glance (15s poll, KPI band + alerts + query preview, jumps to tab)
+            │   ├── ClusterSummary.tsx # Shared: compact summary, ClusterKpiBand (gauges+jump), alerts, banners
+            │   ├── NodeCards.tsx      # FENodeCard/BENodeCard/UtilBar(variant)/Sparkline/StatusDot (shared)
+            │   └── QueriesPanel.tsx   # Running|Recent subtabs: filter, refresh-interval, instant CPU%, grant-admin KILL
             ├── grants/
             │   └── ManagePrivilegesModal.tsx  # GRANT/REVOKE wizard (presets, multi-revoke, keep-open)
             ├── layout/Header.tsx, Sidebar.tsx  # Sidebar uses isAdmin-conditional APIs; Header has cluster icon
@@ -269,7 +270,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 | Permission Focus | Search user/role → inheritance DAG + privilege list | Yes |
 | My Inventory | Sub-tab browser: Roles/Users/Catalogs/DBs/Tables/MVs/Views/Functions + detail panel | No |
 | Grant Audit | GRANT/REVOKE history table (srpm_audit.grant_log) | can_manage_grants only |
-| Cluster Monitor | FE/BE/CN node dashboard + Running Queries panel (auto-refresh, sortable, SQL detail) | No (StarRocks gates; limited view without cluster_admin) |
+| Cluster Monitor | FE/BE/CN dashboard (KPI gauges, node sparklines) + Running/Recent queries (filter, instant CPU%, grant-admin KILL) | No (StarRocks gates; limited view without cluster_admin) |
 
 ## My Inventory Sub-tabs
 | Sub-tab | Data Source | Detail Panel |
@@ -299,8 +300,9 @@ npm run dev
 ## Linting
 ```bash
 # Backend
-ruff check backend/app/
+ruff check backend/app/                            # incl. I (import order)
 ruff format backend/app/ --check
+mypy backend/app/ --config-file pyproject.toml     # also enforced in CI lint.yml
 
 # Frontend
 cd frontend
@@ -352,7 +354,9 @@ cd frontend && E2E_SR_PASS=... npx playwright test
 
 ### Cluster Routes (`/api/cluster/*` — any logged-in user; StarRocks enforces privilege, 403 on denied)
 - Status: GET /api/cluster/status — FE/BE node list + aggregate metrics + has_errors flag + server_now
-- Queries: GET /api/cluster/queries — running queries with resource usage + SQL text (OPERATE required)
+- Queries: GET /api/cluster/queries — running queries + resource usage + cpu_avg_cores + can_kill (OPERATE)
+- History: GET /api/cluster/queries/history — completed queries from AuditLoader (available=false when absent)
+- Kill: POST /api/cluster/queries/kill — KILL by query id, grant-admin only (require_grant_admin), audited to grant_log
 
 ### Grant Routes (`/api/admin/grants/*` — `require_grant_admin`; see docs/API.md)
 - GET spec · POST preview · POST execute · GET audit

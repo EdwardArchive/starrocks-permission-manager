@@ -80,10 +80,31 @@ timestamps with the same as-if-UTC rule, so the zone offset cancels:
   `utils/relativeTime.ts` (skew), `utils/querySort.ts` (new),
   `api/client.ts` (`ApiError`, `quiet`), `api/cluster.ts`, `types/index.ts`.
 
+## v2.2 additions (cluster-monitor follow-ups)
+
+- **CPU share per query**: `cpu_avg_cores` = cumulative CPU time / wall time
+  (average cores busy since start). UI shows it as % of total alive BE/CN
+  cores, plus an *instantaneous* value from the poll-to-poll CPUTime delta.
+  Accuracy caveats (avg-since-start, ~10s report interval, multi-warehouse
+  denominator) are documented in the panel tooltips.
+- **Completed-query history (M1)**: `GET /api/cluster/queries/history` reads
+  `starrocks_audit_db__.starrocks_audit_tbl__` (AuditLoader). Returns
+  `available:false` with a reason when the plugin table is absent, so the
+  Recent subtab degrades gracefully. `errors_only` filters `state='ERR'`.
+- **KILL query (M6)**: `POST /api/cluster/queries/kill`, **grant-admin only**
+  (`require_grant_admin`), audited to `srpm_audit.grant_log` like GRANT/REVOKE.
+  **Verified live**: `KILL QUERY '<uuid>'` is cluster-global (succeeds through
+  the LB regardless of owning FE); `KILL <connection_id>` is FE-local and
+  returns "Unknown thread id (1094)" off the owning FE — so KILL is always by
+  query id. The UI hides the action unless `can_kill` (grant-admin).
+- **UI**: Running | Recent subtabs, text filter, refresh-interval selector,
+  KPI gauge band (status colors + jump-to-section), node cards with
+  session-accumulated CPU/heap sparklines and dead-nodes-first ordering. The
+  header drawer became a live gauge glance (15s auto-refresh) with a top
+  running-queries preview; its KPIs/alerts/preview jump straight to the
+  matching section/node in the Cluster Monitor tab.
+
 ## Follow-ups (not in this change)
 
-- Completed-query history via AuditLoader (detect table at runtime) and/or
-  `SHOW PROFILELIST` when profiling is enabled.
-- KILL QUERY action (write path — needs audit logging like grant/revoke).
-- Execution plan summary (`ANALYZE PROFILE`) when a profile exists.
-- Trend/sparkline history for node metrics.
+- `SHOW PROFILELIST` / execution-plan summary when profiling is enabled.
+- Persisted (cross-session) metric trends; per-warehouse CPU denominator.

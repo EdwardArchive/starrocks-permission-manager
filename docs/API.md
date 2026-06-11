@@ -84,7 +84,9 @@ curl http://localhost:8001/api/admin/roles \
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/cluster/status` | FE/BE node list + aggregate metrics + has_errors flag + server_now |
-| GET | `/api/cluster/queries` | Running queries with resource usage (requires OPERATE; 403 when denied) |
+| GET | `/api/cluster/queries` | Running queries with resource usage + CPU share + can_kill (OPERATE; 403 when denied) |
+| GET | `/api/cluster/queries/history` | Completed-query history from AuditLoader (available=false when absent) |
+| POST | `/api/cluster/queries/kill` | KILL a query by id (grant-admin only; audited to grant_log) |
 
 ---
 
@@ -738,14 +740,16 @@ Returns the queries currently running on the cluster with per-query resource usa
       "spill_bytes": 0.0, "spill_display": "0.000 B",
       "cpu_time_ms": 478.0, "cpu_time_display": "0.478 s",
       "exec_time_ms": 2126.0, "exec_time_display": "2.126 s",
+      "cpu_avg_cores": 0.22,
       "sql": "SELECT count(*) FROM capacity_test.transaction_log WHERE txn_id % 7 = 3"
     }
   ],
-  "server_now": "2026-06-12 01:25:04"
+  "server_now": "2026-06-12 01:25:04",
+  "can_kill": true
 }
 ```
 
-`*_display` fields keep StarRocks' human-readable strings for rendering; the numeric counterparts (`*_bytes`, `*_ms`, `scan_rows`) are parsed sort keys.
+`*_display` fields keep StarRocks' human-readable strings for rendering; the numeric counterparts (`*_bytes`, `*_ms`, `scan_rows`) are parsed sort keys. `cpu_avg_cores` = cumulative CPU time / wall time (average cores kept busy since the query started); the UI divides it by total alive BE/CN cores for a cluster CPU share %. `can_kill` mirrors the caller's grant-admin capability so the UI shows/hides the KILL action.
 
 > **Cache**: Results are cached per username for **5 s** (running queries change fast — independent of `SRPM_CACHE_TTL_SECONDS`). The UI polls every 10 s while the panel is visible.
 
@@ -753,6 +757,62 @@ Returns the queries currently running on the cluster with per-query resource usa
 | Status | Description |
 |--------|-------------|
 | 403 | StarRocks denied `SHOW PROC` (OPERATE privilege / `cluster_admin` required) |
+
+### GET `/api/cluster/queries/history`
+
+Returns recently **completed** queries from the StarRocks AuditLoader table (`starrocks_audit_db__.starrocks_audit_tbl__`). Powers the **Recent** subtab.
+
+**Auth**: JWT Bearer. Access-denied on the audit table → **403**. When the AuditLoader plugin isn't installed (table missing), returns `200` with `available: false` and a `reason` (the UI shows a hint instead of an error).
+
+**Query Parameters**
+| Param | Type | Description |
+|-------|------|-------------|
+| limit | int (1–500, default 100) | Max rows, newest first |
+| errors_only | boolean | Only failed queries (`state = 'ERR'`) |
+
+**Response** `200 OK`
+```json
+{
+  "available": true,
+  "queries": [
+    {
+      "query_id": "019eb66c-1682-7780-94e2-94848aaa7bf0",
+      "timestamp": "2026-06-11 20:23:17",
+      "user": "root", "database": "capacity_test", "warehouse": "default_warehouse",
+      "query_type": "Query", "state": "EOF", "is_error": false, "error_code": null,
+      "query_time_ms": 735, "scan_rows": 350, "scan_bytes": 12345,
+      "mem_cost_bytes": 57671680, "cpu_cost_ns": 480000000,
+      "sql": "SELECT count(*) FROM capacity_test.transaction_log"
+    }
+  ],
+  "server_now": "2026-06-12 01:25:04",
+  "reason": null
+}
+```
+State `EOF`/`OK` = success, `ERR` = failure (`error_code` carries the detail). `query_time_ms` is milliseconds.
+
+### POST `/api/cluster/queries/kill`
+
+KILLs a running query by its global query id. **Grant-admin only** (`require_grant_admin` — admin + user_admin). Every attempt (success or failure) is written to `srpm_audit.grant_log` with `action='KILL'`, exactly like GRANT/REVOKE.
+
+`KILL QUERY '<uuid>'` is cluster-global (works through a load balancer); the FE-local `KILL <connection_id>` form is not used. The query id is validated (`^[0-9a-f-]{8,64}$`) before it is quoted into the statement.
+
+**Request**
+```json
+{ "query_id": "019eb7f7-5b01-72f1-b624-5807d8809da3" }
+```
+
+**Response** `200 OK`
+```json
+{ "status": "ok", "query_id": "019eb7f7-...", "audit": "ok" }
+```
+
+**Errors**
+| Status | Description |
+|--------|-------------|
+| 403 | Caller is not a grant admin (or StarRocks denied KILL) |
+| 404 | Unknown query id (already finished) |
+| 422 | Malformed query id |
 
 ---
 

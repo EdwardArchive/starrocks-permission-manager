@@ -83,13 +83,24 @@ All checks must pass before merging:
 
 ```bash
 # Backend linting
-ruff check backend/app/
-ruff format backend/app/ --check
+ruff check backend/app/                       # lint (E, W, F, B, UP, I=import order)
+ruff format backend/app/ --check              # formatting
+mypy backend/app/ --config-file pyproject.toml  # static type check (also enforced in CI)
 
 # Frontend linting
 cd frontend
 npx tsc --noEmit
 npx eslint src/ --max-warnings 0
+```
+
+### Pre-commit hooks (optional but recommended)
+
+Run ruff lint + format automatically on every commit:
+
+```bash
+pip install pre-commit
+pre-commit install          # one-time, from repo root
+pre-commit run --all-files  # run manually across the repo
 ```
 
 ## Pull Request Guidelines
