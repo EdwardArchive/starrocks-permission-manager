@@ -13,7 +13,7 @@ import { clockSkewMs, formatRelativeTime, skewedNow } from "../../utils/relative
 import { sortQueries, type QuerySortKey } from "../../utils/querySort";
 import type { ClusterQueriesResponse, RunningQueryInfo } from "../../types";
 import { C } from "../../utils/colors";
-import { Badge, Loader, TH, TD } from "../tabs/inventory-ui";
+import { Badge, Loader, TH } from "../tabs/inventory-ui";
 import { SectionHeader, Detail } from "./NodeCards";
 import InlineIcon from "../common/InlineIcon";
 
@@ -34,6 +34,14 @@ function QSortTH({ label, active, dir, onClick }: { label: string; active: boole
         {active && <span style={{ fontSize: 8, color: C.accent }}>{dir === "asc" ? "▲" : "▼"}</span>}
       </span>
     </th>
+  );
+}
+
+function CellTD({ children }: { children: React.ReactNode }) {
+  return (
+    <td style={{ padding: "8px 10px", fontSize: 12, color: C.text1, borderBottom: `1px solid ${C.border}`, whiteSpace: "nowrap" }}>
+      {children}
+    </td>
   );
 }
 
@@ -254,8 +262,8 @@ export default function QueriesPanel() {
                     onClick={() => setExpandedId(expanded ? null : q.query_id)}
                     style={{ cursor: "pointer", background: expanded ? "rgba(59,130,246,0.06)" : "transparent" }}
                   >
-                    <TD>{q.user}</TD>
-                    <TD>{q.database ?? "—"}</TD>
+                    <CellTD>{q.user}</CellTD>
+                    <CellTD>{q.database ?? "—"}</CellTD>
                     <td style={{ padding: "8px 10px", borderBottom: `1px solid ${C.border}` }}>
                       <Badge text={q.exec_state ?? "?"} color={q.exec_state === "RUNNING" ? C.green : C.text2} />
                     </td>
