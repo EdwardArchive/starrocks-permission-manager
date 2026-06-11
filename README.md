@@ -8,13 +8,14 @@ A web UI for visually exploring user, role, and object permission structures acr
 
 ## Features
 
-- **5 Tabs** for different exploration modes
+- **6 Tabs** for different exploration modes
   - **Object Hierarchy**: SYSTEM → CATALOG → DATABASE → Tables / Views / MVs / Functions (top-to-bottom DAG)
   - **Role Map**: root → built-in roles → custom roles → users (top-to-bottom DAG with full inheritance chain)
   - **Permission Focus**: Search a user or role → view inheritance DAG + privilege list (admin only)
   - **My Inventory**: Browse all accessible objects by type with detail side panel (Roles, Users, Catalogs, Databases, Tables, MVs, Views, Functions, Resource Groups, Warehouses, etc.)
+  - **Cluster Monitor**: FE/BE/CN node dashboard + running-queries panel (auto-refresh)
 - **Admin & Non-Admin Support** — Admin users see all roles/users/objects via `/api/admin/*` routes (sys.* tables). Non-admin users see only their accessible objects and role chain via `/api/user/*` routes (SHOW GRANTS + INFORMATION_SCHEMA). Admin routes enforce `require_admin` (403 for non-admin).
-- **Cluster Status** — Header cluster icon opens a right-side drawer showing FE/BE node health and aggregate metrics. Visible to all logged-in users; requires `cluster_admin` role or SYSTEM OPERATE privilege in StarRocks (non-privileged users see an in-drawer message).
+- **Cluster Monitor** — Full-page dashboard (tab) with node health cards, aggregate metrics, and a **Running Queries** table: sortable by exec time / CPU / memory / scan volume, click a row for the full SQL. Status auto-refreshes every 30 s, queries every 10 s. The header cluster icon shows a red badge when any node is down and opens a quick-glance drawer that links to the tab. Node inventory and running queries require `cluster_admin` (SYSTEM OPERATE) in StarRocks; non-privileged users get a limited single-FE view.
 - **Object Permission Matrix** — Click an object to see a grantee × privilege matrix (Direct/Inherited indicators), with type-specific columns per object type
 - **Implicit USAGE** — TABLE-level grants automatically show implicit DATABASE/CATALOG USAGE access
 - **User/Role Privilege View** — Unified scope-grouped tree (GrantTreeView) across all panels
@@ -162,6 +163,7 @@ Every GRANT/REVOKE attempt (including denied ones) recorded in `srpm_audit.grant
 | **Role Map** | Shows role inheritance with full BFS child traversal. Clicking a role shows the complete inheritance chain (parents + children + users). | No |
 | **Permission Focus** | Search for a user or role to view their inheritance DAG and full privilege list side-by-side. | Yes |
 | **My Inventory** | Browse all accessible objects organized by sub-tabs (Roles, Users, Catalogs, Databases, Tables, MVs, Views, Functions, Resource Groups, Warehouses, etc.) with a detail side panel. | No |
+| **Cluster Monitor** | FE/BE/CN node health cards + aggregate metrics + Running Queries panel (sortable, full-SQL detail, auto-refresh). Node/query data requires `cluster_admin`; others see a limited view. | No |
 
 ### My Inventory Sub-tabs
 
@@ -189,7 +191,7 @@ Features: text filter, A→Z/Z→A column sorting, pagination (10/25/50/100 per 
 | My Inventory | All roles, all users | Own roles/objects only |
 | Permission Matrix | All grantees shown | Own role chain grantees |
 | Implicit USAGE | Shown on DB/Catalog | Shown on DB/Catalog |
-| Cluster Status drawer | Full FE/BE/CN inventory | Single FE (the one you're connected to) — `mode="limited"` |
+| Cluster Monitor (tab + drawer) | Full FE/BE/CN inventory + running queries | Single FE (the one you're connected to) — `mode="limited"`; running queries show a permission notice |
 
 #### Admin Detection — what "admin" means in this app
 

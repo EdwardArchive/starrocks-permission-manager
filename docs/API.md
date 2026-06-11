@@ -83,7 +83,8 @@ curl http://localhost:8001/api/admin/roles \
 ### Cluster Routes (`/api/cluster/*` — any logged-in user; StarRocks enforces privilege)
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/cluster/status` | FE/BE node list + aggregate metrics + has_errors flag |
+| GET | `/api/cluster/status` | FE/BE node list + aggregate metrics + has_errors flag + server_now |
+| GET | `/api/cluster/queries` | Running queries with resource usage (requires OPERATE; 403 when denied) |
 
 ---
 
@@ -626,7 +627,8 @@ FE resource metrics (heap, GC, p99) come from each FE's unauthenticated Promethe
     "avg_fe_heap_used_pct": 9.8
   },
   "has_errors": false,
-  "metrics_warning": null
+  "metrics_warning": null,
+  "server_now": "2026-06-12 01:25:04"
 }
 ```
 
@@ -640,6 +642,7 @@ FE resource metrics (heap, GC, p99) come from each FE's unauthenticated Promethe
 | metrics | ClusterMetrics | Aggregate metrics |
 | has_errors | boolean | True if any node is not alive or reports `err_msg` |
 | metrics_warning | string\|null | Set when every FE `/metrics` probe failed (network reachability issue) |
+| server_now | string\|null | Cluster wall clock (`SELECT NOW()`, cluster timezone). Frontend uses it as the reference for relative-time labels since node timestamps are naive strings in the same zone |
 
 **FENodeInfo**
 | Field | Type | Description |
@@ -671,7 +674,7 @@ FE resource metrics (heap, GC, p99) come from each FE's unauthenticated Promethe
 | data_used_capacity / total_capacity | string\|null | Human-readable (e.g. `"256.78 GB"`). For CN, extracted from `DataCacheMetrics` (local cache usage, not persistent storage). |
 | used_pct | float\|null | Disk utilization (BE) or cache utilization (CN) percentage |
 | cpu_cores | integer\|null | Reported in SHOW BACKENDS / SHOW COMPUTE NODES |
-| cpu_used_pct | float\|null | **CN only** — BE does not report CPU usage |
+| cpu_used_pct | float\|null | CN: from SHOW COMPUTE NODES. BE: best-effort from the BE `/metrics` probe (delta of cumulative `starrocks_be_cpu` between scrapes; null on the first scrape) |
 | mem_used_pct | float\|null | |
 | mem_limit | string\|null | **CN only** — e.g. `"64.0GB"` from `MemLimit` |
 | num_running_queries | integer\|null | |
@@ -687,7 +690,7 @@ FE resource metrics (heap, GC, p99) come from each FE's unauthenticated Promethe
 | total_tablets | integer\|null | Sum of tablet counts across BE + CN |
 | total_data_used | string\|null | Sum of `data_used_capacity` across BE nodes only (not cache). Null when no BE |
 | avg_disk_used_pct | float\|null | Avg of `used_pct` across all nodes that report it |
-| avg_cpu_used_pct | float\|null | Avg of `cpu_used_pct` (CN only) |
+| avg_cpu_used_pct | float\|null | Avg of `cpu_used_pct` across all nodes that report it (CN natively; BE via `/metrics` probe) |
 | avg_mem_used_pct | float\|null | Avg of `mem_used_pct` across all nodes that report it |
 | avg_fe_heap_used_pct | float\|null | Avg of `jvm_heap_used_pct` across FEs whose `/metrics` succeeded |
 
@@ -698,6 +701,58 @@ FE resource metrics (heap, GC, p99) come from each FE's unauthenticated Promethe
 curl http://localhost:8001/api/cluster/status \
   -H "Authorization: Bearer $TOKEN"
 ```
+
+### GET `/api/cluster/queries`
+
+Returns the queries currently running on the cluster with per-query resource usage. Powers the **Running Queries** panel in the Cluster Monitor tab (issue #15).
+
+**Auth**: Requires JWT Bearer token. The underlying `SHOW PROC '/current_queries'` requires the OPERATE privilege (`cluster_admin`); when StarRocks denies it the endpoint returns **403** (no limited fallback — unlike `/status`).
+
+**Data sources** (validated on StarRocks 4.0.8):
+- `SHOW PROC '/current_queries'` — resource stats per running query. Carries no SQL text; FE-only statements (e.g. `SELECT SLEEP(n)`) do not appear.
+- `SHOW FULL PROCESSLIST` — joined on `ConnectionId` to attach the SQL text (`sql` is null if the connection already left the processlist; the processlist call failing is tolerated).
+
+**Query Parameters**
+| Param | Type | Description |
+|-------|------|-------------|
+| refresh | boolean | `1` bypasses the per-user cache (result is still written back) |
+
+**Response** `200 OK`
+```json
+{
+  "queries": [
+    {
+      "query_id": "019eb77f-e2a6-794c-aab1-00e0ac3d0036",
+      "connection_id": 50335321,
+      "user": "root",
+      "database": null,
+      "start_time": "2026-06-12 01:24:32",
+      "fe_ip": "starrocks-oss-fe-2.starrocks-oss-fe-search...",
+      "warehouse": "default_warehouse",
+      "resource_group": "default_wg",
+      "exec_state": "RUNNING",
+      "exec_progress": null,
+      "scan_rows": 1787602878,
+      "scan_bytes": 14301167353.9, "scan_bytes_display": "13.319 GB",
+      "memory_bytes": 481459241.0, "memory_display": "459.154 MB",
+      "spill_bytes": 0.0, "spill_display": "0.000 B",
+      "cpu_time_ms": 478.0, "cpu_time_display": "0.478 s",
+      "exec_time_ms": 2126.0, "exec_time_display": "2.126 s",
+      "sql": "SELECT count(*) FROM capacity_test.transaction_log WHERE txn_id % 7 = 3"
+    }
+  ],
+  "server_now": "2026-06-12 01:25:04"
+}
+```
+
+`*_display` fields keep StarRocks' human-readable strings for rendering; the numeric counterparts (`*_bytes`, `*_ms`, `scan_rows`) are parsed sort keys.
+
+> **Cache**: Results are cached per username for **5 s** (running queries change fast — independent of `SRPM_CACHE_TTL_SECONDS`). The UI polls every 10 s while the panel is visible.
+
+**Errors**
+| Status | Description |
+|--------|-------------|
+| 403 | StarRocks denied `SHOW PROC` (OPERATE privilege / `cluster_admin` required) |
 
 ---
 

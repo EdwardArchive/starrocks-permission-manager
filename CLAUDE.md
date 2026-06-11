@@ -27,6 +27,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 ├── docs/
 │   ├── API.md                 # Full API documentation (moved from backend/)
 │   ├── GRANT_REVOKE_DESIGN.md # v2.0 GRANT/REVOKE design + live-cluster validation evidence
+│   ├── QUERY_MONITORING_DESIGN.md # Cluster Monitor tab + running-queries panel design (issue #15)
 │   ├── sql/setup_grant_admin.sql # Operator setup: audit table + srpm_grant_admin bundle role
 │   ├── CONTRIBUTING.md        # Contributing guide
 │   ├── TESTING.md             # Testing guide
@@ -50,17 +51,20 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   │   ├── admin_roles.py       # GET /api/admin/roles/* (Layer 1+2, admin only)
 │   │   │   ├── admin_dag.py         # GET /api/admin/dag/* (Layer 1+2, admin only)
 │   │   │   ├── admin_search.py      # GET /api/admin/search/* (Layer 1+2, admin only)
-│   │   │   ├── cluster.py           # GET /api/cluster/status (no require_admin; SR enforces cluster_admin)
+│   │   │   ├── cluster.py           # GET /api/cluster/status|queries (no require_admin; SR enforces cluster_admin)
 │   │   │   └── admin_grants.py      # GRANT/REVOKE write routes (require_grant_admin)
 │   │   ├── services/
 │   │   │   ├── starrocks_client.py        # MySQL connector wrapper + connection pool + parallel_queries
 │   │   │   ├── grant_collector.py         # Facade: delegates to common or admin collector (TTL-cached)
 │   │   │   ├── fe_metrics.py              # FE /metrics HTTP probe for cluster status (limited mode)
+│   │   │   ├── be_metrics.py              # BE /metrics probe: CPU % from starrocks_be_cpu counter deltas
+│   │   │   ├── cluster_queries.py         # Running queries: SHOW PROC '/current_queries' + PROCESSLIST join, server_now
 │   │   │   ├── shared/                    # Shared constants and utilities
 │   │   │   │   ├── constants.py           # BUILTIN_ROLES, BFS_MAX_DEPTH
 │   │   │   │   ├── grant_spec.py          # object_type → grantable privileges allowlist (docs-derived)
 │   │   │   │   ├── name_utils.py          # normalize_fn_name()
-│   │   │   │   └── role_graph.py          # fetch_role_child_map()
+│   │   │   │   ├── role_graph.py          # fetch_role_child_map()
+│   │   │   │   └── size_utils.py          # parse_size_bytes / bytes_to_human ("256.78 GB" ↔ bytes)
 │   │   │   ├── common/                    # Layer 1: SHOW + INFORMATION_SCHEMA only
 │   │   │   │   ├── grant_parser.py        # SHOW GRANTS parsing → PrivilegeGrant objects
 │   │   │   │   ├── grant_classifier.py    # ObjectQuery + Relevance + classify_grant()
@@ -111,13 +115,17 @@ When code or project structure changes, run a sub-agent after completing the tas
         │   ├── grantDisplay.ts      # buildGrantDisplay() — unified grant grouping + implicit USAGE
         │   ├── inventory-helpers.ts  # SubTab/AllTab types, SUB_TAB_META, formatSQL/Bytes
         │   ├── privColors.ts        # Privilege tag color map
-        │   ├── relativeTime.ts      # formatRelativeTime helper
+        │   ├── relativeTime.ts      # formatRelativeTime + clockSkewMs/skewedNow (cluster-TZ correction)
+        │   ├── querySort.ts         # sortQueries() for the Running Queries table
         │   ├── scopeConfig.ts       # SCOPE_ORDER, SCOPE_ICONS
         │   └── toast.ts             # Deduplicating toast
         └── components/
             ├── auth/LoginForm.tsx
             ├── cluster/
-            │   └── ClusterDrawer.tsx  # Right-side drawer for FE/BE node health (440px)
+            │   ├── ClusterDrawer.tsx  # Quick-glance drawer (summary + alerts + link to Cluster tab)
+            │   ├── ClusterSummary.tsx # Shared summary card / alerts / banners (drawer + tab)
+            │   ├── NodeCards.tsx      # FENodeCard/BENodeCard/UtilBar(variant)/StatusDot (shared)
+            │   └── QueriesPanel.tsx   # Running Queries table (10s poll, sort, SQL detail, 403 in place)
             ├── grants/
             │   └── ManagePrivilegesModal.tsx  # GRANT/REVOKE wizard (presets, multi-revoke, keep-open)
             ├── layout/Header.tsx, Sidebar.tsx  # Sidebar uses isAdmin-conditional APIs; Header has cluster icon
@@ -137,6 +145,7 @@ When code or project structure changes, run a sub-agent after completing the tas
             │   ├── InventoryTab.tsx         # My Inventory (isAdmin-conditional API for roles/users)
             │   ├── InventoryDetailPanel.tsx # Detail panel for inventory items (privs, members, objects)
             │   ├── AuditTab.tsx             # Grant Audit history table (can_manage_grants only)
+            │   ├── ClusterTab.tsx           # Cluster Monitor dashboard (30s poll, node grid + QueriesPanel)
             │   └── inventory-ui.tsx         # Shared UI: SearchInput, Chip, Badge, SortTH, etc.
             └── panels/
                 ├── ObjectDetailPanel.tsx  # Permission matrix + Details
@@ -218,7 +227,11 @@ When code or project structure changes, run a sub-agent after completing the tas
   - Each tab selects the appropriate API module based on `isAdmin` flag
   - Response schemas remain identical (`DAGGraph`, `PrivilegeGrant`, etc.) — only scope differs
 
-- **Cluster Status**: `/api/cluster/*` is a third route category (neither user nor admin). StarRocks enforces `cluster_admin` / SYSTEM OPERATE privilege for `SHOW FRONTENDS` / `SHOW BACKENDS`; backend catches mysql-connector `ProgrammingError`/`DatabaseError` with errno in {1044, 1045, 1227, 1142} and returns HTTP 403. TTL cache is per-username. UI: header cluster icon → right-side slide-out drawer (no new tab). Non-privileged users see an in-drawer permission-required message instead of data.
+- **Cluster Monitoring**: `/api/cluster/*` is a third route category (neither user nor admin). StarRocks enforces `cluster_admin` / SYSTEM OPERATE privilege; the backend maps access-denied errno {1044, 1045, 1227, 1142} to HTTP 403 (global handler) or falls back to `mode="limited"` for `/status`. UI has two surfaces: the **Cluster Monitor tab** (full dashboard: summary band, node card grid, Running Queries panel; status polls 30s / queries 10s, paused when `document.hidden`) and the **header drawer** (quick glance: summary + alerts + link to the tab; header icon shows a red badge when `has_errors`, polled every 60s against the server cache).
+  - `/api/cluster/status`: per-username+mode TTL cache (`SRPM_CACHE_TTL_SECONDS`); includes `server_now`.
+  - `/api/cluster/queries` (issue #15): `SHOW PROC '/current_queries'` joined with `SHOW FULL PROCESSLIST` on ConnectionId for SQL text; numeric sort keys parsed server-side; 5s per-user TTL cache; denied → 403, rendered in place (no limited fallback). See docs/QUERY_MONITORING_DESIGN.md for live-validation evidence.
+  - **Cluster timezone**: SHOW timestamps are naive strings in the *cluster's* TZ. `server_now` is the reference clock; frontend computes skew via `clockSkewMs()`/`skewedNow()` so relative labels are correct regardless of zone. Never compare cluster timestamps against the browser clock directly.
+  - **BE CPU**: SHOW BACKENDS lacks CPU; `be_metrics.py` probes BE `/metrics` and derives utilization from `starrocks_be_cpu` counter deltas between scrapes (first scrape → None). CN reports CpuUsedPct natively.
 
 - **DAG**: 2 views (Object Hierarchy TB, Role Hierarchy TB). `SET ROLE ALL` before object-hierarchy queries. (unchanged)
 
@@ -256,6 +269,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 | Permission Focus | Search user/role → inheritance DAG + privilege list | Yes |
 | My Inventory | Sub-tab browser: Roles/Users/Catalogs/DBs/Tables/MVs/Views/Functions + detail panel | No |
 | Grant Audit | GRANT/REVOKE history table (srpm_audit.grant_log) | can_manage_grants only |
+| Cluster Monitor | FE/BE/CN node dashboard + Running Queries panel (auto-refresh, sortable, SQL detail) | No (StarRocks gates; limited view without cluster_admin) |
 
 ## My Inventory Sub-tabs
 | Sub-tab | Data Source | Detail Panel |
@@ -337,7 +351,8 @@ cd frontend && E2E_SR_PASS=... npx playwright test
 - Search: GET /api/admin/search, /api/admin/search/users-roles
 
 ### Cluster Routes (`/api/cluster/*` — any logged-in user; StarRocks enforces privilege, 403 on denied)
-- Status: GET /api/cluster/status — FE/BE node list + aggregate metrics + has_errors flag
+- Status: GET /api/cluster/status — FE/BE node list + aggregate metrics + has_errors flag + server_now
+- Queries: GET /api/cluster/queries — running queries with resource usage + SQL text (OPERATE required)
 
 ### Grant Routes (`/api/admin/grants/*` — `require_grant_admin`; see docs/API.md)
 - GET spec · POST preview · POST execute · GET audit
