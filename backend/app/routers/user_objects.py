@@ -55,7 +55,7 @@ def list_catalogs(conn=Depends(get_db)):
 
 @router.get("/databases", response_model=list[DatabaseItem])
 def list_databases(catalog: str = Query(...), conn=Depends(get_db)):
-    execute_query(conn, f"SET CATALOG `{catalog}`")
+    execute_query(conn, f"SET CATALOG `{safe_identifier(catalog)}`")
     rows = execute_query(conn, "SHOW DATABASES")
     result = []
     for r in rows:
@@ -72,7 +72,7 @@ def list_tables(
     database: str = Query(...),
     conn=Depends(get_db),
 ):
-    execute_query(conn, f"SET CATALOG `{catalog}`")
+    execute_query(conn, f"SET CATALOG `{safe_identifier(catalog)}`")
     rows = execute_query(
         conn,
         "SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.tables "
@@ -128,11 +128,11 @@ def get_table_detail(
 ):
     # Set catalog and database context
     try:
-        execute_query(conn, f"SET CATALOG `{catalog}`")
+        execute_query(conn, f"SET CATALOG `{safe_identifier(catalog)}`")
     except Exception as e:
         logger.warning(f"SET CATALOG failed: {e}")
     try:
-        execute_query(conn, f"USE `{database}`")
+        execute_query(conn, f"USE `{safe_identifier(database)}`")
     except Exception as e:
         logger.warning(f"USE database failed: {e}")
 
