@@ -53,11 +53,7 @@ def get_object_hierarchy(
         edges.append(DAGEdge(id=f"e{edge_idx[0]}", source=src, target=tgt, edge_type=etype))
         edge_idx[0] += 1
 
-    # Activate all roles so information_schema shows all accessible objects
-    try:
-        execute_query(conn, "SET ROLE ALL")
-    except Exception:
-        logger.debug("Failed to SET ROLE ALL")
+    # Roles are already activated by the pooled connection reset (get_db).
 
     # SYSTEM node
     _add("sys", "SYSTEM", "system")

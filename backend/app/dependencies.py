@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-import logging
-
 from fastapi import Depends, Header, HTTPException
 
-from app.services.starrocks_client import execute_query, get_connection
+from app.services.starrocks_client import get_pooled_connection
 from app.utils.session import decode_token
 from app.utils.session_store import session_store
-
-logger = logging.getLogger(__name__)
 
 
 def get_credentials(authorization: str = Header(...)) -> dict:
@@ -39,14 +35,13 @@ def require_admin(credentials: dict = Depends(get_credentials)) -> dict:
 
 
 def get_db(credentials: dict = Depends(get_credentials)):
-    with get_connection(
+    # Pooled connection; get_pooled_connection resets the session on borrow
+    # (SET CATALOG default_catalog + SET ROLE ALL), so role activation and a
+    # clean catalog/db baseline are guaranteed without a fresh handshake.
+    with get_pooled_connection(
         host=credentials["host"],
         port=credentials["port"],
         username=credentials["username"],
         password=credentials["password"],
     ) as conn:
-        try:
-            execute_query(conn, "SET ROLE ALL")
-        except Exception:
-            logger.debug("SET ROLE ALL failed on new connection — proceeding with default role")
         yield conn
