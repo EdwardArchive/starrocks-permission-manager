@@ -346,6 +346,10 @@ def client(mock_db, query_map):
     _user_cache.clear()
     _cluster_cache.clear()
 
+    # Reset the login rate limiter so attempts don't accumulate across tests
+    from app.utils.rate_limit import login_rate_limiter
+    login_rate_limiter.reset()
+
     def _override_credentials(authorization: str = Header(default="")):
         _default = {"host": TEST_HOST, "port": TEST_PORT, "username": TEST_USER,
                      "password": TEST_PASS, "is_admin": True}
