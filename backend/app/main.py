@@ -89,3 +89,9 @@ async def mysql_error_handler(request: Request, exc: mysql.connector.errors.Erro
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+# Mount the built SPA (production only — no-op when ./static is absent)
+from app.static_mount import mount_static  # noqa: E402
+
+mount_static(app)
