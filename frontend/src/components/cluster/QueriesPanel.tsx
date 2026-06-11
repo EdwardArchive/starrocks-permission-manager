@@ -353,7 +353,7 @@ export default function QueriesPanel({ totalCores = null }: { totalCores?: numbe
   const doKill = async (q: RunningQueryInfo) => {
     try {
       await killClusterQuery(q.query_id);
-      showToast(`Query killed (${q.user})`, "success");
+      showToast(`Query killed (${q.user})`, "info");
       setRunExpanded(null);
       fetchRunning(true);
     } catch (err) {
