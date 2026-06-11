@@ -23,19 +23,28 @@ from typing import Literal
 
 import mysql.connector.errors
 from cachetools import TTLCache
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.config import settings
-from app.dependencies import get_credentials, get_db
+from app.dependencies import get_credentials, get_db, require_grant_admin
 from app.models.schemas import (
     BENodeInfo,
+    ClusterHistoryResponse,
     ClusterMetrics,
     ClusterQueriesResponse,
     ClusterStatusResponse,
     FENodeInfo,
+    KillQueryRequest,
+    KillQueryResponse,
 )
+from app.services.admin.audit import write_audit
 from app.services.be_metrics import fetch_be_cpu_pct
-from app.services.cluster_queries import collect_running_queries, fetch_server_now
+from app.services.cluster_queries import (
+    collect_query_history,
+    collect_running_queries,
+    fetch_server_now,
+    kill_query,
+)
 from app.services.fe_metrics import FEMetricsData, FEMetricsError, fetch_fe_metrics
 from app.services.shared.size_utils import bytes_to_human as _bytes_to_human
 from app.services.shared.size_utils import parse_size_bytes as _parse_size_bytes
@@ -494,8 +503,73 @@ def get_cluster_queries(
     result = ClusterQueriesResponse(
         queries=collect_running_queries(conn),
         server_now=fetch_server_now(conn),
+        can_kill=credentials.get("can_manage_grants", False),
     )
 
     with _queries_cache_lock:
         _queries_cache[cache_key] = result
     return result
+
+
+@router.get("/queries/history", response_model=ClusterHistoryResponse)
+def get_cluster_query_history(
+    conn=Depends(get_db),
+    limit: int = Query(100, ge=1, le=500, description="Max rows to return"),
+    errors_only: bool = Query(False, description="Only failed (state=ERR) queries"),
+):
+    """Return recently completed queries from the AuditLoader table.
+
+    When the AuditLoader plugin isn't installed (table missing), this returns
+    ``available=false`` with a reason instead of an error, so the UI can hide
+    the history view gracefully. Access-denied still maps to 403.
+    """
+    try:
+        queries = collect_query_history(conn, limit=limit, errors_only=errors_only)
+    except (mysql.connector.errors.ProgrammingError, mysql.connector.errors.DatabaseError) as exc:
+        if is_access_denied(exc):
+            raise
+        # Most likely the audit DB/table doesn't exist on this cluster.
+        logger.info("Query history unavailable: %s", exc)
+        return ClusterHistoryResponse(
+            available=False,
+            reason="Query history requires the StarRocks AuditLoader plugin "
+            "(table starrocks_audit_db__.starrocks_audit_tbl__).",
+        )
+    return ClusterHistoryResponse(
+        available=True,
+        queries=queries,
+        server_now=fetch_server_now(conn),
+    )
+
+
+@router.post("/queries/kill", response_model=KillQueryResponse)
+def kill_cluster_query(
+    req: KillQueryRequest,
+    credentials: dict = Depends(require_grant_admin),
+    conn=Depends(get_db),
+):
+    """KILL a running query by its global query id (grant-admin only).
+
+    Gated by require_grant_admin (admin + user_admin). Every attempt — success
+    or failure — is recorded in srpm_audit.grant_log, matching GRANT/REVOKE.
+    """
+    sql_text = f"KILL QUERY '{req.query_id}'"
+    try:
+        kill_query(conn, req.query_id)
+    except ValueError as exc:
+        write_audit(conn, "KILL", "QUERY", sql_text, "error", str(exc))
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except (mysql.connector.errors.ProgrammingError, mysql.connector.errors.DatabaseError) as exc:
+        write_audit(conn, "KILL", "QUERY", sql_text, "error", str(exc))
+        if is_access_denied(exc):
+            raise HTTPException(status_code=403, detail=f"StarRocks denied KILL: {exc}") from None
+        # Query already finished / unknown id → 404; other rejections → 400.
+        msg = str(exc)
+        status = 404 if "Unknown query id" in msg else 400
+        raise HTTPException(status_code=status, detail=f"KILL failed: {msg}") from None
+
+    # Invalidate the running-queries cache so the killed query disappears promptly.
+    with _queries_cache_lock:
+        _queries_cache.clear()
+    audit_ok = write_audit(conn, "KILL", "QUERY", sql_text, "ok")
+    return KillQueryResponse(status="ok", query_id=req.query_id, audit="ok" if audit_ok else "failed")

@@ -242,6 +242,46 @@ class RunningQueryInfo(BaseModel):
 class ClusterQueriesResponse(BaseModel):
     queries: list[RunningQueryInfo]
     server_now: str | None = None
+    # True when the caller may KILL queries (admin + user_admin in role chain).
+    # The frontend hides the KILL action when false.
+    can_kill: bool = False
+
+
+class HistoryQueryInfo(BaseModel):
+    """One completed query from the AuditLoader table (starrocks_audit_tbl__)."""
+
+    query_id: str | None = None
+    timestamp: str | None = None  # completion time (cluster timezone)
+    user: str | None = None
+    database: str | None = None
+    warehouse: str | None = None
+    query_type: str | None = None
+    state: str | None = None  # EOF/OK = success, ERR = failure
+    is_error: bool = False
+    error_code: str | None = None
+    query_time_ms: int | None = None
+    scan_rows: int | None = None
+    scan_bytes: int | None = None
+    mem_cost_bytes: int | None = None
+    cpu_cost_ns: int | None = None
+    sql: str | None = None
+
+
+class ClusterHistoryResponse(BaseModel):
+    available: bool  # False when the AuditLoader table is absent/unreadable
+    queries: list[HistoryQueryInfo] = []
+    server_now: str | None = None
+    reason: str | None = None  # why unavailable (for an in-UI hint)
+
+
+class KillQueryRequest(BaseModel):
+    query_id: str
+
+
+class KillQueryResponse(BaseModel):
+    status: Literal["ok"]
+    query_id: str
+    audit: Literal["ok", "failed"]
 
 
 # ── Grant management (write operations) ──

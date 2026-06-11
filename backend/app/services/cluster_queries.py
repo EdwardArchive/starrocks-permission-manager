@@ -27,9 +27,9 @@ from datetime import datetime
 
 import mysql.connector.errors
 
-from app.models.schemas import RunningQueryInfo
+from app.models.schemas import HistoryQueryInfo, RunningQueryInfo
 from app.services.shared.size_utils import parse_size_bytes
-from app.services.starrocks_client import execute_query
+from app.services.starrocks_client import execute_query, execute_statement
 from app.utils.sys_access import is_access_denied
 
 logger = logging.getLogger(__name__)
@@ -139,6 +139,81 @@ def collect_running_queries(conn) -> list[RunningQueryInfo]:
         logger.warning("SHOW FULL PROCESSLIST failed; returning queries without SQL text: %s", exc)
 
     return [_row_to_query(r, sql_by_conn) for r in rows]
+
+
+# ── Completed-query history (AuditLoader table) ──
+
+# StarRocks' built-in AuditLoader plugin lands completed queries here.
+AUDIT_HISTORY_TABLE = "starrocks_audit_db__.starrocks_audit_tbl__"
+_HISTORY_COLUMNS = (
+    "queryId, timestamp, `user`, db, warehouse, queryType, state, errorCode, "
+    "queryTime, scanRows, scanBytes, memCostBytes, cpuCostNs, stmt"
+)
+# Query UUIDs are hex + hyphens; validate before interpolating into KILL.
+_QUERY_ID_RE = re.compile(r"^[0-9a-fA-F-]{8,64}$")
+
+
+def _history_row(row: dict) -> HistoryQueryInfo:
+    state = _clean(row.get("state"))
+    ts = row.get("timestamp")
+    ts_str = ts.strftime("%Y-%m-%d %H:%M:%S") if isinstance(ts, datetime) else _clean(ts)
+    return HistoryQueryInfo(
+        query_id=_clean(row.get("queryId")),
+        timestamp=ts_str,
+        user=_clean(row.get("user")),
+        database=_clean(row.get("db")),
+        warehouse=_clean(row.get("warehouse")),
+        query_type=_clean(row.get("queryType")),
+        state=state,
+        is_error=state == "ERR",
+        error_code=_clean(row.get("errorCode")),
+        query_time_ms=_to_int(row.get("queryTime")),
+        scan_rows=_to_int(row.get("scanRows")),
+        scan_bytes=_to_int(row.get("scanBytes")),
+        mem_cost_bytes=_to_int(row.get("memCostBytes")),
+        cpu_cost_ns=_to_int(row.get("cpuCostNs")),
+        sql=_clean(row.get("stmt")),
+    )
+
+
+def _to_int(val) -> int | None:
+    if val is None:
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
+
+
+def collect_query_history(conn, limit: int = 100, errors_only: bool = False) -> list[HistoryQueryInfo]:
+    """Read recent completed queries from the AuditLoader table, newest first.
+
+    Only real queries (isQuery=1) are returned. Raises on access-denied (→403);
+    callers treat a missing table as "history unavailable".
+    """
+    where = "WHERE isQuery = 1"
+    if errors_only:
+        where += " AND state = 'ERR'"
+    rows = execute_query(
+        conn,
+        f"SELECT {_HISTORY_COLUMNS} FROM {AUDIT_HISTORY_TABLE} "
+        f"{where} ORDER BY timestamp DESC LIMIT %s",
+        (limit,),
+    )
+    return [_history_row(r) for r in rows]
+
+
+def kill_query(conn, query_id: str) -> None:
+    """KILL a running query by its global query UUID.
+
+    ``KILL QUERY '<uuid>'`` is cluster-global (unlike ``KILL <connection_id>``,
+    which is FE-local), so it works through a load balancer. The UUID is
+    validated and quoted here because KILL does not accept bound parameters.
+    Raises ValueError for a malformed id; DB errors propagate to the caller.
+    """
+    if not query_id or not _QUERY_ID_RE.match(query_id):
+        raise ValueError(f"Invalid query id: {query_id!r}")
+    execute_statement(conn, f"KILL QUERY '{query_id}'")
 
 
 def fetch_server_now(conn) -> str | None:
