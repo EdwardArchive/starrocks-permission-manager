@@ -14,7 +14,7 @@ from cachetools import TTLCache
 from fastapi import APIRouter, Depends, Query
 
 from app.config import settings
-from app.dependencies import get_db
+from app.dependencies import get_credentials, get_db
 from app.models.schemas import CatalogItem, ColumnInfo, DatabaseItem, ObjectItem, TableDetail
 from app.services.shared.name_utils import normalize_fn_name
 from app.services.starrocks_client import execute_query, execute_single
@@ -31,14 +31,16 @@ _RE_PARTITION_LIST = re.compile(r"PARTITION BY LIST\(([^)]+)\)", re.I)
 _RE_PARTITION_GENERIC = re.compile(r"PARTITION BY\s+(\w+)\(([^)]+)\)", re.I)
 _RE_PARTITION_SIMPLE = re.compile(r"PARTITION BY\s*\(([^)]+)\)", re.I)
 
-# ── TTL cache for catalogs ──
-_catalog_cache: TTLCache = TTLCache(maxsize=1, ttl=settings.cache_ttl_seconds)
+# ── TTL cache for catalogs (keyed per user — SHOW CATALOGS is permission-filtered) ──
+_catalog_cache: TTLCache = TTLCache(maxsize=256, ttl=settings.cache_ttl_seconds)
 _catalog_cache_lock = threading.Lock()
 
 
 @router.get("/catalogs", response_model=list[CatalogItem])
-def list_catalogs(conn=Depends(get_db)):
-    cache_key = "catalogs"
+def list_catalogs(credentials: dict = Depends(get_credentials), conn=Depends(get_db)):
+    # SHOW CATALOGS returns only catalogs the caller can see, so the cache must
+    # not be shared across users. Key by (host, username).
+    cache_key = (credentials.get("host"), credentials.get("username"))
     with _catalog_cache_lock:
         if cache_key in _catalog_cache:
             return _catalog_cache[cache_key]
