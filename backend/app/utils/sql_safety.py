@@ -10,19 +10,26 @@ from __future__ import annotations
 
 import re
 
-# Allowed characters for StarRocks identifiers: alphanumeric, underscore, @, %, .
-# Covers usernames like 'root'@'%' and role names like 'db_admin'
-_SAFE_NAME_RE = re.compile(r"\A[a-zA-Z0-9_@%.' -]+\Z")
+# A single quote is the only character that can break out of a single-quoted
+# SQL string literal, so it is NOT allowed in a bare name. It is permitted ONLY
+# in the exact 'user'@'host' shape, where both parts are themselves quote-free —
+# that keeps the literal balanced and prevents breakout (e.g. "kate'@'%").
+_BARE_NAME_RE = re.compile(r"\A[a-zA-Z0-9_@%. -]+\Z")
+_QUOTED_USER_RE = re.compile(r"\A'[^'`]+'@'[^'`]+'\Z")
 
 
 def safe_name(value: str) -> str:
-    """Validate a user/role name for use in SHOW GRANTS FOR 'name'.
+    """Validate a user/role name for interpolation into SHOW GRANTS FOR.
 
-    Raises ValueError if the name contains unsafe characters.
+    Accepts either a bare identifier (wrapped in '...' by the caller) or an
+    already-quoted 'user'@'host' grantee. Both forms are guaranteed free of an
+    unbalanced single quote, so they cannot break out of the SQL string literal.
+
+    Raises ValueError otherwise.
     """
-    if not value or not _SAFE_NAME_RE.match(value):
-        raise ValueError(f"Invalid identifier: {value!r}")
-    return value
+    if value and (_BARE_NAME_RE.match(value) or _QUOTED_USER_RE.match(value)):
+        return value
+    raise ValueError(f"Invalid identifier: {value!r}")
 
 
 def safe_identifier(value: str) -> str:

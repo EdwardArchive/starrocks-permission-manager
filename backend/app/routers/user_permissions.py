@@ -17,7 +17,7 @@ from app.services.common.grant_parser import _parse_show_grants
 from app.services.shared.name_utils import normalize_fn_name
 from app.services.starrocks_client import execute_query
 from app.utils.role_helpers import parse_role_assignments
-from app.utils.sql_safety import safe_name
+from app.utils.sql_safety import safe_identifier
 
 logger = logging.getLogger("privileges")
 router = APIRouter()
@@ -161,7 +161,7 @@ def get_my_permissions(
         if cat_name == "default_catalog":
             for db in cat_databases:
                 try:
-                    fn_rows = execute_query(conn, f"SHOW FULL FUNCTIONS FROM `{safe_name(db)}`")
+                    fn_rows = execute_query(conn, f"SHOW FULL FUNCTIONS FROM `{safe_identifier(db)}`")
                     seen_fns: set[str] = set()
                     for r in fn_rows:
                         sig = r.get("Signature") or r.get("Function Name") or ""
@@ -246,7 +246,7 @@ def get_my_permissions(
         logger.debug("Query failed, skipping")
     for sv_name in sv_names:
         try:
-            rows = execute_query(conn, f"DESC STORAGE VOLUME `{safe_name(sv_name)}`")
+            rows = execute_query(conn, f"DESC STORAGE VOLUME `{safe_identifier(sv_name)}`")
             if rows:
                 r = rows[0]
                 _add_sys(
