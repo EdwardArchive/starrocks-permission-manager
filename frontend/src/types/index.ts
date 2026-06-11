@@ -228,4 +228,38 @@ export interface ClusterStatusResponse {
   has_errors: boolean;
   mode: "full" | "limited";
   metrics_warning: string | null;
+  // Cluster wall clock ("YYYY-MM-DD HH:MM:SS", cluster timezone) — reference
+  // for relative-time labels (see utils/relativeTime.ts clockSkewMs)
+  server_now: string | null;
+}
+
+// ── Running Queries (SHOW PROC '/current_queries' + SHOW FULL PROCESSLIST) ──
+export interface RunningQueryInfo {
+  query_id: string;
+  connection_id: number | null;
+  user: string;
+  database: string | null;
+  start_time: string | null;
+  fe_ip: string | null;
+  warehouse: string | null;
+  resource_group: string | null;
+  exec_state: string | null;
+  exec_progress: string | null;
+  scan_rows: number | null;
+  scan_bytes: number | null;
+  scan_bytes_display: string | null;
+  memory_bytes: number | null;
+  memory_display: string | null;
+  spill_bytes: number | null;
+  spill_display: string | null;
+  cpu_time_ms: number | null;
+  cpu_time_display: string | null;
+  exec_time_ms: number | null;
+  exec_time_display: string | null;
+  sql: string | null;
+}
+
+export interface ClusterQueriesResponse {
+  queries: RunningQueryInfo[];
+  server_now: string | null;
 }

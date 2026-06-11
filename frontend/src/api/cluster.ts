@@ -5,10 +5,18 @@
  * On insufficient StarRocks privileges, the server returns 403.
  */
 import { apiFetch } from "./client";
-import type { ClusterStatusResponse } from "../types";
+import type { ClusterQueriesResponse, ClusterStatusResponse } from "../types";
 
-export const getClusterStatus = (signal?: AbortSignal, refresh?: boolean) =>
+export const getClusterStatus = (signal?: AbortSignal, refresh?: boolean, quiet?: boolean) =>
   apiFetch<ClusterStatusResponse>(
     refresh ? "/cluster/status?refresh=1" : "/cluster/status",
-    { signal },
+    { signal, quiet },
+  );
+
+// quiet by default: polled every few seconds; a 403 (no OPERATE privilege) is
+// rendered in place by the queries panel, not toasted on every poll.
+export const getClusterQueries = (signal?: AbortSignal, refresh?: boolean) =>
+  apiFetch<ClusterQueriesResponse>(
+    refresh ? "/cluster/queries?refresh=1" : "/cluster/queries",
+    { signal, quiet: true },
   );

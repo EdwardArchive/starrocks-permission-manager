@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { formatRelativeTime } from "./relativeTime";
+import { describe, it, expect, vi } from "vitest";
+import { clockSkewMs, formatRelativeTime, skewedNow } from "./relativeTime";
 
 // Fixed reference point: 2026-04-19T12:00:00Z
 const NOW = new Date("2026-04-19T12:00:00Z");
@@ -180,5 +180,46 @@ describe("formatRelativeTime", () => {
       expect(iso).toBe(spaced);
       expect(iso).toBe("1 day ago");
     });
+  });
+});
+
+describe("clockSkewMs / skewedNow", () => {
+  it("returns null skew for missing or invalid server_now", () => {
+    expect(clockSkewMs(null)).toBeNull();
+    expect(clockSkewMs(undefined)).toBeNull();
+    expect(clockSkewMs("")).toBeNull();
+    expect(clockSkewMs("not a date")).toBeNull();
+  });
+
+  it("null skew falls back to the browser clock", () => {
+    const before = Date.now();
+    const now = skewedNow(null).getTime();
+    expect(Math.abs(now - before)).toBeLessThan(1000);
+  });
+
+  it("cancels the cluster timezone offset (the 'in 4 hours' bug)", () => {
+    // Cluster runs in UTC+9: a node started 5 hours ago reads "01:00:00",
+    // and the cluster's clock currently reads "06:00:00" (= 21:00 UTC browser time).
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-11T21:00:00Z"));
+    try {
+      const skew = clockSkewMs("2026-06-12 06:00:00");
+      const label = formatRelativeTime("2026-06-12 01:00:00", skewedNow(skew));
+      // Without skew correction this would read "in 4 hours"
+      expect(label).toBe("5 hours ago");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("positive and negative skews shift the reference symmetrically", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-12T00:00:00Z"));
+    try {
+      expect(skewedNow(3_600_000).toISOString()).toBe("2026-06-12T01:00:00.000Z");
+      expect(skewedNow(-3_600_000).toISOString()).toBe("2026-06-11T23:00:00.000Z");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

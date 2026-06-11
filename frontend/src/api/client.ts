@@ -3,9 +3,21 @@ import { showToast } from "../utils/toast";
 
 const BASE = "/api";
 
+/** API error carrying the HTTP status so callers can branch (e.g. 403 → permission UI). */
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 export async function apiFetch<T>(
   path: string,
-  opts?: RequestInit & { signal?: AbortSignal }
+  // quiet: suppress error toasts (except session expiry) — for polling callers
+  // that render the error in place instead
+  opts?: RequestInit & { signal?: AbortSignal; quiet?: boolean }
 ): Promise<T> {
   const token = localStorage.getItem("sr_token");
   const headers: Record<string, string> = {
@@ -36,6 +48,8 @@ export async function apiFetch<T>(
         showToast("Session expired. Please log in again.", "warning");
         useAuthStore.getState().logout();
       }
+    } else if (opts?.quiet) {
+      // Caller renders the error in place — no toast
     } else if (res.status >= 500) {
       showToast(`Server error: ${msg}`, "error");
     } else if (res.status !== 422) {
@@ -43,7 +57,7 @@ export async function apiFetch<T>(
       showToast(msg, "error");
     }
 
-    throw new Error(msg);
+    throw new ApiError(msg, res.status);
   }
   return res.json();
 }

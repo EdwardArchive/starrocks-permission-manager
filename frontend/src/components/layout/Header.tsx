@@ -1,14 +1,37 @@
+import { useEffect, useState } from "react";
 import { useAuthStore } from "../../stores/authStore";
 import { APP_LOGO_SVG } from "../dag/nodeIcons";
 import { C } from "../../utils/colors";
 import { useClusterStore } from "../../stores/clusterStore";
 import { useGrantStore } from "../../stores/grantStore";
 import { useDagStore } from "../../stores/dagStore";
+import { getClusterStatus } from "../../api/cluster";
+
+const HEALTH_POLL_MS = 60_000;
 
 export default function Header() {
   const { user, connectionInfo, logout } = useAuthStore();
   const toggleDrawer = useClusterStore((s) => s.toggleDrawer);
   const openWizard = useGrantStore((s) => s.openWizard);
+  const [hasClusterErrors, setHasClusterErrors] = useState(false);
+
+  // Lightweight health poll for the icon badge: non-refresh (rides the 60s
+  // server cache) and quiet (no toasts) — failures just leave the badge off.
+  useEffect(() => {
+    let cancelled = false;
+    const check = () => {
+      if (document.hidden) return;
+      getClusterStatus(undefined, false, /* quiet */ true)
+        .then((res) => { if (!cancelled) setHasClusterErrors(res.has_errors); })
+        .catch(() => { if (!cancelled) setHasClusterErrors(false); });
+    };
+    check();
+    const interval = setInterval(check, HEALTH_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const handleManagePrivileges = () => {
     // Prefill from the Permission Focus tab's currently-viewed user/role
@@ -61,10 +84,10 @@ export default function Header() {
         <button
           onClick={toggleDrawer}
           aria-label="Cluster Status"
-          title="Cluster Status"
+          title={hasClusterErrors ? "Cluster Status — issues detected" : "Cluster Status"}
           data-testid="cluster-status-btn"
           style={{
-            width: 34, height: 34, padding: 0,
+            width: 34, height: 34, padding: 0, position: "relative",
             background: "transparent", border: `1px solid ${C.borderLight}`,
             borderRadius: 6, color: C.text2, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center",
@@ -78,6 +101,16 @@ export default function Header() {
             <line x1="6" y1="7" x2="6.01" y2="7"/>
             <line x1="6" y1="17" x2="6.01" y2="17"/>
           </svg>
+          {hasClusterErrors && (
+            <span
+              data-testid="cluster-error-badge"
+              style={{
+                position: "absolute", top: -3, right: -3, width: 9, height: 9,
+                borderRadius: "50%", background: "#ef4444",
+                border: `1.5px solid ${C.card}`, boxShadow: "0 0 4px #ef444480",
+              }}
+            />
+          )}
         </button>
         <button
           onClick={logout}
