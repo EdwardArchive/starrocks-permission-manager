@@ -338,6 +338,7 @@ def client(mock_db, query_map):
     from app.routers.user_dag import _dag_cache as user_dag_cache
     from app.services.admin.user_service import _user_cache
     from app.routers.cluster import _cluster_cache
+    from app.services.grant_collector import _grants_cache
     _catalog_cache.clear()
     admin_role_cache.clear()
     user_role_cache.clear()
@@ -345,6 +346,7 @@ def client(mock_db, query_map):
     user_dag_cache.clear()
     _user_cache.clear()
     _cluster_cache.clear()
+    _grants_cache.clear()
 
     def _override_credentials(authorization: str = Header(default="")):
         _default = {"host": TEST_HOST, "port": TEST_PORT, "username": TEST_USER,
