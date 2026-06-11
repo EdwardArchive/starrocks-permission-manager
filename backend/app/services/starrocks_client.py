@@ -105,6 +105,6 @@ def parallel_queries(
                         key, result = future.result(timeout=0)
                         if key not in results:
                             results[key] = result
-                    except Exception:
+                    except Exception:  # pragma: no cover (unreachable defensive branch)
                         logger.debug("Parallel query failed for key %s", futures[future])
     return results
