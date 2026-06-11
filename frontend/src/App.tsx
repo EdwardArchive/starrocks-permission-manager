@@ -20,14 +20,17 @@ import { C } from "./utils/colors";
 import ExportPngBtn from "./components/common/ExportPngBtn";
 import PermissionDetailTab from "./components/tabs/PermissionDetailTab";
 import InventoryTab from "./components/tabs/InventoryTab";
+import AuditTab from "./components/tabs/AuditTab";
 import ClusterDrawer from "./components/cluster/ClusterDrawer";
+import ManagePrivilegesModal from "./components/grants/ManagePrivilegesModal";
 import { Loader } from "./components/tabs/inventory-ui";
 
-const TAB_CONFIG: { id: TabId; label: string; icon: string; disabled?: boolean; adminOnly?: boolean }[] = [
+const TAB_CONFIG: { id: TabId; label: string; icon: string; disabled?: boolean; adminOnly?: boolean; grantAdminOnly?: boolean }[] = [
   { id: "obj", label: "Object Hierarchy", icon: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/>' },
   { id: "role", label: "Role Map", icon: '<circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="17" r="2.5"/><circle cx="19" cy="17" r="2.5"/><path d="M12 7.5v3"/><path d="M12 10.5L5 14.5"/><path d="M12 10.5L19 14.5"/>' },
   { id: "perm", label: "Permission Focus", icon: '<circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/>', adminOnly: true },
   { id: "myperm", label: "My Inventory Search", icon: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>' },
+  { id: "audit", label: "Grant Audit", icon: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/>', grantAdminOnly: true },
 ];
 
 const OBJ_FILTERS = [
@@ -63,14 +66,17 @@ export default function App() {
   );
 
   const isAdmin = user?.is_user_admin ?? false;
-  const visibleTabs = TAB_CONFIG.filter((t) => !t.adminOnly || isAdmin);
+  const canManageGrants = user?.can_manage_grants ?? false;
+  const visibleTabs = TAB_CONFIG.filter(
+    (t) => (!t.adminOnly || isAdmin) && (!t.grantAdminOnly || canManageGrants)
+  );
 
-  // Redirect away from admin-only tabs if user is not admin (e.g. URL hash was #perm)
+  // Redirect away from restricted tabs if user lacks the capability (e.g. URL hash was #perm)
   useEffect(() => {
-    if (user && !isAdmin && activeTab === "perm") {
+    if (user && ((!isAdmin && activeTab === "perm") || (!canManageGrants && activeTab === "audit"))) {
       setActiveTab("obj");
     }
-  }, [user, isAdmin, activeTab, setActiveTab]);
+  }, [user, isAdmin, canManageGrants, activeTab, setActiveTab]);
 
   const [dagState, setDagState] = useState<{ cache: Record<string, DAGGraph | null>; loading: boolean }>({
     cache: {}, loading: false,
@@ -93,7 +99,7 @@ export default function App() {
   // Load DAG data when tab or catalog changes (skip perm tab - it manages its own DAG)
   const dagKey = `${activeTab}_${activeCatalog}`;
   useEffect(() => {
-    if (!isLoggedIn || !user || activeTab === "perm" || activeTab === "myperm") return;
+    if (!isLoggedIn || !user || activeTab === "perm" || activeTab === "myperm" || activeTab === "audit") return;
     if (dagState.cache[dagKey]) return;
     const controller = new AbortController();
     setDagState((prev) => ({ ...prev, loading: true }));
@@ -125,8 +131,8 @@ export default function App() {
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <Header />
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-        {/* Sidebar: hidden on perm/myperm tabs (they have their own layout) */}
-        {activeTab !== "perm" && activeTab !== "myperm" && <Sidebar />}
+        {/* Sidebar: hidden on perm/myperm/audit tabs (they have their own layout) */}
+        {activeTab !== "perm" && activeTab !== "myperm" && activeTab !== "audit" && <Sidebar />}
 
         {/* Main content */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -160,6 +166,8 @@ export default function App() {
           {/* Content area */}
           {activeTab === "myperm" ? (
             <InventoryTab />
+          ) : activeTab === "audit" && canManageGrants ? (
+            <AuditTab />
           ) : activeTab === "perm" && isAdmin ? (
             <PermissionDetailTab />
           ) : (
@@ -196,8 +204,8 @@ export default function App() {
           )}
         </div>
 
-        {/* Detail panel: hidden on perm/myperm tabs */}
-        {activeTab !== "perm" && activeTab !== "myperm" && (
+        {/* Detail panel: hidden on perm/myperm/audit tabs */}
+        {activeTab !== "perm" && activeTab !== "myperm" && activeTab !== "audit" && (
           <div
             style={{
               width: panelMode ? 380 : 0,
@@ -230,6 +238,7 @@ export default function App() {
         )}
       </div>
       <ClusterDrawer />
+      <ManagePrivilegesModal />
     </div>
   );
 }

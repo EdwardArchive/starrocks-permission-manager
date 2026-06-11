@@ -19,6 +19,8 @@ import { applyDagreLayout } from "./dagLayout";
 import { EDGE_COLORS, NODE_COLORS, ROLE_CATEGORY_COLORS } from "./nodeIcons";
 import { C } from "../../utils/colors";
 import { useDagStore } from "../../stores/dagStore";
+import { useAuthStore } from "../../stores/authStore";
+import { useGrantStore } from "../../stores/grantStore";
 import type { DAGGraph } from "../../types";
 
 const nodeTypes = { custom: CustomNode, group: GroupNode };
@@ -210,9 +212,50 @@ export default function DAGView({ data, direction = "TB", loading, hiddenNodes }
     [data, setSelectedNode, setPanelMode, setGroupChildren]
   );
 
+  // Right-click on a node → contextual "Manage privileges" menu (grant-capable admins only)
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
+  const onNodeContextMenu: NodeMouseHandler = useCallback(
+    (event, node) => {
+      if (!useAuthStore.getState().user?.can_manage_grants) return;
+      event.preventDefault();
+      const bounds = (event.currentTarget as HTMLElement).closest(".react-flow")?.getBoundingClientRect();
+      setCtxMenu({
+        x: event.clientX - (bounds?.left ?? 0),
+        y: event.clientY - (bounds?.top ?? 0),
+        nodeId: node.id,
+      });
+    },
+    []
+  );
+
+  const handleCtxManage = useCallback(() => {
+    const dagNode = data?.nodes.find((n) => n.id === ctxMenu?.nodeId);
+    setCtxMenu(null);
+    if (!dagNode) return;
+    const t = dagNode.type.toLowerCase();
+    const openWizard = useGrantStore.getState().openWizard;
+    if (t === "user" || t === "role") {
+      openWizard({ grantee: { name: dagNode.label, type: t === "role" ? "ROLE" : "USER" } });
+    } else if (["catalog", "database", "table", "view", "mv", "function"].includes(t)) {
+      const meta = (dagNode.metadata ?? {}) as { catalog?: string; database?: string };
+      openWizard({
+        object: {
+          object_type: t === "mv" ? "MATERIALIZED VIEW" : t.toUpperCase(),
+          catalog: t === "catalog" ? dagNode.label : (meta.catalog ?? "default_catalog"),
+          database: t === "catalog" ? null : t === "database" ? dagNode.label : meta.database,
+          name: ["catalog", "database"].includes(t) ? null : dagNode.label,
+        },
+      });
+    } else {
+      // group/system nodes — open without prefill rather than doing nothing
+      openWizard();
+    }
+  }, [data, ctxMenu]);
+
   // Click on background → clear highlight
   const onPaneClick = useCallback(() => {
     setClickedNodeId(null);
+    setCtxMenu(null);
   }, []);
 
   const handleRelayout = useCallback(() => {
@@ -233,6 +276,21 @@ export default function DAGView({ data, direction = "TB", loading, hiddenNodes }
 
   return (
     <div style={{ width: "100%", height: "100%", position: "relative" }}>
+      {ctxMenu && (
+        <div
+          data-testid="dag-context-menu"
+          style={{ position: "absolute", left: ctxMenu.x, top: ctxMenu.y, zIndex: 50, background: C.card, border: `1px solid ${C.borderLight}`, borderRadius: 6, boxShadow: "0 6px 16px rgba(0,0,0,0.4)", overflow: "hidden" }}
+        >
+          <button
+            onClick={handleCtxManage}
+            style={{ display: "block", padding: "8px 14px", fontSize: 12.5, color: C.text1, background: "transparent", border: "none", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = C.bg)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            ⚙ Manage privileges…
+          </button>
+        </div>
+      )}
       <ReactFlow
         nodes={filteredNodes}
         edges={filteredEdges}
@@ -240,6 +298,7 @@ export default function DAGView({ data, direction = "TB", loading, hiddenNodes }
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         onNodeClick={onNodeClick}
+        onNodeContextMenu={onNodeContextMenu}
         onPaneClick={onPaneClick}
         fitView
         fitViewOptions={{ padding: 0.1 }}

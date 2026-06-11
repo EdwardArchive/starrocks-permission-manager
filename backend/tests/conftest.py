@@ -25,8 +25,12 @@ TEST_USER = "test_admin"
 TEST_PASS = "test_pass"
 
 
-def make_token(*, is_admin: bool = True) -> str:
-    session_id = session_store.create(TEST_HOST, TEST_PORT, TEST_USER, TEST_PASS, is_admin=is_admin)
+def make_token(*, is_admin: bool = True, can_manage_grants: bool | None = None) -> str:
+    if can_manage_grants is None:
+        can_manage_grants = is_admin
+    session_id = session_store.create(
+        TEST_HOST, TEST_PORT, TEST_USER, TEST_PASS, is_admin=is_admin, can_manage_grants=can_manage_grants
+    )
     return create_token(session_id, TEST_USER)
 
 
@@ -348,7 +352,7 @@ def client(mock_db, query_map):
 
     def _override_credentials(authorization: str = Header(default="")):
         _default = {"host": TEST_HOST, "port": TEST_PORT, "username": TEST_USER,
-                     "password": TEST_PASS, "is_admin": True}
+                     "password": TEST_PASS, "is_admin": True, "can_manage_grants": True}
         if not authorization or not authorization.startswith("Bearer "):
             return _default
         token = authorization[7:]

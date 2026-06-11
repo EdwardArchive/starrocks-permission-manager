@@ -43,6 +43,13 @@ def execute_single(conn, sql: str, params: tuple | None = None) -> dict[str, Any
     return rows[0] if rows else None
 
 
+def execute_statement(conn, sql: str, params: tuple | None = None) -> None:
+    """Run a write statement (GRANT/REVOKE/INSERT/SET) that returns no result set."""
+    cursor = conn.cursor()
+    cursor.execute(sql, params or ())
+    cursor.close()
+
+
 def test_connection(host: str, port: int, username: str, password: str) -> bool:
     try:
         with get_connection(host, port, username, password) as conn:

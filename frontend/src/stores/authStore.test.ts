@@ -13,6 +13,7 @@ const mockUser: UserInfo = {
   roles: ["role_admin", "db_reader"],
   default_role: "role_admin",
   is_user_admin: true,
+  can_manage_grants: true,
 };
 
 beforeEach(() => {

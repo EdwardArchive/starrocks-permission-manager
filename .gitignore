@@ -13,3 +13,7 @@ frontend/coverage/
 reports/
 frontend/mockup-*.html
 backup_temp/
+
+# Playwright artifacts
+frontend/test-results/
+frontend/playwright-report/

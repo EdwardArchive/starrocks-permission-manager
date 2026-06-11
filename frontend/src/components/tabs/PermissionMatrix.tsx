@@ -4,6 +4,8 @@ import type { PrivilegeGrant } from "../../types";
 import InlineIcon from "../common/InlineIcon";
 import { C, PRIV_BY_TYPE, PRIV_KEY_MAP, matrixTh } from "../../utils/inventory-helpers";
 import { Loader } from "./inventory-ui";
+import { useAuthStore } from "../../stores/authStore";
+import { useGrantStore } from "../../stores/grantStore";
 
 /* ── GranteeName ── */
 export function GranteeName({ name, grants }: { name: string; grants: PrivilegeGrant[] }) {
@@ -38,6 +40,21 @@ export function PermissionMatrixView({ grants, objectType, filterGrantees }: {
 }) {
   const privKey = PRIV_KEY_MAP[objectType] || "table";
   const columns = PRIV_BY_TYPE[privKey] || [];
+  const canManageGrants = useAuthStore((s) => s.user?.can_manage_grants ?? false);
+  const openWizard = useGrantStore((s) => s.openWizard);
+
+  const revokeFromCell = (grant: PrivilegeGrant) =>
+    openWizard({
+      action: "REVOKE",
+      grantee: { name: grant.grantee, type: grant.grantee_type === "ROLE" ? "ROLE" : "USER" },
+      object: {
+        object_type: grant.object_type,
+        catalog: grant.object_catalog,
+        database: grant.object_database,
+        name: grant.object_name,
+      },
+      privileges: [grant.privilege_type],
+    });
 
   /* Group grants by grantee */
   const granteeMap: Record<string, PrivilegeGrant[]> = {};
@@ -115,9 +132,22 @@ export function PermissionMatrixView({ grants, objectType, filterGrantees }: {
                   const badge = isD ? "D" : "I";
                   const bg = isD ? "rgba(34,197,94,0.2)" : "rgba(59,130,246,0.2)";
                   const fg = isD ? "#4ade80" : "#60a5fa";
+                  const revocable = canManageGrants && isD && grant != null;
                   return (
                     <td key={col} style={{ textAlign: "center", padding: "6px 4px" }}>
-                      <span style={{ display: "inline-block", width: 22, height: 18, lineHeight: "18px", borderRadius: 3, fontSize: 10, fontWeight: 700, background: bg, color: fg }}>{badge}</span>
+                      <span
+                        data-testid={revocable ? "matrix-revoke-cell" : undefined}
+                        title={revocable ? `Revoke ${col} from ${grantee}` : undefined}
+                        onClick={revocable ? () => revokeFromCell(grant) : undefined}
+                        style={{
+                          display: "inline-block", width: 22, height: 18, lineHeight: "18px", borderRadius: 3,
+                          fontSize: 10, fontWeight: 700, background: bg, color: fg,
+                          cursor: revocable ? "pointer" : "default",
+                          ...(revocable ? { boxShadow: `inset 0 0 0 1px ${fg}55` } : {}),
+                        }}
+                        onMouseEnter={revocable ? (e) => { e.currentTarget.textContent = "⊖"; } : undefined}
+                        onMouseLeave={revocable ? (e) => { e.currentTarget.textContent = badge; } : undefined}
+                      >{badge}</span>
                     </td>
                   );
                 })}

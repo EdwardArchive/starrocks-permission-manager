@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useDagStore } from "../../stores/dagStore";
+import { useAuthStore } from "../../stores/authStore";
+import { useGrantStore } from "../../stores/grantStore";
 import { getUserEffectivePrivileges } from "../../api/user";
 import InlineIcon from "../common/InlineIcon";
 import GrantTreeView from "../common/GrantTreeView";
@@ -9,6 +11,8 @@ import type { PrivilegeGrant } from "../../types";
 
 export default function UserDetailPanel() {
   const { selectedNode } = useDagStore();
+  const canManageGrants = useAuthStore((s) => s.user?.can_manage_grants ?? false);
+  const openWizard = useGrantStore((s) => s.openWizard);
   const [state, setState] = useState<{ grants: PrivilegeGrant[]; loading: boolean; loadedNodeId: string | null }>({
     grants: [], loading: false, loadedNodeId: null,
   });
@@ -33,6 +37,22 @@ export default function UserDetailPanel() {
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
         <InlineIcon type="user" size={18} />
         <h3 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>{selectedNode.label}</h3>
+        {canManageGrants && (
+          <button
+            data-testid="panel-manage-btn"
+            onClick={() =>
+              openWizard({
+                grantee: {
+                  name: selectedNode.label,
+                  type: selectedNode.type.toUpperCase() === "ROLE" ? "ROLE" : "USER",
+                },
+              })
+            }
+            style={{ marginLeft: "auto", padding: "3px 10px", fontSize: 11, borderRadius: 6, border: `1px solid ${C.accent}`, background: "transparent", color: C.accent, cursor: "pointer", fontFamily: "inherit" }}
+          >
+            ⚙ Manage…
+          </button>
+        )}
       </div>
       <p style={{ fontSize: 12, color: C.text2, marginBottom: 14 }}>
         {(() => {

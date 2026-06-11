@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.routers import (
     admin_dag,
+    admin_grants,
     admin_privileges,
     admin_roles,
     admin_search,
@@ -72,6 +73,9 @@ app.include_router(admin_search.router, prefix="/api/admin/search", tags=["admin
 
 # Cluster routes (all logged-in users; StarRocks enforces cluster_admin / SYSTEM OPERATE)
 app.include_router(cluster.router, prefix="/api/cluster", tags=["cluster"])
+
+# Grant write routes (admin + user_admin capability; require_grant_admin enforced)
+app.include_router(admin_grants.router, prefix="/api/admin/grants", tags=["admin-grants"])
 
 
 @app.exception_handler(mysql.connector.errors.Error)
