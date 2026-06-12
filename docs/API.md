@@ -658,6 +658,8 @@ FE resource metrics (heap, GC, p99) come from each FE's unauthenticated Promethe
 | replayed_journal_id | integer\|null | |
 | version / err_msg | string\|null | |
 | jvm_heap_used_pct | float\|null | From `/metrics` (`jvm_heap_size_bytes{type="used"}/{type="max"}`) |
+| connection_count | int\|null | From `/metrics` (`starrocks_fe_connection_total`) — active MySQL-protocol connections |
+| qps | float\|null | From `/metrics` (`starrocks_fe_qps`) |
 | gc_young_count / gc_young_time_ms | integer\|null | Cumulative YoungGC counters from `/metrics` |
 | gc_old_count / gc_old_time_ms | integer\|null | Cumulative OldGC counters |
 | query_p99_ms | float\|null | `starrocks_fe_query_latency{type="99_quantile"}` |
@@ -695,6 +697,8 @@ FE resource metrics (heap, GC, p99) come from each FE's unauthenticated Promethe
 | avg_cpu_used_pct | float\|null | Avg of `cpu_used_pct` across all nodes that report it (CN natively; BE via `/metrics` probe) |
 | avg_mem_used_pct | float\|null | Avg of `mem_used_pct` across all nodes that report it |
 | avg_fe_heap_used_pct | float\|null | Avg of `jvm_heap_used_pct` across FEs whose `/metrics` succeeded |
+| total_connections | int\|null | Sum of FE `connection_count` (from `/metrics`) |
+| total_qps | float\|null | Sum of FE `qps` (from `/metrics`) |
 
 > **Cache**: Results are cached per `{username}:{mode}` for `SRPM_CACHE_TTL_SECONDS` (default: 60 s). The cache key includes `mode` so a user's full / limited results never collide.
 

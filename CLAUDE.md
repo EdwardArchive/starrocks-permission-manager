@@ -234,6 +234,7 @@ When code or project structure changes, run a sub-agent after completing the tas
   - `/api/cluster/queries` (issue #15): `SHOW PROC '/global_current_queries'` (all-FE view; `'/current_queries'` is **FE-local** and misses queries behind a load balancer — fallback only) joined with `SHOW FULL PROCESSLIST` on ConnectionId for SQL text; numeric sort keys parsed server-side; 5s per-user TTL cache; denied → 403, rendered in place (no limited fallback). See docs/QUERY_MONITORING_DESIGN.md for live-validation evidence.
   - **Cluster timezone**: SHOW timestamps are naive strings in the *cluster's* TZ. `server_now` is the reference clock; frontend computes skew via `clockSkewMs()`/`skewedNow()` so relative labels are correct regardless of zone. Never compare cluster timestamps against the browser clock directly.
   - **BE CPU**: SHOW BACKENDS lacks CPU; `be_metrics.py` probes BE `/metrics` and derives utilization from `starrocks_be_cpu` counter deltas between scrapes (first scrape → None). CN reports CpuUsedPct natively.
+  - **FE health**: FE `/metrics` exposes **no CPU metric** (only `jvm_*` heap/GC/threads + `starrocks_fe_*`). FE cards show heap, GC, query p99, and `connection_count`/`qps` (from `starrocks_fe_connection_total`/`starrocks_fe_qps`); `total_connections`/`total_qps` aggregate them. Real FE CPU would need infra metrics (cAdvisor/node-exporter), outside this app's data sources.
 
 - **DAG**: 2 views (Object Hierarchy TB, Role Hierarchy TB). `SET ROLE ALL` before object-hierarchy queries. (unchanged)
 
