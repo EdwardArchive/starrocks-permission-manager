@@ -178,6 +178,8 @@ export interface FENodeInfo {
   gc_old_count: number | null;
   gc_old_time_ms: number | null;
   query_p99_ms: number | null;
+  connection_count: number | null;
+  qps: number | null;
   metrics_error: string | null;
 }
 
@@ -219,6 +221,8 @@ export interface ClusterMetrics {
   avg_cpu_used_pct: number | null;
   avg_mem_used_pct: number | null;
   avg_fe_heap_used_pct: number | null;
+  total_connections: number | null;
+  total_qps: number | null;
 }
 
 export interface ClusterStatusResponse {

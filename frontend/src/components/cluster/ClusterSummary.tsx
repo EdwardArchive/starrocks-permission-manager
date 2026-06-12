@@ -53,6 +53,7 @@ export function ClusterSummary({ data, gridColumns = "1fr 1fr" }: { data: Cluste
         {metrics.avg_cpu_used_pct != null && <Stat label="Avg CPU" value={`${metrics.avg_cpu_used_pct.toFixed(1)}%`} />}
         {metrics.avg_mem_used_pct != null && <Stat label="Avg Mem" value={`${metrics.avg_mem_used_pct.toFixed(1)}%`} />}
         {metrics.avg_fe_heap_used_pct != null && <Stat label="Avg FE Heap" value={`${metrics.avg_fe_heap_used_pct.toFixed(1)}%`} />}
+        {metrics.total_connections != null && <Stat label="Connections" value={String(metrics.total_connections)} />}
       </div>
     </div>
   );
@@ -121,6 +122,13 @@ export function ClusterKpiBand({ data, onJump }: {
           />
         );
       })()}
+      {m.total_connections != null && (
+        <KpiTile
+          label="Connections"
+          value={m.total_qps != null && m.total_qps > 0 ? `${m.total_connections} · ${m.total_qps} qps` : String(m.total_connections)}
+          onClick={onJump && (() => onJump("frontends"))}
+        />
+      )}
       {m.total_tablets != null && <KpiTile label="Tablets" value={m.total_tablets.toLocaleString()} />}
       {m.total_data_used && <KpiTile label="Data Used" value={m.total_data_used} />}
     </div>

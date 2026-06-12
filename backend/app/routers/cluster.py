@@ -355,6 +355,8 @@ def _inject_metrics(frontends: list[FENodeInfo]) -> str | None:
             fe.gc_old_count = result.gc_old_count
             fe.gc_old_time_ms = result.gc_old_time_ms
             fe.query_p99_ms = result.query_p99_ms
+            fe.connection_count = result.connection_count
+            fe.qps = result.qps
         else:
             fe.metrics_error = f"{result.reason}: {result.message}"
 
@@ -460,6 +462,12 @@ def get_cluster_status(
     heap_pcts = [fe.jvm_heap_used_pct for fe in frontends if fe.jvm_heap_used_pct is not None]
     if heap_pcts:
         metrics.avg_fe_heap_used_pct = round(sum(heap_pcts) / len(heap_pcts), 2)
+    conns = [fe.connection_count for fe in frontends if fe.connection_count is not None]
+    if conns:
+        metrics.total_connections = sum(conns)
+    qpss = [fe.qps for fe in frontends if fe.qps is not None]
+    if qpss:
+        metrics.total_qps = round(sum(qpss), 2)
 
     has_errors = any((not fe.alive) or bool(fe.err_msg) for fe in frontends) or any(
         (not be.alive) or bool(be.err_msg) for be in backends

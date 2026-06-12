@@ -25,6 +25,8 @@ export function makeFENode(
     gc_old_count: 1,
     gc_old_time_ms: 200,
     query_p99_ms: 15.3,
+    connection_count: 8,
+    qps: 1.2,
     metrics_error: null,
     ...overrides,
   };
@@ -79,6 +81,8 @@ export function makeClusterData(
       avg_cpu_used_pct: null,
       avg_mem_used_pct: 60.3,
       avg_fe_heap_used_pct: 45.2,
+      total_connections: 8,
+      total_qps: 1.2,
     },
     has_errors: false,
     mode: "full",

@@ -26,6 +26,8 @@ class FEMetricsData:
     gc_old_count: int | None = None
     gc_old_time_ms: int | None = None
     query_p99_ms: float | None = None
+    connection_count: int | None = None  # starrocks_fe_connection_total (MySQL protocol)
+    qps: float | None = None  # starrocks_fe_qps
 
 
 @dataclass
@@ -43,6 +45,8 @@ _GC_YOUNG_TIME_RE = re.compile(r'^jvm_young_gc\{type="time"\}\s+(\d+)', re.MULTI
 _GC_OLD_COUNT_RE = re.compile(r'^jvm_old_gc\{type="count"\}\s+(\d+)', re.MULTILINE)
 _GC_OLD_TIME_RE = re.compile(r'^jvm_old_gc\{type="time"\}\s+(\d+)', re.MULTILINE)
 _P99_RE = re.compile(r'^starrocks_fe_query_latency\{type="99_quantile"\}\s+([\d.eE+-]+)', re.MULTILINE)
+_CONN_RE = re.compile(r"^starrocks_fe_connection_total\s+(\d+)", re.MULTILINE)
+_QPS_RE = re.compile(r"^starrocks_fe_qps\s+([\d.eE+-]+)", re.MULTILINE)
 
 
 def _extract_float(pattern: re.Pattern, body: str) -> float | None:
@@ -80,6 +84,8 @@ def _parse_metrics_body(body: str) -> FEMetricsData:
         gc_old_count=_extract_int(_GC_OLD_COUNT_RE, body),
         gc_old_time_ms=_extract_int(_GC_OLD_TIME_RE, body),
         query_p99_ms=_extract_float(_P99_RE, body),
+        connection_count=_extract_int(_CONN_RE, body),
+        qps=_extract_float(_QPS_RE, body),
     )
 
 

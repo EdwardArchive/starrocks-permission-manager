@@ -24,6 +24,8 @@ jvm_old_gc{type="time"} 150
 starrocks_fe_query_latency{type="50_quantile"} 1.2
 starrocks_fe_query_latency{type="95_quantile"} 4.8
 starrocks_fe_query_latency{type="99_quantile"} 9.7
+starrocks_fe_connection_total 14
+starrocks_fe_qps 0.125
 starrocks_fe_unrelated_metric 42
 """
 
@@ -37,6 +39,8 @@ def test_parse_full_payload():
     assert data.gc_old_count == 2
     assert data.gc_old_time_ms == 150
     assert data.query_p99_ms == pytest.approx(9.7)
+    assert data.connection_count == 14
+    assert data.qps == pytest.approx(0.125)
 
 
 def test_parse_missing_lines_partial_none():

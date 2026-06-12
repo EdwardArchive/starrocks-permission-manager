@@ -106,7 +106,7 @@ describe("ClusterDrawer (quick glance)", () => {
           metrics: {
             fe_total: 2, fe_alive: 2, be_total: 0, be_alive: 0, cn_total: 3, cn_alive: 3,
             total_tablets: null, total_data_used: null, avg_disk_used_pct: null,
-            avg_cpu_used_pct: 12, avg_mem_used_pct: null, avg_fe_heap_used_pct: null,
+            avg_cpu_used_pct: 12, avg_mem_used_pct: null, avg_fe_heap_used_pct: null, total_connections: null, total_qps: null,
           },
         }),
       );

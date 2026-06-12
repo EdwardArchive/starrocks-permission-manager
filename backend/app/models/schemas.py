@@ -150,6 +150,8 @@ class FENodeInfo(BaseModel):
     gc_old_count: int | None = None
     gc_old_time_ms: int | None = None
     query_p99_ms: float | None = None
+    connection_count: int | None = None  # active MySQL-protocol connections on this FE
+    qps: float | None = None  # queries per second (recent)
     metrics_error: str | None = None  # null on success; short reason string on failure
 
 
@@ -191,6 +193,8 @@ class ClusterMetrics(BaseModel):
     avg_cpu_used_pct: float | None = None
     avg_mem_used_pct: float | None = None
     avg_fe_heap_used_pct: float | None = None  # from FE /metrics
+    total_connections: int | None = None  # sum of FE connection counts (from /metrics)
+    total_qps: float | None = None  # sum of FE qps (from /metrics)
 
 
 class ClusterStatusResponse(BaseModel):

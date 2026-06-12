@@ -29,6 +29,8 @@ def _stub_fe_metrics(monkeypatch):
             gc_old_count=0,
             gc_old_time_ms=0,
             query_p99_ms=12.3,
+            connection_count=7,
+            qps=1.5,
         )
 
     monkeypatch.setattr(cluster_mod, "fetch_fe_metrics", _fake)
@@ -74,8 +76,13 @@ def test_cluster_status_happy_path(client, auth_header):
         assert fe["jvm_heap_used_pct"] == pytest.approx(5.0)
         assert fe["gc_young_count"] == 100
         assert fe["query_p99_ms"] == pytest.approx(12.3)
+        assert fe["connection_count"] == 7
+        assert fe["qps"] == pytest.approx(1.5)
         assert fe["metrics_error"] is None
     assert metrics["avg_fe_heap_used_pct"] == pytest.approx(5.0)
+    # aggregate connection/qps = sum across the 2 FE nodes
+    assert metrics["total_connections"] == 14
+    assert metrics["total_qps"] == pytest.approx(3.0)
 
 
 # ── Leader detection ──

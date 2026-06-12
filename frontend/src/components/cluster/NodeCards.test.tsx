@@ -25,6 +25,19 @@ describe("FENodeCard", () => {
     expect(screen.getByText("45.2%")).toBeInTheDocument();
   });
 
+  it("shows connections and p99 in the always-visible line", () => {
+    render(<FENodeCard node={makeFENode()} expanded={false} onToggle={noop} />);
+    expect(screen.getByText("Conns")).toBeInTheDocument();
+    expect(screen.getByText("8")).toBeInTheDocument(); // connection_count from fixture
+    expect(screen.getByText("p99")).toBeInTheDocument();
+  });
+
+  it("expanded card shows a Connections detail row", () => {
+    render(<FENodeCard node={makeFENode()} expanded={true} onToggle={noop} />);
+    // "Connections" only appears in the expanded detail (the compact line says "Conns")
+    expect(screen.getByText("Connections")).toBeInTheDocument();
+  });
+
   it("shows metrics unavailable message when metrics_error is set", () => {
     render(
       <FENodeCard

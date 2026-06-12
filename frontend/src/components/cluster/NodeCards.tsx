@@ -111,11 +111,26 @@ export function FENodeCard({ node, expanded, onToggle, now, heapHistory }: { nod
         <span style={{ fontSize: 10, color: C.text3, marginLeft: 2 }}>{expanded ? "▲" : "▼"}</span>
       </div>
 
-      {/* Resource bars — Heap usage (from /metrics) */}
+      {/* Resource bars — Heap usage (from /metrics) + connections / latency line */}
       {(hasMetrics || node.metrics_error) && (
         <div style={{ padding: "4px 12px 8px" }}>
           {hasMetrics ? (
-            <MetricRow label="Heap" pct={node.jvm_heap_used_pct ?? 0} spark={heapHistory} />
+            <>
+              <MetricRow label="Heap" pct={node.jvm_heap_used_pct ?? 0} spark={heapHistory} />
+              {(node.connection_count != null || node.query_p99_ms != null) && (
+                <div style={{ display: "flex", gap: 14, fontSize: 11, color: C.text2, marginTop: 2 }}>
+                  {node.connection_count != null && (
+                    <span>Conns <strong style={{ color: C.text1 }}>{node.connection_count}</strong></span>
+                  )}
+                  {node.query_p99_ms != null && (
+                    <span>p99 <strong style={{ color: C.text1 }}>{node.query_p99_ms.toFixed(1)} ms</strong></span>
+                  )}
+                  {node.qps != null && node.qps > 0 && (
+                    <span>QPS <strong style={{ color: C.text1 }}>{node.qps.toFixed(2)}</strong></span>
+                  )}
+                </div>
+              )}
+            </>
           ) : (
             <div
               style={{
@@ -154,6 +169,12 @@ export function FENodeCard({ node, expanded, onToggle, now, heapHistory }: { nod
           )}
           {node.query_p99_ms != null && (
             <Detail label="Query p99" value={`${node.query_p99_ms.toFixed(1)} ms`} />
+          )}
+          {node.connection_count != null && (
+            <Detail label="Connections" value={String(node.connection_count)} />
+          )}
+          {node.qps != null && (
+            <Detail label="QPS" value={node.qps.toFixed(2)} />
           )}
           {node.err_msg && (
             <div style={{ gridColumn: "1 / -1", color: "#ef4444", fontSize: 12, marginTop: 4, padding: "4px 8px", background: "rgba(239,68,68,0.08)", borderRadius: 4 }}>

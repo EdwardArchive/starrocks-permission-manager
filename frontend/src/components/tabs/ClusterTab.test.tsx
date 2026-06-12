@@ -54,7 +54,7 @@ describe("ClusterTab", () => {
           cn_total: 1, cn_alive: 1,
           total_tablets: null, total_data_used: null,
           avg_disk_used_pct: null, avg_cpu_used_pct: null,
-          avg_mem_used_pct: null, avg_fe_heap_used_pct: null,
+          avg_mem_used_pct: null, avg_fe_heap_used_pct: null, total_connections: null, total_qps: null,
         },
       }),
     );
@@ -71,7 +71,7 @@ describe("ClusterTab", () => {
           cn_total: 1, cn_alive: 1,
           total_tablets: null, total_data_used: null,
           avg_disk_used_pct: null, avg_cpu_used_pct: null,
-          avg_mem_used_pct: null, avg_fe_heap_used_pct: null,
+          avg_mem_used_pct: null, avg_fe_heap_used_pct: null, total_connections: null, total_qps: null,
         },
       }),
     );
