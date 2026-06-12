@@ -32,6 +32,7 @@ await page.getByTestId("mp-grantee-name").press("Tab");
 await page.waitForTimeout(300);
 await page.getByTestId("mp-database").fill("srpm_e2e_db");
 await page.getByTestId("mp-name").fill("demo_t");
+await page.getByTestId("mp-name").press("Tab"); // close the combo dropdown before clicking below it
 await page.getByTestId("mp-priv-SELECT").check();
 await page.getByTestId("mp-preview-sql").filter({ hasText: "GRANT SELECT" }).waitFor({ timeout: 10000 });
 await page.screenshot({ path: `${OUT}/manage-privileges-wizard.png` });

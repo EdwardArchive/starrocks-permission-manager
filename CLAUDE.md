@@ -131,6 +131,7 @@ When code or project structure changes, run a sub-agent after completing the tas
             │   └── ManagePrivilegesModal.tsx  # GRANT/REVOKE wizard (presets, multi-revoke, keep-open)
             ├── layout/Header.tsx, Sidebar.tsx  # Sidebar uses isAdmin-conditional APIs; Header has cluster icon
             ├── common/
+            │   ├── ComboInput.tsx     # Themed combobox (input + chevron + dark dropdown; replaces datalist/select)
             │   ├── InlineIcon.tsx     # SVG icon renderer
             │   ├── GrantTreeView.tsx  # Unified privilege display (scope-grouped)
             │   └── ExportPngBtn.tsx

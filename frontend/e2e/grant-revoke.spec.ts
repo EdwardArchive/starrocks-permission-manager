@@ -37,6 +37,23 @@ async function fillGrantee(page: Page, name: string) {
   await page.waitForTimeout(250);
 }
 
+/** Fill a ComboInput field and blur it so its dropdown closes
+ * (the custom dropdown overlays the row below and would intercept clicks). */
+async function fillCombo(page: Page, testId: string, value: string) {
+  const input = page.getByTestId(testId);
+  await input.fill(value);
+  await input.press("Tab");
+}
+
+/** Pick an option in a select-only ComboInput (replaces native selectOption). */
+async function selectCombo(page: Page, testId: string, value: string) {
+  await page.getByTestId(testId).click();
+  await page
+    .getByTestId(`${testId}-option`)
+    .filter({ hasText: new RegExp(`^${value}$`) })
+    .click();
+}
+
 test("admin sees Manage Privileges button and Grant Audit tab", async ({ page }) => {
   await login(page, USER, PASS);
   await expect(page.getByTestId("manage-privileges-btn")).toBeVisible({ timeout: 15_000 });
@@ -48,10 +65,10 @@ test("GRANT privilege on table: wizard → preview → execute", async ({ page }
   await openWizard(page);
 
   await fillGrantee(page, TARGET_USER);
-  await page.getByTestId("mp-object-type").selectOption("TABLE");
-  await page.getByTestId("mp-catalog").fill("default_catalog");
-  await page.getByTestId("mp-database").fill(E2E_DB);
-  await page.getByTestId("mp-name").fill(E2E_TABLE);
+  await selectCombo(page, "mp-object-type", "TABLE");
+  await fillCombo(page, "mp-catalog", "default_catalog");
+  await fillCombo(page, "mp-database", E2E_DB);
+  await fillCombo(page, "mp-name", E2E_TABLE);
   await page.getByTestId("mp-priv-SELECT").check();
 
   const preview = page.getByTestId("mp-preview-sql");
@@ -82,8 +99,8 @@ test("already-granted badge shows for existing grants", async ({ page }) => {
   await openWizard(page);
   // the SELECT grant from the previous test still exists
   await fillGrantee(page, TARGET_USER);
-  await page.getByTestId("mp-database").fill(E2E_DB);
-  await page.getByTestId("mp-name").fill(E2E_TABLE);
+  await fillCombo(page, "mp-database", E2E_DB);
+  await fillCombo(page, "mp-name", E2E_TABLE);
   await expect(page.getByTestId("mp-already-granted").first()).toBeVisible({ timeout: 15_000 });
 });
 
@@ -119,8 +136,8 @@ test("presets and danger badge", async ({ page }) => {
   await login(page, USER, PASS);
   await openWizard(page);
   await fillGrantee(page, TARGET_USER);
-  await page.getByTestId("mp-database").fill(E2E_DB);
-  await page.getByTestId("mp-name").fill(E2E_TABLE);
+  await fillCombo(page, "mp-database", E2E_DB);
+  await fillCombo(page, "mp-name", E2E_TABLE);
 
   await page.getByTestId("mp-preset-Read-write").click();
   await expect(page.getByTestId("mp-preview-sql")).toContainText("GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE", {
@@ -136,7 +153,7 @@ test("grantee suggestion auto-sets the grantee type", async ({ page }) => {
   await login(page, USER, PASS);
   await openWizard(page);
   await page.getByTestId("mp-grantee-name").fill(TARGET_ROLE.slice(0, 8));
-  const suggestion = page.getByTestId("mp-grantee-suggestion").filter({ hasText: TARGET_ROLE }).first();
+  const suggestion = page.getByTestId("mp-grantee-name-option").filter({ hasText: TARGET_ROLE }).first();
   await expect(suggestion).toBeVisible({ timeout: 10_000 });
   await suggestion.click();
   await expect(page.getByTestId("mp-grantee-name")).toHaveValue(TARGET_ROLE);
@@ -160,7 +177,7 @@ test("ROLE assignment with keep-open: grant then revoke in one session", async (
   await openWizard(page);
   await page.getByTestId("mp-type-role").check();
   await page.getByTestId("mp-grantee-name").fill(TARGET_USER);
-  await page.getByTestId("mp-role").fill(TARGET_ROLE);
+  await fillCombo(page, "mp-role", TARGET_ROLE);
   await page.getByTestId("mp-keep-open").check();
   const preview = page.getByTestId("mp-preview-sql");
   await expect(preview).toContainText(`GRANT \`${TARGET_ROLE}\` TO USER '${TARGET_USER}'@'%'`, { timeout: 10_000 });
@@ -183,10 +200,10 @@ test("invalid function signature shows inline validation error", async ({ page }
   await login(page, USER, PASS);
   await openWizard(page);
 
-  await page.getByTestId("mp-grantee-name").fill(TARGET_USER);
-  await page.getByTestId("mp-object-type").selectOption("FUNCTION");
-  await page.getByTestId("mp-database").fill(E2E_DB);
-  await page.getByTestId("mp-name").fill("fn(int) WITH GRANT OPTION");
+  await fillGrantee(page, TARGET_USER);
+  await selectCombo(page, "mp-object-type", "FUNCTION");
+  await fillCombo(page, "mp-database", E2E_DB);
+  await fillCombo(page, "mp-name", "fn(int) WITH GRANT OPTION");
   await page.getByTestId("mp-priv-USAGE").check();
 
   await expect(page.getByTestId("mp-preview-sql")).toContainText("Invalid function signature", {

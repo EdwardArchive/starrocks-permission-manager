@@ -13,6 +13,7 @@ import {
 import { getCatalogs, getDatabases, getTables } from "../../api/user";
 import { showToast } from "../../utils/toast";
 import { C } from "../../utils/colors";
+import ComboInput from "../common/ComboInput";
 import type { GrantRequest, GrantSpec, PrivilegeGrant } from "../../types";
 
 const OBJECT_TYPE_ORDER = ["CATALOG", "DATABASE", "TABLE", "VIEW", "MATERIALIZED VIEW", "FUNCTION"];
@@ -36,12 +37,6 @@ const PRESETS: { label: string; privs: string[] }[] = [
   { label: "Read-write", privs: ["SELECT", "INSERT", "UPDATE", "DELETE"] },
   { label: "Full", privs: ["ALL"] },
 ];
-
-const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "7px 10px", fontSize: 13, color: C.text1,
-  background: C.bg, border: `1px solid ${C.borderLight}`, borderRadius: 6,
-  fontFamily: "inherit", boxSizing: "border-box",
-};
 
 const labelStyle: React.CSSProperties = { fontSize: 12, color: C.text2, marginBottom: 4, display: "block" };
 
@@ -113,7 +108,6 @@ function WizardBody() {
   // data sources
   const [spec, setSpec] = useState<GrantSpec | null>(null);
   const [granteeSuggestions, setGranteeSuggestions] = useState<{ name: string; type: string }[]>([]);
-  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [catalogs, setCatalogs] = useState<string[]>([]);
   const [databases, setDatabases] = useState<string[]>([]);
   const [objects, setObjects] = useState<{ name: string; object_type: string }[]>([]);
@@ -401,43 +395,30 @@ function WizardBody() {
           </div>
         </div>
 
-        {/* Grantee with custom suggestion dropdown */}
+        {/* Grantee with server-filtered suggestion dropdown */}
         <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
-          <div style={{ flex: 1, position: "relative" }}>
+          <div style={{ flex: 1 }}>
             <label style={labelStyle}>{grantType === "ROLE" ? "Grantee (recipient)" : "Grantee"}</label>
-            <input
-              data-testid="mp-grantee-name"
-              style={inputStyle}
+            <ComboInput
+              testId="mp-grantee-name"
               placeholder="user or role name (e.g. alice or 'alice'@'%')"
               value={granteeName}
-              autoComplete="off"
-              onChange={(e) => { setGranteeName(e.target.value); setSuggestionsOpen(true); }}
-              onFocus={() => setSuggestionsOpen(true)}
-              onBlur={() => setTimeout(() => setSuggestionsOpen(false), 150)}
+              onChange={setGranteeName}
+              localFilter={false}
+              options={granteeSuggestions.map((s) => ({
+                value: s.name,
+                meta: s.type,
+                badge: {
+                  text: s.type.toUpperCase(),
+                  bg: s.type === "role" ? "#7c3aed33" : "#0ea5e933",
+                  fg: s.type === "role" ? "#c4b5fd" : "#7dd3fc",
+                },
+              }))}
+              onSelect={(o) => {
+                setGranteeName(o.value);
+                setGranteeType(o.meta === "role" ? "ROLE" : "USER");
+              }}
             />
-            {suggestionsOpen && granteeSuggestions.length > 0 && (
-              <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 20, background: C.card, border: `1px solid ${C.borderLight}`, borderRadius: 6, maxHeight: 180, overflowY: "auto", boxShadow: "0 6px 16px rgba(0,0,0,0.4)" }}>
-                {granteeSuggestions.map((s) => (
-                  <div
-                    key={`${s.type}:${s.name}`}
-                    data-testid="mp-grantee-suggestion"
-                    onMouseDown={() => {
-                      setGranteeName(s.name);
-                      setGranteeType(s.type === "role" ? "ROLE" : "USER");
-                      setSuggestionsOpen(false);
-                    }}
-                    style={{ padding: "6px 10px", fontSize: 13, color: C.text1, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = C.bg)}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                  >
-                    <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 4, background: s.type === "role" ? "#7c3aed33" : "#0ea5e933", color: s.type === "role" ? "#c4b5fd" : "#7dd3fc" }}>
-                      {s.type.toUpperCase()}
-                    </span>
-                    {s.name}
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
           <div>
             <label style={labelStyle}>Grantee type</label>
@@ -451,8 +432,7 @@ function WizardBody() {
         {grantType === "ROLE" ? (
           <div style={{ marginBottom: 14 }}>
             <label style={labelStyle}>Role to {action.toLowerCase()}</label>
-            <input data-testid="mp-role" style={inputStyle} list="mp-role-list" placeholder="role name" value={role} onChange={(e) => setRole(e.target.value)} />
-            <datalist id="mp-role-list">{allRoles.map((r) => <option key={r} value={r} />)}</datalist>
+            <ComboInput testId="mp-role" placeholder="role name" value={role} onChange={setRole} options={allRoles.map((r) => ({ value: r }))} />
           </div>
         ) : (
           <>
@@ -532,38 +512,36 @@ function WizardBody() {
                 <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
                   <div style={{ width: 170 }}>
                     <label style={labelStyle}>Object type</label>
-                    <select data-testid="mp-object-type" style={{ ...inputStyle, cursor: "pointer" }} value={objectType} onChange={(e) => { setObjectType(e.target.value); setPrivileges(new Set()); }}>
-                      {OBJECT_TYPE_ORDER.filter((t) => !spec || spec.object_types[t]).map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                    <ComboInput
+                      testId="mp-object-type"
+                      selectOnly
+                      value={objectType}
+                      onChange={(v) => { setObjectType(v); setPrivileges(new Set()); }}
+                      options={OBJECT_TYPE_ORDER.filter((t) => !spec || spec.object_types[t]).map((t) => ({ value: t }))}
+                    />
                   </div>
                   <div style={{ flex: 1 }}>
                     <label style={labelStyle}>Catalog</label>
-                    <input data-testid="mp-catalog" style={inputStyle} list="mp-catalog-list" value={catalog} onChange={(e) => setCatalog(e.target.value)} />
-                    <datalist id="mp-catalog-list">{catalogs.map((c) => <option key={c} value={c} />)}</datalist>
+                    <ComboInput testId="mp-catalog" value={catalog} onChange={setCatalog} options={catalogs.map((c) => ({ value: c }))} />
                   </div>
                   {needsDb && (
                     <div style={{ flex: 1 }}>
                       <label style={labelStyle}>Database</label>
-                      <input data-testid="mp-database" style={inputStyle} list="mp-db-list" value={database} onChange={(e) => setDatabase(e.target.value)} />
-                      <datalist id="mp-db-list">{databases.map((d) => <option key={d} value={d} />)}</datalist>
+                      <ComboInput testId="mp-database" value={database} onChange={setDatabase} options={databases.map((d) => ({ value: d }))} />
                     </div>
                   )}
                   {needsName && (
                     <div style={{ flex: 1 }}>
                       <label style={labelStyle}>{objectType === "FUNCTION" ? "Function (signature)" : "Object"}</label>
-                      <input
-                        data-testid="mp-name"
-                        style={inputStyle}
-                        list="mp-obj-list"
+                      <ComboInput
+                        testId="mp-name"
                         placeholder={objectType === "FUNCTION" ? "my_udf(INT,INT)" : "name"}
                         value={objName}
-                        onChange={(e) => setObjName(e.target.value)}
-                      />
-                      <datalist id="mp-obj-list">
-                        {objects
+                        onChange={setObjName}
+                        options={objects
                           .filter((o) => objectType === "FUNCTION" || o.object_type.toUpperCase().includes(objectType === "TABLE" ? "TABLE" : objectType))
-                          .map((o) => <option key={o.name} value={o.name} />)}
-                      </datalist>
+                          .map((o) => ({ value: o.name }))}
+                      />
                     </div>
                   )}
                 </div>
