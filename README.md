@@ -15,7 +15,7 @@ A web UI for visually exploring user, role, and object permission structures acr
   - **My Inventory**: Browse all accessible objects by type with detail side panel (Roles, Users, Catalogs, Databases, Tables, MVs, Views, Functions, Resource Groups, Warehouses, etc.)
   - **Cluster Monitor**: FE/BE/CN node dashboard + running-queries panel (auto-refresh)
 - **Admin & Non-Admin Support** — Admin users see all roles/users/objects via `/api/admin/*` routes (sys.* tables). Non-admin users see only their accessible objects and role chain via `/api/user/*` routes (SHOW GRANTS + INFORMATION_SCHEMA). Admin routes enforce `require_admin` (403 for non-admin).
-- **Cluster Monitor** — Full-page dashboard (tab) with a KPI gauge band, node health cards (CPU/heap trend sparklines, dead nodes first), and a **Running / Recent queries** panel. Running: sortable by exec time / CPU% / memory / scan volume, an instantaneous CPU share, text filter, selectable refresh interval, click a row for the full SQL, and a **KILL** action for grant admins (audited to `grant_log`). Recent: completed-query history from the StarRocks AuditLoader plugin with an errors-only filter. The header cluster icon shows a red badge when any node is down and opens a live gauge drawer (15 s auto-refresh) whose KPIs, alerts, and top-query preview jump straight to the matching section in the tab. Node inventory and queries require `cluster_admin` (SYSTEM OPERATE); non-privileged users get a limited view.
+- **Cluster Monitor** — Full-page dashboard (tab) with a KPI gauge band (live node counts, connections · QPS, query p99), node health cards (BE/CN: CPU/heap trend sparklines; FE: heap + connections, query p99, QPS — FE `/metrics` exposes no CPU; dead nodes first), and a **Running / Recent queries** panel. Running: sortable by exec time / CPU% / memory / scan volume, an instantaneous CPU share, text filter, selectable refresh interval, click a row for the full SQL, and a **KILL** action for grant admins (audited to `grant_log`). Recent: completed-query history from the StarRocks AuditLoader plugin with an errors-only filter. The header cluster icon shows a red badge when any node is down and opens a live gauge drawer (15 s auto-refresh) whose KPIs, alerts, and top-query preview jump straight to the matching section in the tab. Node inventory and queries require `cluster_admin` (SYSTEM OPERATE); non-privileged users get a limited view.
 - **Object Permission Matrix** — Click an object to see a grantee × privilege matrix (Direct/Inherited indicators), with type-specific columns per object type
 - **Implicit USAGE** — TABLE-level grants automatically show implicit DATABASE/CATALOG USAGE access
 - **User/Role Privilege View** — Unified scope-grouped tree (GrantTreeView) across all panels
@@ -150,8 +150,9 @@ Every GRANT/REVOKE attempt (including denied ones) recorded in `srpm_audit.grant
 ![Resource Groups](docs/screenshots/resource-groups.png)
 
 ### Cluster Monitor
-KPI gauge band + node cards (CPU/heap sparklines) + Running/Recent queries with
-instant CPU share and grant-admin KILL (issue #15).
+KPI gauge band (connections · QPS, query p99) + node cards (BE/CN CPU·heap sparklines;
+FE heap + connections/p99/QPS) + Running/Recent queries with instant CPU share and
+grant-admin KILL (issue #15).
 
 ![Cluster Monitor](docs/screenshots/cluster-monitor.png)
 
@@ -169,7 +170,7 @@ instant CPU share and grant-admin KILL (issue #15).
 | **Role Map** | Shows role inheritance with full BFS child traversal. Clicking a role shows the complete inheritance chain (parents + children + users). | No |
 | **Permission Focus** | Search for a user or role to view their inheritance DAG and full privilege list side-by-side. | Yes |
 | **My Inventory** | Browse all accessible objects organized by sub-tabs (Roles, Users, Catalogs, Databases, Tables, MVs, Views, Functions, Resource Groups, Warehouses, etc.) with a detail side panel. | No |
-| **Cluster Monitor** | KPI gauges + FE/BE/CN node cards (sparklines) + Running/Recent queries (filter, instant CPU%, grant-admin KILL, completed-query history). Node/query data requires `cluster_admin`; others see a limited view. | No |
+| **Cluster Monitor** | KPI gauges (connections · QPS, query p99) + FE/BE/CN node cards (BE/CN CPU·heap sparklines; FE heap + connections/p99/QPS) + Running/Recent queries (filter, instant CPU%, grant-admin KILL, completed-query history). Node/query data requires `cluster_admin`; others see a limited view. | No |
 
 ### My Inventory Sub-tabs
 
