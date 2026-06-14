@@ -252,6 +252,7 @@ Privilege columns are type-specific:
 
 | Document | Description |
 |----------|-------------|
+| [Installation & Cluster Setup](INSTALLATION.md) | StarRocks-side tables, roles, and privileges per feature tier |
 | [API Reference](docs/API.md) | Endpoint details, request/response schemas, curl examples |
 | [Testing Guide](docs/TESTING.md) | Unit tests, integration tests, linting, environment variables |
 | [Contributing Guide](docs/CONTRIBUTING.md) | Architecture, development setup, code quality, PR guidelines |

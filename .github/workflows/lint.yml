@@ -39,6 +39,9 @@ jobs:
       - name: Ruff format check
         run: ruff format backend/app/ --check --diff
 
+      - name: Mypy type check
+        run: cd backend && mypy app/ --config-file ../pyproject.toml
+
       - name: Bandit security scan
         run: bandit -r backend/app/ -c pyproject.toml -f json -o bandit-report.json || true
         continue-on-error: false
