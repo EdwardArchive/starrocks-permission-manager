@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Manage Privileges · Modernization Mockups</title>
+<style>
+  :root{
+    --bg:#0f172a; --card:#1e293b; --card2:#243049; --border:#334155; --bl:#475569;
+    --t1:#e2e8f0; --t2:#94a3b8; --t3:#64748b;
+    --accent:#3b82f6; --accent-soft:#3b82f622; --green:#22c55e; --warn:#f59e0b;
+    --red:#ef4444; --red-soft:#ef444422; --violet:#8b5cf6;
+    --r-sm:6px; --r-md:8px; --r-lg:14px;
+    --font:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    --mono:'JetBrains Mono','SFMono-Regular',Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:var(--font); color:var(--t1);
+    background:radial-gradient(1200px 800px at 70% -10%, #1b2540 0%, #0b1020 55%, #080c18 100%);
+    min-height:100%;
+  }
+  /* ── top toolbar ── */
+  .toolbar{
+    position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:16px;
+    padding:14px 22px; background:rgba(15,23,42,.82); backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--border);
+  }
+  .toolbar h1{font-size:14px; font-weight:600; margin:0; color:var(--t1); letter-spacing:.2px}
+  .toolbar .sub{font-size:12px; color:var(--t3)}
+  .tabs{margin-left:auto; display:flex; gap:6px; background:var(--card); padding:4px; border-radius:var(--r-md); border:1px solid var(--border)}
+  .tabs button{
+    font:inherit; font-size:12.5px; color:var(--t2); background:transparent; border:0; cursor:pointer;
+    padding:7px 14px; border-radius:var(--r-sm); transition:.15s;
+  }
+  .tabs button:hover{color:var(--t1)}
+  .tabs button.active{background:var(--accent); color:#fff}
+
+  .stage{display:flex; align-items:flex-start; justify-content:center; padding:46px 20px 80px}
+  .stage > section{display:none}
+  .stage > section.show{display:block}
+  .stage-note{max-width:680px; margin:0 auto 18px; color:var(--t2); font-size:12.5px; line-height:1.55; text-align:center}
+  .stage-note b{color:var(--t1)}
+
+  /* ── modal shell ── */
+  .modal{
+    background:var(--card); border:1px solid var(--bl); border-radius:var(--r-lg);
+    box-shadow:0 28px 70px -20px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.02) inset;
+    display:flex; flex-direction:column; max-height:86vh; overflow:hidden;
+  }
+  .m-head{
+    display:flex; align-items:center; gap:10px; padding:16px 20px;
+    border-bottom:1px solid var(--border); background:linear-gradient(180deg,#222f49,#1e293b);
+  }
+  .m-head .title{font-size:15px; font-weight:600; flex:1}
+  .m-head .sub{font-size:11.5px; color:var(--t3); font-weight:400}
+  .icon-btn{display:inline-grid; place-items:center; width:30px; height:30px; border-radius:var(--r-sm);
+    border:1px solid transparent; background:transparent; color:var(--t2); cursor:pointer}
+  .icon-btn:hover{background:#ffffff10; color:var(--t1)}
+  .m-body{padding:18px 20px; overflow:auto}
+  .m-foot{
+    display:flex; align-items:center; gap:10px; padding:14px 20px;
+    border-top:1px solid var(--border); background:#1b2438;
+  }
+
+  /* ── building blocks ── */
+  .seg{display:inline-flex; background:var(--bg); border:1px solid var(--bl); border-radius:var(--r-md); padding:3px}
+  .seg button{font:inherit; font-size:12.5px; color:var(--t2); background:transparent; border:0; cursor:pointer;
+    padding:6px 16px; border-radius:6px; display:inline-flex; align-items:center; gap:6px; transition:.15s}
+  .seg button.on{color:#fff; background:var(--accent); box-shadow:0 1px 0 rgba(0,0,0,.3)}
+  .seg.danger button.on{background:var(--red)}
+  .seg.subtle button.on{background:var(--card2); color:var(--t1)}
+
+  .row{display:flex; gap:16px; flex-wrap:wrap; align-items:center}
+  .field{display:flex; flex-direction:column; gap:5px; min-width:0}
+  .field.grow{flex:1}
+  label.lbl{font-size:11.5px; color:var(--t2); font-weight:500; letter-spacing:.2px}
+
+  .sec{margin-top:18px}
+  .sec:first-child{margin-top:0}
+  .sec-h{display:flex; align-items:center; gap:8px; margin-bottom:10px}
+  .sec-h .k{font-size:10.5px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:var(--t3)}
+  .sec-h .line{flex:1; height:1px; background:var(--border)}
+  .card{background:var(--card2); border:1px solid var(--border); border-radius:var(--r-md); padding:14px}
+
+  .inp{position:relative}
+  .inp input{width:100%; padding:8px 30px 8px 32px; font:inherit; font-size:13px; color:var(--t1);
+    background:var(--bg); border:1px solid var(--bl); border-radius:var(--r-sm)}
+  .inp input::placeholder{color:var(--t3)}
+  .inp .lead{position:absolute; left:9px; top:50%; transform:translateY(-50%); color:var(--t2); display:flex}
+  .inp .chev{position:absolute; right:8px; top:50%; transform:translateY(-50%); color:var(--t2)}
+  .inp.bare input{padding-left:10px}
+
+  .pills{display:inline-flex; gap:6px}
+  .pill{font-size:12px; color:var(--t2); padding:6px 12px; border:1px solid var(--bl); border-radius:999px;
+    background:var(--bg); cursor:pointer; display:inline-flex; align-items:center; gap:6px}
+  .pill.on{color:#fff; border-color:transparent}
+  .pill.on.user{background:#0ea5e9}
+  .pill.on.role{background:var(--violet)}
+
+  .chips{display:flex; gap:8px; flex-wrap:wrap}
+  .chip{font-size:11px; padding:4px 11px; border-radius:999px; border:1px solid var(--bl); color:var(--t2);
+    background:transparent; cursor:pointer; transition:.15s}
+  .chip:hover{border-color:var(--accent); color:var(--accent)}
+
+  .privgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:9px}
+  .priv{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--t2); padding:8px 10px;
+    border:1px solid var(--border); border-radius:var(--r-sm); background:var(--bg); cursor:pointer}
+  .priv.on{color:var(--t1); border-color:var(--accent); background:var(--accent-soft)}
+  .priv .box{width:15px; height:15px; border-radius:4px; border:1.5px solid var(--bl); display:grid; place-items:center; flex-shrink:0}
+  .priv.on .box{background:var(--accent); border-color:var(--accent)}
+  .priv .box svg{display:none}
+  .priv.on .box svg{display:block}
+  .badge{font-size:9px; font-weight:800; letter-spacing:.4px; padding:2px 6px; border-radius:4px; margin-left:auto}
+  .badge.granted{background:#16a34a33; color:#86efac}
+
+  .wgo{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--t2); margin-top:12px; cursor:pointer}
+  .check{width:15px; height:15px; border-radius:4px; border:1.5px solid var(--bl); display:grid; place-items:center}
+  .check.on{background:var(--accent); border-color:var(--accent)}
+  .check svg{display:none} .check.on svg{display:block}
+
+  .sql{background:#0b1120; border:1px solid var(--border); border-radius:var(--r-md); padding:12px 14px;
+    font-family:var(--mono); font-size:12.5px; line-height:1.7; color:var(--t1); white-space:pre-wrap; word-break:break-word}
+  .sql .kw{color:#7dd3fc; font-weight:600}
+  .sql .id{color:#fcd34d}
+  .sql .muted{color:var(--t3)}
+  .impact{font-size:10px; font-weight:800; letter-spacing:.5px; padding:2px 7px; border-radius:4px; background:#dc262633; color:#fca5a5}
+  .warnline{font-size:12px; color:#fde68a; margin-top:8px; display:flex; gap:6px; align-items:flex-start}
+
+  .foot-spacer{margin-right:auto}
+  .btn{font:inherit; font-size:13px; padding:8px 18px; border-radius:var(--r-sm); cursor:pointer; border:1px solid var(--bl); background:transparent; color:var(--t2)}
+  .btn:hover{color:var(--t1)}
+  .btn.primary{border:0; background:var(--accent); color:#fff; font-weight:500}
+  .btn.primary.danger{background:var(--red)}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .keepopen{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--t2); cursor:pointer}
+
+  /* ── 2-pane specific ── */
+  .twocol{display:grid; grid-template-columns:1fr 320px; gap:0}
+  .twocol .left{padding:18px 20px; overflow:auto}
+  .twocol .right{background:#141c30; border-left:1px solid var(--border); padding:16px 16px; display:flex; flex-direction:column; gap:14px}
+  .rail-h{display:flex; align-items:center; gap:8px}
+  .rail-h .k{font-size:10.5px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:var(--t3); flex:1}
+  .copy{font-size:11px; color:var(--t2); border:1px solid var(--bl); background:transparent; border-radius:5px; padding:3px 9px; cursor:pointer; display:inline-flex; gap:5px; align-items:center}
+  .copy:hover{color:var(--t1); border-color:var(--accent)}
+  .results{display:flex; flex-direction:column; gap:7px}
+  .res{display:flex; gap:8px; align-items:flex-start; font-size:12px; color:var(--t2)}
+  .res .ok{color:#86efac} .res .audit{color:#fde68a; font-size:11px}
+
+  /* ── wizard specific ── */
+  .steps{display:flex; align-items:center; margin:2px 0 22px; padding:0 6px}
+  .step{display:flex; align-items:center; gap:10px}
+  .dot{width:28px; height:28px; border-radius:999px; display:grid; place-items:center; font-size:12px; font-weight:700;
+    background:var(--bg); border:1.5px solid var(--bl); color:var(--t3)}
+  .step.active .dot{background:var(--accent); border-color:var(--accent); color:#fff}
+  .step.done .dot{background:#16351f; border-color:var(--green); color:#86efac}
+  .step .nm{font-size:12.5px; color:var(--t3)}
+  .step.active .nm{color:var(--t1); font-weight:600}
+  .step.done .nm{color:var(--t2)}
+  .connector{flex:1; height:2px; margin:0 12px; background:var(--border); border-radius:2px}
+  .connector.filled{background:linear-gradient(90deg,var(--green),var(--accent))}
+  .wz-cap{font-size:11.5px; color:var(--t3); margin-bottom:4px}
+  .wz-title{font-size:15px; font-weight:600; margin-bottom:16px}
+  .wz-pane{display:none} .wz-pane.show{display:block}
+  .wz-min{min-height:220px}
+
+  .hint{font-size:11.5px; color:var(--t3); margin-top:8px; line-height:1.5}
+</style>
+</head>
+<body>
+
+<!-- icon defs -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+  <symbol id="i-table" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+  <symbol id="i-okcircle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m22 4-10 10-3-3"/></symbol>
+</svg>
+
+<div class="toolbar">
+  <svg width="20" height="20"><use href="#i-gear"/></svg>
+  <h1>Manage Privileges</h1>
+  <span class="sub">현대화 목업 비교</span>
+  <div class="tabs">
+    <button data-tab="m1" class="active">1 · 제자리 폴리시</button>
+    <button data-tab="m2">2 · 2-pane 프리뷰</button>
+    <button data-tab="m3">3 · 스텝 위저드</button>
+  </div>
+</div>
+
+<div class="stage">
+
+  <!-- ════════════ 1. POLISH IN PLACE ════════════ -->
+  <section id="m1" class="show">
+    <p class="stage-note"><b>제자리 폴리시</b> — 단일 폼 구조 유지. 색 코딩 세그먼트 토글 · 섹션 카드 · sticky 헤더/푸터 · SVG 아이콘 · 일관 토큰.</p>
+    <div class="modal" style="width:680px">
+      <div class="m-head">
+        <svg width="18" height="18" style="color:var(--t2)"><use href="#i-gear"/></svg>
+        <span class="title">Manage Privileges <span class="sub">· alice 에게 권한 부여</span></span>
+        <button class="icon-btn"><svg width="18" height="18"><use href="#i-close"/></svg></button>
+      </div>
+      <div class="m-body">
+        <!-- action / type -->
+        <div class="row" style="margin-bottom:6px">
+          <div class="field">
+            <label class="lbl">Action</label>
+            <div class="seg" data-action>
+              <button class="on" data-grant>Grant</button>
+              <button data-revoke>Revoke</button>
+            </div>
+          </div>
+          <div class="field">
+            <label class="lbl">Type</label>
+            <div class="seg subtle">
+              <button class="on">Privilege on object</button>
+              <button>Role assignment</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- recipient -->
+        <div class="sec">
+          <div class="sec-h"><span class="k">Recipient</span><span class="line"></span></div>
+          <div class="row">
+            <div class="field grow">
+              <div class="inp">
+                <span class="lead"><svg width="15" height="15"><use href="#i-user"/></svg></span>
+                <input value="alice" />
+                <span class="chev"><svg width="14" height="14"><use href="#i-chev"/></svg></span>
+              </div>
+            </div>
+            <div class="pills">
+              <span class="pill on user">User</span>
+              <span class="pill role">Role</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- target -->
+        <div class="sec">
+          <div class="sec-h"><span class="k">Target object</span><span class="line"></span></div>
+          <div class="row" style="gap:10px">
+            <div class="field" style="width:150px">
+              <div class="inp">
+                <span class="lead"><svg width="15" height="15" style="color:#fb923c"><use href="#i-table"/></svg></span>
+                <input value="TABLE" readonly />
+                <span class="chev"><svg width="14" height="14"><use href="#i-chev"/></svg></span>
+              </div>
+            </div>
+            <div class="field grow"><div class="inp bare"><input value="default_catalog" /><span class="chev"><svg width="14" height="14"><use href="#i-chev"/></svg></span></div></div>
+            <div class="field grow"><div class="inp bare"><input value="analytics" /><span class="chev"><svg width="14" height="14"><use href="#i-chev"/></svg></span></div></div>
+            <div class="field grow"><div class="inp bare"><input value="events" /><span class="chev"><svg width="14" height="14"><use href="#i-chev"/></svg></span></div></div>
+          </div>
+        </div>
+
+        <!-- privileges -->
+        <div class="sec">
+          <div class="sec-h">
+            <span class="k">Privileges</span>
+            <span class="chips">
+              <span class="chip">Read-only</span><span class="chip">Read-write</span><span class="chip">Full</span>
+            </span>
+            <span class="line"></span>
+          </div>
+          <div class="privgrid">
+            <span class="priv on"><span class="box"><svg width="11" height="11"><use href="#i-check"/></svg></span>SELECT</span>
+            <span class="priv on"><span class="box"><svg width="11" height="11"><use href="#i-check"/></svg></span>INSERT<span class="badge granted">GRANTED</span></span>
+            <span class="priv"><span class="box"><svg width="11" height="11"><use href="#i-check"/></svg></span>UPDATE</span>
+            <span class="priv"><span class="box"><svg width="11" height="11"><use href="#i-check"/></svg></span>DELETE</span>
+            <span class="priv"><span class="box"><svg width="11" height="11"><use href="#i-check"/></svg></span>ALTER</span>
+            <span class="priv"><span class="box"><svg width="11" height="11"><use href="#i-check"/></svg></span>DROP</span>
+          </div>
+          <label class="wgo"><span class="check"><svg width="11" height="11"><use href="#i-check"/></svg></span>WITH GRANT OPTION</label>
+        </div>
+
+        <!-- review -->
+        <div class="sec">
+          <div class="sec-h"><span class="k">SQL preview</span><span class="line"></span></div>
+          <div class="sql"><span class="kw">GRANT</span> SELECT, INSERT <span class="kw">ON TABLE</span> <span class="id">analytics.events</span> <span class="kw">TO</span> <span class="id">alice</span>;</div>
+        </div>
+      </div>
+      <div class="m-foot">
+        <label class="keepopen"><span class="check"><svg width="11" height="11"><use href="#i-check"/></svg></span>Keep open after execute</label>
+        <button class="btn">Cancel</button>
+        <button class="btn primary" data-exec>Execute</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════ 2. TWO-PANE ════════════ -->
+  <section id="m2">
+    <p class="stage-note"><b>폴리시 + 2-pane</b> — 폭 확대. 좌측 폼 / 우측 라이브 SQL 프리뷰 · 결과 로그 (복사 버튼 · 키워드 강조). 항상 결과가 보임.</p>
+    <div class="modal" style="width:880px">
+      <div class="m-head">
+        <svg width="18" height="18" style="color:var(--t2)"><use href="#i-gear"/></svg>
+        <span class="title">Manage Privileges <span class="sub">· alice 에게 권한 부여</span></span>
+        <button class="icon-btn"><svg width="18" height="18"><use href="#i-close"/></svg></button>
+      </div>
+      <div class="twocol">
+        <div class="left">
+          <div class="row" style="margin-bottom:6px">
+            <div class="field">
+              <label class="lbl">Action</label>
+              <div class="seg" data-action><button class="on" data-grant>Grant</button><button data-revoke>Revoke</button></div>
+            </div>
+            <div class="field">
+              <label class="lbl">Type</label>
+              <div class="seg subtle"><button class="on">Privilege</button><button>Role</button></div>
+            </div>
+          </div>
+
+          <div class="sec">
+            <div class="sec-h"><span class="k">Recipient</span><span class="line"></span></div>
+            <div class="row">
+              <div class="field grow"><div class="inp">
+                <span class="lead"><svg width="15" height="15"><use href="#i-user"/></svg></span>
+                <input value="alice" /><span class="chev"><svg width="14" height="14"><use href="#i-chev"/></svg></span>
+              </div></div>
+              <div class="pills"><span class="pill on user">User</span><span class="pill role">Role</span></div>
+            </div>
+          </div>
+
+          <div class="sec">
+            <div class="sec-h"><span class="k">Target object</span><span class="line"></span></div>
+            <div class="row" style="gap:10px">
+              <div class="field" style="width:140px"><div class="inp">
+                <span class="lead"><svg width="15" height="15" style="color:#fb923c"><use href="#i-table"/></svg></span>
+                <input value="TABLE" readonly /><span class="chev"><svg width="14" height="14"><use href="#i-chev"/></svg></span>
+              </div></div>
+              <div class="field grow"><div class="inp bare"><input value="analytics" /><span class="chev"><svg width="14" height="14"><use href="#i-chev"/></svg></span></div></div>
+              <div class="field grow"><div class="inp bare"><input value="events" /><span class="chev"><svg width="14" height="14"><use href="#i-chev"/></svg></span></div></div>
+            </div>
+          </div>
+
+          <div class="sec">
+            <div class="sec-h">
+              <span class="k">Privileges</span>
+              <span class="chips"><span class="chip">Read-only</span><span class="chip">Read-write</span><span class="chip">Full</span></span>
+              <span class="line"></span>
+            </div>
+            <div class="privgrid">
+              <span class="priv on"><span class="box"><svg width="11" height="11"><use href="#i-check"/></svg></span>SELECT</span>
+              <span class="priv on"><span class="box"><svg width="11" height="11"><use href="#i-check"/></svg></span>INSERT</span>
+              <span class="priv"><span class="box"><svg width="11" height="11"><use href="#i-check"/></svg></span>UPDATE</span>
+              <span class="priv"><span class="box"><svg width="11" height="11"><use href="#i-check"/></svg></span>DELETE</span>
+            </div>
+            <label class="wgo"><span class="check"><svg width="11" height="11"><use href="#i-check"/></svg></span>WITH GRANT OPTION</label>
+          </div>
+        </div>
+
+        <div class="right">
+          <div>
+            <div class="rail-h"><span class="k">SQL preview</span><button class="copy"><svg width="12" height="12"><use href="#i-copy"/></svg>Copy</button></div>
+            <div class="sql" style="margin-top:10px"><span class="kw">GRANT</span> SELECT, INSERT
+  <span class="kw">ON TABLE</span> <span class="id">analytics.events</span>
+  <span class="kw">TO</span> <span class="id">alice</span>;</div>
+          </div>
+          <div>
+            <div class="rail-h"><span class="k">Results</span></div>
+            <div class="results" style="margin-top:10px">
+              <div class="res"><span class="ok"><svg width="14" height="14"><use href="#i-okcircle"/></svg></span><span>GRANT SELECT on analytics.events <span class="audit">· audit ok</span></span></div>
+              <div class="res"><span class="ok"><svg width="14" height="14"><use href="#i-okcircle"/></svg></span><span>GRANT INSERT on analytics.events <span class="audit">· audit ok</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="m-foot">
+        <label class="keepopen"><span class="check on"><svg width="11" height="11"><use href="#i-check"/></svg></span>Keep open after execute</label>
+        <button class="btn">Cancel</button>
+        <button class="btn primary" data-exec>Execute</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════ 3. STEPPED WIZARD ════════════ -->
+  <section id="m3">
+    <p class="stage-note"><b>스텝 위저드</b> — 3단계 분할 (Recipient → Privileges → Review). 진행 표시 · 단계별 집중. <b>Next/Back 클릭으로 진행해 보세요.</b></p>
+    <div class="modal" style="width:680px">
+      <div class="m-head">
+        <svg width="18" height="18" style="color:var(--t2)"><use href="#i-gear"/></svg>
+        <span class="title">Manage Privileges</span>
+        <button class="icon-btn"><svg width="18" height="18"><use href="#i-close"/></svg></button>
+      </div>
+      <div class="m-body">
+        <div class="steps">
+          <div class="step active" data-step="1"><span class="dot">1</span><span class="nm">Recipient</span></div>
+          <div class="connector" data-conn="1"></div>
+          <div class="step" data-step="2"><span class="dot">2</span><span class="nm">Privileges</span></div>
+          <div class="connector" data-conn="2"></div>
+          <div class="step" data-step="3"><span class="dot">3</span><span class="nm">Review</span></div>
+        </div>
+
+        <!-- step 1 -->
+        <div class="wz-pane wz-min show" data-pane="1">
+          <div class="wz-cap">Step 1 of 3</div>
+          <div class="wz-title">누구에게 / 무엇을 할까요?</div>
+          <div class="row" style="margin-bottom:18px">
+            <div class="field"><label class="lbl">Action</label>
+              <div class="seg" data-action><button class="on" data-grant>Grant</button><button data-revoke>Revoke</button></div>
+            </div>
+            <div class="field"><label class="lbl">Type</label>
+              <div class="seg subtle"><button class="on">Privilege on object</button><button>Role assignment</button></div>
+            </div>
+          </div>
+          <div class="field grow" style="max-width:420px">
+            <label class="lbl">Grantee</label>
+            <div class="inp">
+              <span class="lead"><svg width="15" height="15"><use href="#i-user"/></svg></span>
+              <input value="alice" /><span class="chev"><svg width="14" height="14"><use href="#i-chev"/></svg></span>
+            </div>
+            <div class="pills" style="margin-top:10px"><span class="pill on user">User</span><span class="pill role">Role</span></div>
+          </div>
+        </div>
+
+        <!-- step 2 -->
+        <div class="wz-pane wz-min" data-pane="2">
+          <div class="wz-cap">Step 2 of 3</div>
+          <div class="wz-title">대상과 권한을 선택하세요</div>
+          <div class="row" style="gap:10px; margin-bottom:16px">
+            <div class="field" style="width:150px"><label class="lbl">Object type</label>
+              <div class="inp"><span class="lead"><svg width="15" height="15" style="color:#fb923c"><use href="#i-table"/></svg></span><input value="TABLE" readonly /><span class="chev"><svg width="14" height="14"><use href="#i-chev"/></svg></span></div>
+            </div>
+            <div class="field grow"><label class="lbl">Catalog</label><div class="inp bare"><input value="default_catalog" /><span class="chev"><svg width="14" height="14"><use href="#i-chev"/></svg></span></div></div>
+            <div class="field grow"><label class="lbl">Database</label><div class="inp bare"><input value="analytics" /><span class="chev"><svg width="14" height="14"><use href="#i-chev"/></svg></span></div></div>
+          </div>
+          <div class="sec-h" style="margin-top:6px">
+            <span class="k">Privileges</span>
+            <span class="chips"><span class="chip">Read-only</span><span class="chip">Read-write</span><span class="chip">Full</span></span>
+            <span class="line"></span>
+          </div>
+          <div class="privgrid">
+            <span class="priv on"><span class="box"><svg width="11" height="11"><use href="#i-check"/></svg></span>SELECT</span>
+            <span class="priv on"><span class="box"><svg width="11" height="11"><use href="#i-check"/></svg></span>INSERT</span>
+            <span class="priv"><span class="box"><svg width="11" height="11"><use href="#i-check"/></svg></span>UPDATE</span>
+            <span class="priv"><span class="box"><svg width="11" height="11"><use href="#i-check"/></svg></span>DELETE</span>
+          </div>
+        </div>
+
+        <!-- step 3 -->
+        <div class="wz-pane wz-min" data-pane="3">
+          <div class="wz-cap">Step 3 of 3</div>
+          <div class="wz-title">검토 후 실행 <span class="impact" style="vertical-align:middle">⚠ 검토</span></div>
+          <div class="card" style="margin-bottom:14px">
+            <div style="font-size:12px; color:var(--t2); line-height:1.9">
+              <div><span style="color:var(--t3)">Action</span> &nbsp; <b style="color:var(--accent)">GRANT</b></div>
+              <div><span style="color:var(--t3)">Grantee</span> &nbsp; <b style="color:var(--t1)">alice</b> (User)</div>
+              <div><span style="color:var(--t3)">Target</span> &nbsp; <b style="color:var(--t1)">analytics.events</b> (TABLE)</div>
+              <div><span style="color:var(--t3)">Privileges</span> &nbsp; <b style="color:var(--t1)">SELECT, INSERT</b></div>
+            </div>
+          </div>
+          <div class="sec-h"><span class="k">SQL preview</span><span class="line"></span></div>
+          <div class="sql"><span class="kw">GRANT</span> SELECT, INSERT <span class="kw">ON TABLE</span> <span class="id">analytics.events</span> <span class="kw">TO</span> <span class="id">alice</span>;</div>
+          <div class="warnline"><svg width="14" height="14"><use href="#i-warn"/></svg><span>StarRocks가 실제 권한에 따라 거부할 수 있습니다.</span></div>
+        </div>
+      </div>
+      <div class="m-foot">
+        <label class="keepopen foot-spacer"><span class="check"><svg width="11" height="11"><use href="#i-check"/></svg></span>Keep open after execute</label>
+        <button class="btn" data-back disabled style="opacity:.5">Back</button>
+        <button class="btn primary" data-next>Next →</button>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  // tab switching
+  document.querySelectorAll('.tabs button').forEach(b=>{
+    b.addEventListener('click',()=>{
+      document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      document.querySelectorAll('.stage > section').forEach(s=>s.classList.remove('show'));
+      document.getElementById(b.dataset.tab).classList.add('show');
+    });
+  });
+
+  // grant/revoke segment color-coding (per modal)
+  document.querySelectorAll('[data-action]').forEach(seg=>{
+    const grant=seg.querySelector('[data-grant]'), revoke=seg.querySelector('[data-revoke]');
+    const modal=seg.closest('.modal');
+    const exec=modal.querySelector('[data-exec]');
+    const setMode=(isRevoke)=>{
+      seg.classList.toggle('danger',isRevoke);
+      grant.classList.toggle('on',!isRevoke); revoke.classList.toggle('on',isRevoke);
+      if(exec){ exec.classList.toggle('danger',isRevoke); exec.textContent=isRevoke?'Revoke':'Execute'; }
+    };
+    grant.addEventListener('click',()=>setMode(false));
+    revoke.addEventListener('click',()=>setMode(true));
+  });
+
+  // priv toggle (visual only)
+  document.querySelectorAll('.priv').forEach(p=>p.addEventListener('click',()=>p.classList.toggle('on')));
+  document.querySelectorAll('.wgo,.keepopen').forEach(l=>l.addEventListener('click',()=>l.querySelector('.check').classList.toggle('on')));
+  document.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>{
+    const grid=c.closest('section').querySelectorAll('.priv');
+    const map={'Read-only':['SELECT'],'Read-write':['SELECT','INSERT','UPDATE','DELETE'],'Full':['SELECT','INSERT','UPDATE','DELETE','ALTER','DROP']};
+    const want=map[c.textContent]||[];
+    grid.forEach(p=>p.classList.toggle('on',want.includes(p.textContent.replace('GRANTED','').trim())));
+  }));
+
+  // wizard nav
+  (function(){
+    const wz=document.getElementById('m3'); if(!wz) return;
+    let step=1; const max=3;
+    const back=wz.querySelector('[data-back]'), next=wz.querySelector('[data-next]');
+    const render=()=>{
+      wz.querySelectorAll('[data-pane]').forEach(p=>p.classList.toggle('show',+p.dataset.pane===step));
+      wz.querySelectorAll('.step').forEach(s=>{
+        const n=+s.dataset.step; s.classList.toggle('active',n===step); s.classList.toggle('done',n<step);
+      });
+      wz.querySelectorAll('[data-conn]').forEach(c=>c.classList.toggle('filled',+c.dataset.conn<step));
+      back.disabled=step===1; back.style.opacity=step===1?'.5':'1';
+      next.textContent=step===max?'Confirm & Execute':'Next →';
+      next.classList.toggle('danger', step===max && false);
+    };
+    next.addEventListener('click',()=>{ if(step<max){step++;render();} });
+    back.addEventListener('click',()=>{ if(step>1){step--;render();} });
+    render();
+  })();
+</script>
+</body>
+</html>
