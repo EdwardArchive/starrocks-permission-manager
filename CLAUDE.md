@@ -21,6 +21,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 ├── Dockerfile                 # Multi-stage Docker build
 ├── PRD.md                     # Product Requirements Document
 ├── README.md                  # Project overview + quick start guide
+├── INSTALLATION.md            # StarRocks-side setup: tables/roles/privileges per feature tier
 ├── pyproject.toml             # Ruff + Bandit + mypy config
 ├── k8s/
 │   └── srpm.yaml              # k8s Deployment/Service (exposed via Cloudflare Tunnel: srpm.cshift.co)

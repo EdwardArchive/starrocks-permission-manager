@@ -528,8 +528,9 @@ def get_cluster_query_history(
     """Return recently completed queries from the AuditLoader table.
 
     When the AuditLoader plugin isn't installed (table missing), this returns
-    ``available=false`` with a reason instead of an error, so the UI can hide
-    the history view gracefully. Access-denied still maps to 403.
+    ``available=false`` with a reason instead of an error, so the Recent subtab
+    shows an "unavailable" notice (the subtab stays visible). Access-denied
+    still maps to 403.
     """
     try:
         queries = collect_query_history(conn, limit=limit, errors_only=errors_only)

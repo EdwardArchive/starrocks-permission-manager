@@ -1,0 +1,15 @@
+# Local pre-commit hooks — mirror the fast Python checks the CI lint job runs.
+# Heavy static analysis (mypy, bandit) stays CI-only; pre-commit covers lint + format.
+#
+# One-time setup:
+#   pip install pre-commit
+#   pre-commit install
+# Run manually on all files:
+#   pre-commit run --all-files
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.9
+    hooks:
+      - id: ruff            # lint (E, W, F, B, UP, I) with autofix — config in pyproject.toml
+        args: [--fix]
+      - id: ruff-format     # formatter (matches `ruff format`)
