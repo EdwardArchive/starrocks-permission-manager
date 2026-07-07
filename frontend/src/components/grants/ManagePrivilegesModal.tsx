@@ -244,9 +244,6 @@ function WizardBody() {
   const [granteeGrants, setGranteeGrants] = useState<PrivilegeGrant[] | null>(null);
   const [grantsTick, setGrantsTick] = useState(0); // bump to refetch grantee grants
 
-  // revoke multi-select (indices into directGrants)
-  const [selectedRevoke, setSelectedRevoke] = useState<Set<number>>(new Set());
-
   // preview / execute state
   const [previewSql, setPreviewSql] = useState<string[]>([]);
   const [previewWarnings, setPreviewWarnings] = useState<string[]>([]);
@@ -313,7 +310,6 @@ function WizardBody() {
           grants = await fetcher(`'${granteeName}'@'%'`);
         }
         setGranteeGrants(grants);
-        setSelectedRevoke(new Set());
       } catch {
         setGranteeGrants([]);
       }
@@ -383,49 +379,25 @@ function WizardBody() {
         name: needsName ? objName.trim() : null,
       },
       privileges: [...privileges],
-      with_grant_option: withGrantOption,
+      // StarRocks has no `REVOKE ... WITH GRANT OPTION`; never send it on a revoke
+      with_grant_option: action === "GRANT" ? withGrantOption : false,
     };
   }, [action, grantType, granteeName, granteeType, role, objectType, catalog, database, objName, privileges, withGrantOption]);
 
-  // requests for the multi-select revoke path (one per selected direct grant)
-  const multiRequests = useMemo((): GrantRequest[] => {
-    if (action !== "REVOKE" || grantType !== "PRIVILEGE" || selectedRevoke.size === 0) return [];
-    const grantee = { name: granteeName.trim(), type: granteeType };
-    return [...selectedRevoke]
-      .map((i) => directGrants[i])
-      .filter(Boolean)
-      .map((g) => ({
-        action: "REVOKE" as const,
-        type: "PRIVILEGE" as const,
-        grantee,
-        object: {
-          object_type: g.object_type,
-          // SHOW GRANTS-parsed rows may omit the catalog for the internal catalog
-          catalog: g.object_catalog ?? "default_catalog",
-          database: g.object_database,
-          name: g.object_name,
-        },
-        privileges: [g.privilege_type],
-        with_grant_option: false,
-      }));
-  }, [action, grantType, selectedRevoke, directGrants, granteeName, granteeType]);
-
-  const multiMode = multiRequests.length > 0;
-
-  // live SQL preview (debounced; multi-select previews all selected revokes)
+  // live SQL preview (debounced)
   useEffect(() => {
     const t = setTimeout(() => {
-      const reqs = multiMode ? multiRequests : (() => { const r = buildRequest(); return r ? [r] : []; })();
-      if (reqs.length === 0) {
+      const req = buildRequest();
+      if (!req) {
         setPreviewSql([]);
         setPreviewError("");
         setPreviewWarnings([]);
         return;
       }
-      Promise.all(reqs.map((r) => previewGrant(r)))
+      previewGrant(req)
         .then((res) => {
-          setPreviewSql(res.flatMap((x) => x.sql));
-          setPreviewWarnings([...new Set(res.flatMap((x) => x.warnings))]);
+          setPreviewSql(res.sql);
+          setPreviewWarnings([...new Set(res.warnings)]);
           setPreviewError("");
         })
         .catch((e: Error) => {
@@ -435,7 +407,7 @@ function WizardBody() {
         });
     }, 400);
     return () => clearTimeout(t);
-  }, [buildRequest, multiMode, multiRequests]);
+  }, [buildRequest]);
 
   const selfRevoke = action === "REVOKE" && granteeType === "USER" && bareUser(granteeName) === currentUser;
   const dangerous = withGrantOption || privileges.has("ALL");
@@ -466,22 +438,21 @@ function WizardBody() {
       showToast("Executed, but some audit records could not be written (check srpm_audit setup)", "warning", 8000);
     }
     const allOk = newResults.every((r) => r.ok);
-    if (allOk && !keepOpen && !multiMode) {
+    if (allOk && !keepOpen) {
       showToast(`${action} executed successfully`, "info", 4000);
       closeWizard();
       return;
     }
-    // keep-open / multi mode: stay, refresh grantee grants, reset transient parts
-    setSelectedRevoke(new Set());
+    // keep-open: stay, refresh grantee grants, reset transient parts
     setPrivileges(new Set());
     setWithGrantOption(false);
     setGrantsTick((x) => x + 1);
   };
 
   const handleExecute = () => {
-    const reqs = multiMode ? multiRequests : (() => { const r = buildRequest(); return r ? [r] : []; })();
-    if (reqs.length === 0) return;
-    void runRequests(reqs);
+    const req = buildRequest();
+    if (!req) return;
+    void runRequests([req]);
   };
 
   const copySql = () => {
@@ -495,14 +466,16 @@ function WizardBody() {
 
   const needsDb = objectType !== "CATALOG";
   const needsName = !["CATALOG", "DATABASE"].includes(objectType);
-  const canExecute = multiMode || previewSql.length > 0;
+  const canExecute = previewSql.length > 0;
 
-  const toggleRevokeRow = (i: number) =>
-    setSelectedRevoke((prev) => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i); else next.add(i);
-      return next;
-    });
+  // click a current grant → load its object + privilege into the form (revoke)
+  const loadGrantIntoForm = (g: PrivilegeGrant) => {
+    setObjectType(g.object_type);
+    setCatalog(g.object_catalog ?? "default_catalog");
+    setDatabase(g.object_database ?? "");
+    setObjName(g.object_name ?? "");
+    setPrivileges(new Set([g.privilege_type]));
+  };
 
   const jumpToSourceRole = (sourceRole: string) => {
     setGranteeType("ROLE");
@@ -619,33 +592,35 @@ function WizardBody() {
                   </div>
                 )}
 
-                {/* Revoke helper: existing direct grants (multi-select) + inherited (jump to source) */}
+                {/* Revoke helper: click a current grant to load it into the form below */}
                 {action === "REVOKE" && granteeGrants !== null && (
                   <div style={{ marginBottom: 16 }}>
-                    <SectionH title="Existing grants" />
+                    <SectionH title="Current grants" extra={<span style={{ fontSize: 10.5, color: C.text3 }}>click to load</span>} />
                     <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, maxHeight: 190, overflowY: "auto", background: C.bg }}>
                       {directGrants.length === 0 && inheritedGrants.length === 0 && scopeGrants.length === 0 ? (
                         <div style={{ padding: 12, fontSize: 12, color: C.text3 }}>No grants found for this grantee.</div>
                       ) : (
                         <>
                           {directGrants.map((g, i) => (
-                            <label
+                            <div
                               key={`d${i}`}
                               data-testid="mp-direct-grant"
-                              style={{ padding: "8px 11px", fontSize: 12, color: C.text2, cursor: "pointer", borderBottom: `1px solid ${C.border}`, display: "flex", gap: 8, alignItems: "center", background: selectedRevoke.has(i) ? "#ef444414" : "transparent" }}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => loadGrantIntoForm(g)}
+                              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); loadGrantIntoForm(g); } }}
+                              title="Load into the form below to revoke"
+                              style={{ padding: "8px 11px", fontSize: 12, color: C.text2, cursor: "pointer", borderBottom: `1px solid ${C.border}`, display: "flex", gap: 8, alignItems: "center" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.background = "#ef444414"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                             >
-                              <input
-                                type="checkbox"
-                                checked={selectedRevoke.has(i)}
-                                onChange={() => toggleRevokeRow(i)}
-                                style={{ accentColor: RED, cursor: "pointer" }}
-                              />
-                              <strong style={{ color: action === "REVOKE" ? "#fca5a5" : C.accent }}>{g.privilege_type}</strong>
+                              <strong style={{ color: "#fca5a5" }}>{g.privilege_type}</strong>
                               <span>{g.object_type}</span>
                               <span style={{ color: C.text3 }}>
                                 {[g.object_catalog, g.object_database, g.object_name].filter(Boolean).join(".")}
                               </span>
-                            </label>
+                              <span style={{ marginLeft: "auto", color: C.accent, fontSize: 11 }}>load →</span>
+                            </div>
                           ))}
                           {scopeGrants.map((g, i) => (
                             <div
@@ -685,8 +660,7 @@ function WizardBody() {
                   </div>
                 )}
 
-                {!multiMode && (
-                  <>
+                <>
                     {/* Object selector */}
                     <div style={{ marginBottom: 18 }}>
                       <SectionH title="Target object" icon={<InlineIcon type={OBJ_ICON[objectType] ?? "table"} size={13} />} />
@@ -752,24 +726,30 @@ function WizardBody() {
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(135px, 1fr))", gap: 9 }}>
                         {allowedPrivs.map((p) => {
                           const on = privileges.has(p);
+                          const held = alreadyGranted.has(p);
+                          // revoke can only target privileges the grantee actually holds;
+                          // already-checked ones stay toggleable so they can be removed.
+                          const disabled = action === "REVOKE" && !held && !on;
                           return (
                             <label
                               key={p}
-                              style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: on ? C.text1 : C.text2, cursor: "pointer", padding: "8px 10px", border: `1px solid ${on ? C.accent : C.border}`, borderRadius: 6, background: on ? "#3b82f622" : C.bg }}
+                              title={disabled ? `${granteeName.trim() || "This grantee"} does not hold ${p} on this object` : undefined}
+                              style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: disabled ? C.text3 : (on ? C.text1 : C.text2), cursor: disabled ? "not-allowed" : "pointer", padding: "8px 10px", border: `1px solid ${on ? modeColor : C.border}`, borderRadius: 6, background: on ? (action === "REVOKE" ? "#ef444422" : "#3b82f622") : C.bg, opacity: disabled ? 0.45 : 1 }}
                             >
                               <input
                                 type="checkbox"
                                 data-testid={`mp-priv-${p.replace(/ /g, "_")}`}
                                 checked={on}
+                                disabled={disabled}
                                 onChange={() => setPrivileges((prev) => {
                                   const next = new Set(prev);
                                   if (next.has(p)) next.delete(p); else next.add(p);
                                   return next;
                                 })}
-                                style={{ accentColor: C.accent, cursor: "pointer" }}
+                                style={{ accentColor: modeColor, cursor: disabled ? "not-allowed" : "pointer" }}
                               />
                               {p}
-                              {alreadyGranted.has(p) && (
+                              {held && (
                                 <span data-testid="mp-already-granted" style={{ marginLeft: "auto", fontSize: 9, fontWeight: 800, padding: "1px 5px", borderRadius: 4, background: "#16a34a33", color: "#86efac" }}>
                                   GRANTED
                                 </span>
@@ -778,6 +758,13 @@ function WizardBody() {
                           );
                         })}
                       </div>
+                      {action === "REVOKE" && alreadyGranted.size === 0 && (
+                        <div style={{ fontSize: 11.5, color: C.text3, marginTop: 8, lineHeight: 1.5 }}>
+                          {granteeName.trim()
+                            ? "This grantee holds no direct privileges on the selected object. Pick another object, or click a current grant above."
+                            : "Select a grantee to see revocable privileges."}
+                        </div>
+                      )}
                     </div>
 
                     {action === "GRANT" && (
@@ -786,8 +773,7 @@ function WizardBody() {
                         WITH GRANT OPTION
                       </label>
                     )}
-                  </>
-                )}
+                </>
               </>
             )}
           </div>
@@ -900,7 +886,7 @@ function WizardBody() {
                   border: "none", cursor: canExecute ? "pointer" : "not-allowed",
                 }}
               >
-                {multiMode ? `Revoke ${multiRequests.length} selected` : "Execute"}
+                Execute
               </button>
             </div>
           )}

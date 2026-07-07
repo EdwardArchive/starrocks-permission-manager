@@ -104,14 +104,14 @@ test("already-granted badge shows for existing grants", async ({ page }) => {
   await expect(page.getByTestId("mp-already-granted").first()).toBeVisible({ timeout: 15_000 });
 });
 
-test("REVOKE via multi-select direct-grants helper", async ({ page }) => {
+test("REVOKE via current-grants click-to-load", async ({ page }) => {
   await login(page, USER, PASS);
   await openWizard(page);
 
   await page.getByTestId("mp-action-revoke").check();
   await fillGrantee(page, TARGET_USER);
 
-  // select the SELECT grant created earlier
+  // click the SELECT grant created earlier → loads its object + privilege into the form
   const grantRow = page.getByTestId("mp-direct-grant").filter({ hasText: "SELECT" }).first();
   await expect(grantRow).toBeVisible({ timeout: 15_000 });
   await grantRow.click();
@@ -122,14 +122,12 @@ test("REVOKE via multi-select direct-grants helper", async ({ page }) => {
     { timeout: 10_000 }
   );
 
-  await expect(page.getByTestId("mp-execute")).toContainText("Revoke 1 selected");
+  await expect(page.getByTestId("mp-execute")).toBeEnabled();
   await page.getByTestId("mp-execute").click();
   await page.getByTestId("mp-confirm").click();
 
-  // multi-select mode stays open and reports inline results
-  await expect(page.getByTestId("mp-results").locator('[data-ok="true"]').first()).toBeVisible({ timeout: 15_000 });
-  await page.getByTestId("mp-close").click();
-  await expect(page.getByTestId("mp-modal")).toBeHidden();
+  // single revoke succeeds and closes the modal
+  await expect(page.getByTestId("mp-modal")).toBeHidden({ timeout: 15_000 });
 });
 
 test("presets and danger badge", async ({ page }) => {
