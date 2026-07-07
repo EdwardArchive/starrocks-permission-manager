@@ -127,7 +127,7 @@ test("REVOKE via multi-select direct-grants helper", async ({ page }) => {
   await page.getByTestId("mp-confirm").click();
 
   // multi-select mode stays open and reports inline results
-  await expect(page.getByTestId("mp-results")).toContainText("✓", { timeout: 15_000 });
+  await expect(page.getByTestId("mp-results").locator('[data-ok="true"]').first()).toBeVisible({ timeout: 15_000 });
   await page.getByTestId("mp-close").click();
   await expect(page.getByTestId("mp-modal")).toBeHidden();
 });
@@ -183,7 +183,7 @@ test("ROLE assignment with keep-open: grant then revoke in one session", async (
   await expect(preview).toContainText(`GRANT \`${TARGET_ROLE}\` TO USER '${TARGET_USER}'@'%'`, { timeout: 10_000 });
   await page.getByTestId("mp-execute").click();
   await page.getByTestId("mp-confirm").click();
-  await expect(page.getByTestId("mp-results")).toContainText("✓", { timeout: 15_000 });
+  await expect(page.getByTestId("mp-results").locator('[data-ok="true"]').first()).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("mp-modal")).toBeVisible(); // stayed open
 
   // revoke it back in the same session (grantee/role are preserved)

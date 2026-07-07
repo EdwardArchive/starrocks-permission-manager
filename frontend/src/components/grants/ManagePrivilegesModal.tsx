@@ -69,6 +69,7 @@ function Seg({
   testId: string;
   activeColor?: string;
 }) {
+  const [focused, setFocused] = useState(false);
   return (
     <label
       style={{
@@ -86,7 +87,8 @@ function Seg({
         userSelect: "none",
         color: active ? "#fff" : C.text2,
         background: active ? (activeColor ?? C.accent) : "transparent",
-        transition: "color .15s, background .15s",
+        boxShadow: focused ? `0 0 0 2px ${C.accent}` : "none",
+        transition: "color .15s, background .15s, box-shadow .15s",
       }}
     >
       <input
@@ -94,6 +96,8 @@ function Seg({
         data-testid={testId}
         checked={active}
         onChange={onSelect}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         style={{ position: "absolute", inset: 0, opacity: 0, margin: 0, cursor: "pointer" }}
       />
       {label}
@@ -132,6 +136,18 @@ const CopyIcon = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
     <rect x="9" y="9" width="13" height="13" rx="2" />
     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </svg>
+);
+
+const CheckMark = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#86efac" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M20 6 9 17l-5-5" />
+  </svg>
+);
+
+const CrossMark = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fca5a5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M18 6 6 18M6 6l12 12" />
   </svg>
 );
 
@@ -471,7 +487,10 @@ function WizardBody() {
   const copySql = () => {
     if (!previewSql.length) return;
     const text = previewSql.join(";\n") + ";";
-    navigator.clipboard?.writeText(text).then(() => showToast("SQL copied to clipboard", "info", 2000)).catch(() => {});
+    if (!navigator.clipboard) { showToast("Clipboard unavailable in this context", "warning", 3000); return; }
+    navigator.clipboard.writeText(text)
+      .then(() => showToast("SQL copied to clipboard", "info", 2000))
+      .catch(() => showToast("Could not copy SQL", "error", 3000));
   };
 
   const needsDb = objectType !== "CATALOG";
@@ -518,6 +537,7 @@ function WizardBody() {
             onClick={closeWizard}
             disabled={executing}
             data-testid="mp-close"
+            aria-label="Close"
             style={{ display: "inline-grid", placeItems: "center", width: 30, height: 30, border: "none", background: "transparent", borderRadius: 6, color: C.text2, cursor: "pointer" }}
           >
             <InlineIcon type="close" size={18} color={C.text2} />
@@ -785,6 +805,7 @@ function WizardBody() {
                 <span style={{ flex: 1 }} />
                 <button
                   onClick={copySql}
+                  data-testid="mp-copy-sql"
                   disabled={!previewSql.length}
                   title="Copy SQL"
                   style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, padding: "3px 9px", borderRadius: 5, border: `1px solid ${C.borderLight}`, background: "transparent", color: previewSql.length ? C.text2 : C.text3, cursor: previewSql.length ? "pointer" : "not-allowed", fontFamily: "inherit" }}
@@ -814,13 +835,13 @@ function WizardBody() {
             </div>
 
             {/* Session results log */}
-            {results.length > 0 && (
-              <div>
-                <div style={{ ...kStyle, marginBottom: 10 }}>Results</div>
+            <div>
+              <div style={{ ...kStyle, marginBottom: 10 }}>Results</div>
+              {results.length > 0 ? (
                 <div data-testid="mp-results" style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                   {results.map((r, i) => (
-                    <div key={i} style={{ fontSize: 12, color: r.ok ? "#86efac" : "#fca5a5", display: "flex", gap: 6, alignItems: "flex-start" }}>
-                      <span style={{ flexShrink: 0 }}>{r.ok ? "✓" : "✗"}</span>
+                    <div key={i} data-ok={r.ok ? "true" : "false"} style={{ fontSize: 12, color: r.ok ? "#86efac" : "#fca5a5", display: "flex", gap: 6, alignItems: "flex-start" }}>
+                      <span style={{ flexShrink: 0, marginTop: 1 }}>{r.ok ? <CheckMark /> : <CrossMark />}</span>
                       <span style={{ color: C.text2 }}>
                         {r.label}
                         {r.audit === "failed" && <span style={{ color: "#fde68a" }}> (audit failed)</span>}
@@ -829,8 +850,10 @@ function WizardBody() {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div style={{ fontSize: 12, color: C.text3, lineHeight: 1.5 }}>Executed statements will appear here.</div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -839,7 +862,7 @@ function WizardBody() {
           {confirming ? (
             <div>
               <div style={{ fontSize: 13, color: C.text1, marginBottom: 8 }}>
-                Execute the SQL above against the cluster? StarRocks may still deny the operation based on your actual privileges.
+                Execute the previewed SQL against the cluster? StarRocks may still deny the operation based on your actual privileges.
               </div>
               {selfRevoke && (
                 <div data-testid="mp-self-revoke-warning" style={{ marginBottom: 8 }}>
