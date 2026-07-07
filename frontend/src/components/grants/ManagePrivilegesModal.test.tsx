@@ -151,17 +151,43 @@ describe("ManagePrivilegesModal", () => {
     expect(await screen.findByTestId("mp-already-granted", {}, { timeout: 3000 })).toBeInTheDocument();
   });
 
-  it("revoke mode lists direct grants for multi-select and updates the execute label", async () => {
+  it("revoke mode: clicking a current grant loads its object and privilege into the form", async () => {
     getUserPrivileges.mockResolvedValue([makeGrant(), makeGrant({ privilege_type: "INSERT" })]);
     render(<ManagePrivilegesModal />);
     openWith({ action: "REVOKE", grantee: { name: "alice", type: "USER" } });
 
     const rows = await screen.findAllByTestId("mp-direct-grant", {}, { timeout: 3000 });
     expect(rows).toHaveLength(2);
-    await userEvent.click(rows[0]);
-    await waitFor(() => expect(screen.getByTestId("mp-execute").textContent).toContain("Revoke 1 selected"));
-    await userEvent.click(rows[1]);
-    await waitFor(() => expect(screen.getByTestId("mp-execute").textContent).toContain("Revoke 2 selected"));
+    await userEvent.click(rows[0]); // SELECT on default_catalog.sales.orders
+
+    await waitFor(() => expect(screen.getByTestId("mp-database")).toHaveValue("sales"));
+    expect(screen.getByTestId("mp-name")).toHaveValue("orders");
+    expect(screen.getByTestId("mp-priv-SELECT")).toBeChecked();
+
+    // builds a REVOKE request (never WITH GRANT OPTION)
+    await waitFor(() => {
+      const req = previewGrant.mock.calls.at(-1)?.[0];
+      expect(req).toMatchObject({
+        action: "REVOKE",
+        type: "PRIVILEGE",
+        privileges: ["SELECT"],
+        object: { database: "sales", name: "orders" },
+        with_grant_option: false,
+      });
+    });
+  });
+
+  it("revoke mode: privileges the grantee does not hold are disabled", async () => {
+    getUserPrivileges.mockResolvedValue([makeGrant()]); // only SELECT on sales.orders
+    render(<ManagePrivilegesModal />);
+    openWith({
+      action: "REVOKE",
+      grantee: { name: "alice", type: "USER" },
+      object: { object_type: "TABLE", catalog: "default_catalog", database: "sales", name: "orders" },
+    });
+    await screen.findByTestId("mp-priv-SELECT");
+    await waitFor(() => expect(screen.getByTestId("mp-priv-SELECT")).toBeEnabled()); // held → checkable
+    expect(screen.getByTestId("mp-priv-INSERT")).toBeDisabled(); // not held → locked
   });
 
   it("shows wildcard scope grants as non-selectable and warns for built-in roles", async () => {
