@@ -109,6 +109,21 @@ describe("ManagePrivilegesModal", () => {
     expect(screen.getByTestId("mp-execute")).toBeEnabled();
   });
 
+  it("copies the previewed SQL to the clipboard", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(<ManagePrivilegesModal />);
+    openWith({
+      grantee: { name: "alice", type: "USER" },
+      object: { object_type: "TABLE", catalog: "default_catalog", database: "sales", name: "orders" },
+      privileges: ["SELECT"],
+    });
+    const copy = await screen.findByTestId("mp-copy-sql");
+    await waitFor(() => expect(copy).toBeEnabled(), { timeout: 3000 });
+    await userEvent.click(copy);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("GRANT SELECT ON TABLE")));
+  });
+
   it("presets select intent-level privilege sets and Full shows the danger badge", async () => {
     render(<ManagePrivilegesModal />);
     openWith({
