@@ -101,7 +101,7 @@ def fetch_metrics_body(
     url = f"http://{host}:{http_port}/metrics"
     try:
         req = urllib.request.Request(url, headers={"Accept": "text/plain"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310  (trusted internal URL)
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310  # nosec B310 (trusted internal URL)
             status = resp.status
             if status != 200:
                 return FEMetricsError(reason="http_status", message=f"HTTP {status}")

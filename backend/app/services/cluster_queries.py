@@ -196,8 +196,7 @@ def collect_query_history(conn, limit: int = 100, errors_only: bool = False) -> 
         where += " AND state = 'ERR'"
     rows = execute_query(
         conn,
-        f"SELECT {_HISTORY_COLUMNS} FROM {AUDIT_HISTORY_TABLE} "
-        f"{where} ORDER BY timestamp DESC LIMIT %s",
+        f"SELECT {_HISTORY_COLUMNS} FROM {AUDIT_HISTORY_TABLE} {where} ORDER BY timestamp DESC LIMIT %s",
         (limit,),
     )
     return [_history_row(r) for r in rows]
