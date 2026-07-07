@@ -27,3 +27,7 @@ skips = ["B101", "B608"]
 [tool.mypy]
 python_version = "3.10"
 ignore_missing_imports = true
+# The CI lint job installs mypy without the project's runtime deps. For packages that
+# have a known typeshed stub (e.g. cachetools), mypy emits `import-untyped`, which
+# `ignore_missing_imports` does not cover. Disable it explicitly so CI matches local.
+disable_error_code = ["import-untyped"]
