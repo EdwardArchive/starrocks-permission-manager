@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
 import { getObjectPrivileges } from "../../api/user";
 import type { PrivilegeGrant } from "../../types";
 import InlineIcon from "../common/InlineIcon";
 import { C, PRIV_BY_TYPE, PRIV_KEY_MAP, matrixTh } from "../../utils/inventory-helpers";
 import { Loader } from "./inventory-ui";
+import { useAsyncData } from "../../hooks/useAsyncData";
 import { useAuthStore } from "../../stores/authStore";
 import { useGrantStore } from "../../stores/grantStore";
 import type { GrantObjectRef } from "../../types";
@@ -176,24 +176,18 @@ export function PermissionMatrixView({ grants, objectType, filterGrantees, objec
 export function ObjectPrivilegesPane({ catalog, database, name, objectType }: {
   catalog: string; database: string; name: string; objectType: string;
 }) {
-  const [state, setState] = useState<{ grants: PrivilegeGrant[]; loading: boolean }>({ grants: [], loading: true });
-
-  useEffect(() => {
-    const ac = new AbortController();
+  const { data, loading } = useAsyncData(() => {
     const catArg = objectType === "CATALOG" ? name : catalog;
     const dbArg = objectType === "DATABASE" ? name : (objectType === "CATALOG" ? undefined : database);
     const objName = (objectType === "DATABASE" || objectType === "CATALOG") ? undefined : (name || undefined);
-    getObjectPrivileges(catArg, dbArg, objName, objectType)
-      .then((grants) => setState({ grants, loading: false }))
-      .catch(() => setState({ grants: [], loading: false }));
-    return () => { ac.abort(); };
-  }, [catalog, database, name, objectType]);
+    return getObjectPrivileges(catArg, dbArg, objName, objectType);
+  }, [catalog, database, name, objectType], { keepPreviousData: true });
 
-  if (state.loading) return <Loader />;
+  if (loading && data == null) return <Loader />;
 
   return (
     <PermissionMatrixView
-      grants={state.grants}
+      grants={data ?? []}
       objectType={objectType}
       objectRef={{
         object_type: objectType,

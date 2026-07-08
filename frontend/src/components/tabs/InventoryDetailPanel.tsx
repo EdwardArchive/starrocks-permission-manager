@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { type MyPermissionsResponse, getDatabases, getTableDetail, getTables } from "../../api/user";
 import { getRolePrivileges, getUserEffectivePrivileges, getObjectPrivileges } from "../../api/user";
-import type { PrivilegeGrant, TableDetail, ObjectItem } from "../../types";
 import InlineIcon from "../common/InlineIcon";
 import GrantTreeView from "../common/GrantTreeView";
 import { buildGrantDisplay, extractSourceRoles } from "../../utils/grantDisplay";
@@ -11,6 +10,7 @@ import {
 } from "../../utils/inventory-helpers";
 import { SectionLabel, Loader, TH, TD, MetaItem } from "./inventory-ui";
 import { ObjectPrivilegesPane, PermissionMatrixView } from "./PermissionMatrix";
+import { useAsyncData } from "../../hooks/useAsyncData";
 
 /* ══════════════════════════════════════════════════════════════
    Detail Panel
@@ -167,20 +167,15 @@ export default function DetailPanel({ item, onClose, myData }: { item: SelectedI
 
 /* ── Object Details ── */
 function ObjectDetailsPane({ catalog, database, name }: { catalog: string; database: string; name: string }) {
-  const [state, setState] = useState<{ detail: TableDetail | null; loading: boolean }>({ detail: null, loading: true });
+  const { data: d, loading } = useAsyncData(
+    () => getTableDetail(catalog, database, name),
+    [catalog, database, name],
+    { keepPreviousData: true },
+  );
 
-  useEffect(() => {
-    const ac = new AbortController();
-    getTableDetail(catalog, database, name)
-      .then((detail) => setState({ detail, loading: false }))
-      .catch(() => setState({ detail: null, loading: false }));
-    return () => { ac.abort(); };
-  }, [catalog, database, name]);
+  if (loading && d == null) return <Loader />;
+  if (!d) return <div style={{ padding: 16, color: C.text3, fontSize: 12 }}>Unable to load details</div>;
 
-  if (state.loading) return <Loader />;
-  if (!state.detail) return <div style={{ padding: 16, color: C.text3, fontSize: 12 }}>Unable to load details</div>;
-
-  const d = state.detail;
   const distInfo = d.distribution_type
     ? `${d.distribution_type}(${(d.bucket_keys || []).join(", ")}) × ${d.bucket_count ?? "?"} buckets`
     : null;
@@ -286,28 +281,21 @@ function FunctionDetailsPane({ item, myData }: { item: SelectedItem; myData: MyP
 
 /* ── Database Objects ── */
 function DatabaseObjectsPane({ catalog, database }: { catalog: string; database: string }) {
-  const [state, setState] = useState<{ objects: ObjectItem[]; loading: boolean }>({ objects: [], loading: true });
+  const { data, loading } = useAsyncData(() => getTables(catalog, database), [catalog, database], { keepPreviousData: true });
+  const objects = data ?? [];
 
-  useEffect(() => {
-    const ac = new AbortController();
-    getTables(catalog, database)
-      .then((objects) => setState({ objects, loading: false }))
-      .catch(() => setState({ objects: [], loading: false }));
-    return () => { ac.abort(); };
-  }, [catalog, database]);
-
-  if (state.loading) return <Loader />;
-  if (state.objects.length === 0) return <div style={{ padding: 16, color: C.text3, fontSize: 12, textAlign: "center" }}>No objects found</div>;
+  if (loading && data == null) return <Loader />;
+  if (objects.length === 0) return <div style={{ padding: 16, color: C.text3, fontSize: 12, textAlign: "center" }}>No objects found</div>;
 
   return (
     <div>
-      <SectionLabel>Objects ({state.objects.length})</SectionLabel>
+      <SectionLabel>Objects ({objects.length})</SectionLabel>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, marginTop: 8 }}>
         <thead>
           <tr><TH>Name</TH><TH>Type</TH></tr>
         </thead>
         <tbody>
-          {state.objects.map((obj) => (
+          {objects.map((obj) => (
             <tr key={obj.name} style={{ borderBottom: `1px solid ${C.border}22` }}>
               <TD><span style={{ fontWeight: 500, color: C.text1 }}>{obj.name}</span></TD>
               <TD><span style={{ color: C.text2, fontSize: 10 }}>{obj.object_type}</span></TD>
@@ -321,24 +309,19 @@ function DatabaseObjectsPane({ catalog, database }: { catalog: string; database:
 
 /* ── Catalog Databases ── */
 function CatalogDatabasesPane({ catalog }: { catalog: string }) {
-  const [state, setState] = useState<{ dbs: { name: string }[]; loading: boolean }>({ dbs: [], loading: true });
+  const { data, loading } = useAsyncData(() => getDatabases(catalog), [catalog], { keepPreviousData: true });
+  const dbs = data ?? [];
 
-  useEffect(() => {
-    getDatabases(catalog)
-      .then((dbs) => setState({ dbs: dbs.map((d) => ({ name: d.name })), loading: false }))
-      .catch(() => setState({ dbs: [], loading: false }));
-  }, [catalog]);
-
-  if (state.loading) return <Loader />;
-  if (state.dbs.length === 0) return <div style={{ padding: 16, color: C.text3, fontSize: 12, textAlign: "center" }}>No databases found</div>;
+  if (loading && data == null) return <Loader />;
+  if (dbs.length === 0) return <div style={{ padding: 16, color: C.text3, fontSize: 12, textAlign: "center" }}>No databases found</div>;
 
   return (
     <div>
-      <SectionLabel>Databases ({state.dbs.length})</SectionLabel>
+      <SectionLabel>Databases ({dbs.length})</SectionLabel>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, marginTop: 8 }}>
         <thead><tr><TH>Database</TH></tr></thead>
         <tbody>
-          {state.dbs.map((db) => (
+          {dbs.map((db) => (
             <tr key={db.name} style={{ borderBottom: `1px solid ${C.border}22` }}>
               <TD><div style={{ display: "flex", alignItems: "center", gap: 6 }}><InlineIcon type="database" size={14} /><span style={{ fontWeight: 500, color: C.text1 }}>{db.name}</span></div></TD>
             </tr>
@@ -426,55 +409,37 @@ function RoleMembersPane({ roleName, myData }: { roleName: string; myData: MyPer
 
 /* ── Role Privileges ── */
 function RolePrivilegesPane({ roleName }: { roleName: string }) {
-  const [state, setState] = useState<{ grants: PrivilegeGrant[]; loading: boolean }>({ grants: [], loading: true });
+  const { data, loading } = useAsyncData(() => getRolePrivileges(roleName), [roleName], { keepPreviousData: true });
 
-  useEffect(() => {
-    const ac = new AbortController();
-    getRolePrivileges(roleName, ac.signal)
-      .then((grants) => setState({ grants, loading: false }))
-      .catch(() => setState({ grants: [], loading: false }));
-    return () => { ac.abort(); };
-  }, [roleName]);
+  if (loading && data == null) return <Loader />;
 
-  if (state.loading) return <Loader />;
+  const grants = data ?? [];
+  const groups = buildGrantDisplay(grants);
+  const sourceRoles = extractSourceRoles(grants);
 
-  const groups = buildGrantDisplay(state.grants);
-  const sourceRoles = extractSourceRoles(state.grants);
-
-  return <GrantTreeView groups={groups} title="Role Privileges" totalGrants={state.grants.length} sourceRoles={sourceRoles} />;
+  return <GrantTreeView groups={groups} title="Role Privileges" totalGrants={grants.length} sourceRoles={sourceRoles} />;
 }
 
 /* ── User Privileges ── */
 function UserPrivilegesPane({ userName }: { userName: string }) {
-  const [state, setState] = useState<{ grants: PrivilegeGrant[]; loading: boolean }>({ grants: [], loading: true });
+  const { data, loading } = useAsyncData(() => getUserEffectivePrivileges(userName), [userName], { keepPreviousData: true });
 
-  useEffect(() => {
-    getUserEffectivePrivileges(userName)
-      .then((grants) => setState({ grants, loading: false }))
-      .catch(() => setState({ grants: [], loading: false }));
-  }, [userName]);
+  if (loading && data == null) return <Loader />;
 
-  if (state.loading) return <Loader />;
+  const grants = data ?? [];
+  const groups = buildGrantDisplay(grants);
+  const sourceRoles = extractSourceRoles(grants);
 
-  const groups = buildGrantDisplay(state.grants);
-  const sourceRoles = extractSourceRoles(state.grants);
-
-  return <GrantTreeView groups={groups} title="Effective Privileges" totalGrants={state.grants.length} sourceRoles={sourceRoles} />;
+  return <GrantTreeView groups={groups} title="Effective Privileges" totalGrants={grants.length} sourceRoles={sourceRoles} />;
 }
 
 /* ── User Roles ── */
 function UserRolesPane({ userName }: { userName: string }) {
-  const [state, setState] = useState<{ grants: PrivilegeGrant[]; loading: boolean }>({ grants: [], loading: true });
+  const { data, loading } = useAsyncData(() => getUserEffectivePrivileges(userName), [userName], { keepPreviousData: true });
 
-  useEffect(() => {
-    getUserEffectivePrivileges(userName)
-      .then((grants) => setState({ grants, loading: false }))
-      .catch(() => setState({ grants: [], loading: false }));
-  }, [userName]);
+  if (loading && data == null) return <Loader />;
 
-  if (state.loading) return <Loader />;
-
-  const roles = [...new Set(state.grants.filter((g) => g.source !== "direct").map((g) => g.source))];
+  const roles = [...new Set((data ?? []).filter((g) => g.source !== "direct").map((g) => g.source))];
 
   return (
     <div>
@@ -495,20 +460,19 @@ function UserRolesPane({ userName }: { userName: string }) {
 
 /* ── Pipe Privileges (with context explanation) ── */
 function PipePrivilegesPane({ item }: { item: SelectedItem }) {
-  const [state, setState] = useState<{ grants: PrivilegeGrant[]; loading: boolean }>({ grants: [], loading: true });
-
-  useEffect(() => {
-    getObjectPrivileges(undefined, undefined, item.name, "PIPE")
-      .then((grants) => setState({ grants, loading: false }))
-      .catch(() => setState({ grants: [], loading: false }));
-  }, [item.name]);
+  const { data, loading } = useAsyncData(
+    () => getObjectPrivileges(undefined, undefined, item.name, "PIPE"),
+    [item.name],
+    { keepPreviousData: true },
+  );
+  const grants = data ?? [];
 
   return (
     <div style={{ padding: 16, fontSize: 12, color: C.text2, lineHeight: 1.8 }}>
-      {state.loading ? (
+      {loading && data == null ? (
         <Loader />
-      ) : state.grants.length > 0 ? (
-        <PermissionMatrixView grants={state.grants} objectType="PIPE" />
+      ) : grants.length > 0 ? (
+        <PermissionMatrixView grants={grants} objectType="PIPE" />
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14, padding: "8px 12px", background: "rgba(59,130,246,0.06)", borderLeft: "2px solid #3b82f6", borderRadius: "0 4px 4px 0" }}>

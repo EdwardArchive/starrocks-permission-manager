@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAuthStore } from "../../stores/authStore";
 import { APP_LOGO_SVG } from "../dag/nodeIcons";
 import { C } from "../../utils/colors";
@@ -6,6 +6,7 @@ import { useClusterStore } from "../../stores/clusterStore";
 import { useGrantStore } from "../../stores/grantStore";
 import { useDagStore } from "../../stores/dagStore";
 import { getClusterStatus } from "../../api/cluster";
+import { usePolling } from "../../hooks/usePolling";
 
 const HEALTH_POLL_MS = 60_000;
 
@@ -17,21 +18,11 @@ export default function Header() {
 
   // Lightweight health poll for the icon badge: non-refresh (rides the 60s
   // server cache) and quiet (no toasts) — failures just leave the badge off.
-  useEffect(() => {
-    let cancelled = false;
-    const check = () => {
-      if (document.hidden) return;
-      getClusterStatus(undefined, false, /* quiet */ true)
-        .then((res) => { if (!cancelled) setHasClusterErrors(res.has_errors); })
-        .catch(() => { if (!cancelled) setHasClusterErrors(false); });
-    };
-    check();
-    const interval = setInterval(check, HEALTH_POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, []);
+  usePolling(() => {
+    getClusterStatus(undefined, false, /* quiet */ true)
+      .then((res) => setHasClusterErrors(res.has_errors))
+      .catch(() => setHasClusterErrors(false));
+  }, HEALTH_POLL_MS, { immediate: true });
 
   const handleManagePrivileges = () => {
     // Prefill from the Permission Focus tab's currently-viewed user/role

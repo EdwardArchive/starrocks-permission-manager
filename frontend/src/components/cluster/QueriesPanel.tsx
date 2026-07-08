@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getClusterQueries, getClusterQueryHistory, killClusterQuery } from "../../api/cluster";
+import { usePolling, useTickerNow } from "../../hooks/usePolling";
 import { ApiError } from "../../api/client";
 import { clockSkewMs, formatRelativeTime, skewedNow } from "../../utils/relativeTime";
 import { sortQueries, sortHistory, type QuerySortKey, type HistorySortKey } from "../../utils/querySort";
@@ -222,7 +223,7 @@ export default function QueriesPanel({ totalCores = null }: { totalCores?: numbe
   const [intervalMs, setIntervalMs] = useState(DEFAULT_INTERVAL_MS);
   const [filter, setFilter] = useState("");
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-  const [nowTick, setNowTick] = useState(() => Date.now()); // 1s ticker for "updated Xs ago"
+  const nowTick = useTickerNow(); // 1s ticker for "updated Xs ago"
 
   // Running
   const [running, setRunning] = useState<ClusterQueriesResponse | null>(null);
@@ -299,33 +300,23 @@ export default function QueriesPanel({ totalCores = null }: { totalCores?: numbe
       });
   }, []);
 
-  // Running poll (only while the running tab is active)
+  // Running: fetch now on subtab entry / interval change; then poll on the
+  // selected interval while active (ticks skipped while hidden or after a 403)
   useEffect(() => {
     if (tab !== "running") return;
     fetchRunning();
-    if (intervalMs <= 0) return;
-    const id = setInterval(() => {
-      if (document.hidden || deniedRef.current) return;
-      fetchRunning();
-    }, intervalMs);
-    return () => { clearInterval(id); runAbort.current?.abort(); };
+    return () => runAbort.current?.abort();
   }, [tab, intervalMs, fetchRunning]);
+  usePolling(() => { if (!deniedRef.current) fetchRunning(); }, intervalMs, { enabled: tab === "running" });
 
-  // History fetch on tab open / filter change (+ optional polling)
+  // History: fetch now on subtab entry / filter or interval change (+ polling)
   useEffect(() => {
     if (tab !== "history") return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchHistory's sync setLoading(true) is intentional: enter loading on tab open
     fetchHistory(errorsOnly);
-    if (intervalMs <= 0) return;
-    const id = setInterval(() => { if (!document.hidden) fetchHistory(errorsOnly); }, intervalMs);
-    return () => { clearInterval(id); histAbort.current?.abort(); };
+    return () => histAbort.current?.abort();
   }, [tab, errorsOnly, intervalMs, fetchHistory]);
-
-  // 1s ticker so "updated Xs ago" stays fresh
-  useEffect(() => {
-    const id = setInterval(() => setNowTick(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  usePolling(() => fetchHistory(errorsOnly), intervalMs, { enabled: tab === "history" });
 
   const now = skewedNow(clockSkewMs(tab === "running" ? running?.server_now : history?.server_now));
 
