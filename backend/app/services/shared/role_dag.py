@@ -1,24 +1,28 @@
-"""Data-agnostic role-DAG assembly helpers built on :class:`DAGBuilder`.
+"""Role-DAG assembly for the user (Layer-1, ``SHOW GRANTS``) tier.
 
 The role-hierarchy endpoints in ``routers/user_roles.py`` and
 ``routers/admin_roles.py`` share the same *assembly* shape while differing in
 their *data source*: the user tier walks roles via ``SHOW GRANTS`` and the admin
-tier reads ``sys.role_edges``. This module owns the tier-agnostic assembly; the
-routers keep their tier-specific fetching and metadata shaping.
+tier reads ``sys.role_edges``. This module owns the Layer-1 assembly:
 
-Only the upward ancestry BFS shared verbatim by both ``get_inheritance_dag``
-endpoints (dag_builder sites 4/5) is abstracted here. The mixed-dedup role
-hierarchy (site 3) and the capped SHOW-GRANTS chain walk (site 6) are one-off
-shapes and stay on direct :class:`DAGBuilder` calls in their routers -- a shared
-helper for either would be contrived.
+  * :func:`role_category` -- node-metadata classifier shared by both tiers.
+  * :func:`add_role_ancestry` -- the upward ancestry BFS shared verbatim by both
+    ``get_inheritance_dag`` endpoints (dag_builder sites 4/5).
+  * :func:`build_role_hierarchy_from_grants` -- the user-tier role-hierarchy DAG
+    (dag_builder site 6, the capped ``SHOW GRANTS`` chain walk).
+
+The admin-tier mixed-dedup role hierarchy (site 3) reads ``sys.role_edges`` and
+so lives in ``services/admin/role_hierarchy.py`` instead of here.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
-from app.services.shared.constants import BUILTIN_ROLES
+from app.models.schemas import DAGGraph
+from app.services.shared.constants import BFS_MAX_DEPTH, BUILTIN_ROLES
 from app.services.shared.dag_builder import DAGBuilder
+from app.utils.role_helpers import parse_role_assignments
 
 
 def role_category(name: str) -> str:
@@ -56,3 +60,36 @@ def add_role_ancestry(
                 queue.append(parent)
             dag.add_node(f"r_{parent}", parent, "role", metadata=node_metadata(parent))
             dag.add_edge(f"r_{parent}", f"r_{current}", "inheritance")
+
+
+def build_role_hierarchy_from_grants(conn, username: str) -> DAGGraph:
+    """Build role hierarchy DAG for non-admin using only SHOW GRANTS."""
+    dag = DAGBuilder()
+
+    # User node
+    dag.add_node(f"u_{username}", username, "user")
+
+    # BFS through role chain
+    direct_roles = parse_role_assignments(conn, username, "USER")
+    # Every user implicitly has 'public' — SHOW GRANTS omits it but it should appear in the DAG
+    if "public" not in direct_roles:
+        direct_roles = [*direct_roles, "public"]
+    for role in direct_roles:
+        dag.add_node(f"r_{role}", role, "role", metadata={"role_category": role_category(role)})
+        dag.add_edge(f"r_{role}", f"u_{username}", "assignment")
+
+    visited: set[str] = set()
+    queue = list(direct_roles)
+    while queue and len(visited) < BFS_MAX_DEPTH:
+        role = queue.pop(0)
+        if role in visited:
+            continue
+        visited.add(role)
+        parent_roles = parse_role_assignments(conn, role, "ROLE")
+        for parent in parent_roles:
+            if parent not in visited:
+                queue.append(parent)
+            dag.add_node(f"r_{parent}", parent, "role", metadata={"role_category": role_category(parent)})
+            dag.add_edge(f"r_{parent}", f"r_{role}", "inheritance")
+
+    return dag.build()

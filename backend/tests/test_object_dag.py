@@ -4,8 +4,8 @@
 that `user_dag`/`admin_dag` collapsed onto; the object-hierarchy route behaviour
 itself is pinned by test_dag.py / test_admin_dag_routes.py. Here we unit-pin the
 extracted helper directly (shallow path + the parallel SHOW FUNCTIONS seam) and
-cover the user role-hierarchy delegator, whose only other exercise is the
-skipped HTTP smoke test.
+cover the user role-hierarchy route (build-via-service + caching), whose only
+other exercise is the skipped HTTP smoke test.
 """
 
 from __future__ import annotations
@@ -48,15 +48,15 @@ def test_build_object_hierarchy_loads_functions(monkeypatch):
     assert any(n.node_role == "group" and n.label == "Functions (1)" for n in graph.nodes)
 
 
-def test_user_role_hierarchy_delegates_and_caches(client, auth_header, monkeypatch):
-    """user_dag /role-hierarchy delegates to user_roles and caches the result."""
+def test_user_role_hierarchy_builds_and_caches(client, auth_header, monkeypatch):
+    """user_dag /role-hierarchy builds via the shared service and caches the result."""
     calls = []
 
-    def _stub(conn, credentials):
+    def _stub(conn, username):
         calls.append(1)
         return DAGGraph(nodes=[DAGNode(id="r_x", label="x", type="role")], edges=[])
 
-    monkeypatch.setattr("app.routers.user_roles.get_role_hierarchy", _stub)
+    monkeypatch.setattr("app.routers.user_dag.build_role_hierarchy_from_grants", _stub)
 
     r1 = client.get("/api/user/dag/role-hierarchy", headers=auth_header)
     assert r1.status_code == 200

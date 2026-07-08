@@ -13,15 +13,14 @@ from fastapi import APIRouter, Depends, Query
 from app.config import settings
 from app.dependencies import get_credentials, get_db
 from app.models.schemas import DAGGraph, RoleItem
-from app.services.shared.constants import BFS_MAX_DEPTH, BUILTIN_ROLES
+from app.services.shared.constants import BUILTIN_ROLES
 from app.services.shared.dag_builder import DAGBuilder
-from app.services.shared.role_dag import add_role_ancestry, role_category
+from app.services.shared.role_dag import add_role_ancestry, build_role_hierarchy_from_grants, role_category
 from app.utils.cache import make_ttl_cache
 from app.utils.role_helpers import (
     collect_all_roles_via_grants,
     get_parent_roles,
     get_user_roles,
-    parse_role_assignments,
 )
 
 router = APIRouter()
@@ -60,7 +59,7 @@ def get_role_hierarchy(conn=Depends(get_db), credentials: dict = Depends(get_cre
         if cache_key in _role_cache:
             return _role_cache[cache_key]
 
-    result = _build_role_hierarchy_from_grants(conn, username)
+    result = build_role_hierarchy_from_grants(conn, username)
 
     with _role_cache_lock:
         _role_cache[cache_key] = result
@@ -88,38 +87,5 @@ def get_inheritance_dag(name: str = Query(""), type: str = Query("user"), conn=D
         dag.add_node(f"r_{name}", name, "role", metadata={"highlight": True, "role_category": role_category(name)})
         # BFS upward only (no downward — requires sys.role_edges)
         add_role_ancestry(dag, [name], lambda r: get_parent_roles(conn, r), meta)
-
-    return dag.build()
-
-
-def _build_role_hierarchy_from_grants(conn, username: str) -> DAGGraph:
-    """Build role hierarchy DAG for non-admin using only SHOW GRANTS."""
-    dag = DAGBuilder()
-
-    # User node
-    dag.add_node(f"u_{username}", username, "user")
-
-    # BFS through role chain
-    direct_roles = parse_role_assignments(conn, username, "USER")
-    # Every user implicitly has 'public' — SHOW GRANTS omits it but it should appear in the DAG
-    if "public" not in direct_roles:
-        direct_roles = [*direct_roles, "public"]
-    for role in direct_roles:
-        dag.add_node(f"r_{role}", role, "role", metadata={"role_category": role_category(role)})
-        dag.add_edge(f"r_{role}", f"u_{username}", "assignment")
-
-    visited: set[str] = set()
-    queue = list(direct_roles)
-    while queue and len(visited) < BFS_MAX_DEPTH:
-        role = queue.pop(0)
-        if role in visited:
-            continue
-        visited.add(role)
-        parent_roles = parse_role_assignments(conn, role, "ROLE")
-        for parent in parent_roles:
-            if parent not in visited:
-                queue.append(parent)
-            dag.add_node(f"r_{parent}", parent, "role", metadata={"role_category": role_category(parent)})
-            dag.add_edge(f"r_{parent}", f"r_{role}", "inheritance")
 
     return dag.build()

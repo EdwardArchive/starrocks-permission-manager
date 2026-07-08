@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query
 from app.config import settings
 from app.dependencies import get_credentials, get_db, require_admin
 from app.models.schemas import DAGGraph
+from app.services.admin.role_hierarchy import build_admin_role_hierarchy
 from app.services.common.object_dag import build_object_hierarchy
 
 # Re-exported only so conftest can monkeypatch this module attr in tests; the
@@ -42,13 +43,11 @@ def get_object_hierarchy(
 
 @router.get("/role-hierarchy", response_model=DAGGraph)
 def get_role_hierarchy(conn=Depends(get_db)):
-    """Role hierarchy DAG (admin only). Delegates to admin_roles hierarchy."""
+    """Role hierarchy DAG (admin only) from sys.role_edges + SHOW ROLES."""
     cache_key = "admin_role_hier"
     if cache_key in _dag_cache:
         return _dag_cache[cache_key]
 
-    from app.routers.admin_roles import get_role_hierarchy as _get
-
-    result = _get(conn=conn)
+    result = build_admin_role_hierarchy(conn)
     _dag_cache[cache_key] = result
     return result

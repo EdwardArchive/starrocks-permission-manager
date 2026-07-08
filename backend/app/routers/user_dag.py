@@ -11,6 +11,7 @@ from app.config import settings
 from app.dependencies import get_credentials, get_db
 from app.models.schemas import DAGGraph
 from app.services.common.object_dag import build_object_hierarchy
+from app.services.shared.role_dag import build_role_hierarchy_from_grants
 
 # Re-exported only so conftest can monkeypatch this module attr in tests; the
 # actual fan-out now runs inside object_dag via starrocks_client.parallel_queries.
@@ -43,14 +44,12 @@ def get_object_hierarchy(
 
 @router.get("/role-hierarchy", response_model=DAGGraph)
 def get_role_hierarchy(conn=Depends(get_db), credentials: dict = Depends(get_credentials)):
-    """Build role hierarchy DAG for the current user. Delegates to user_roles."""
+    """Build role hierarchy DAG for the current user via SHOW GRANTS."""
     username = credentials["username"]
     cache_key = f"user_role_hier_dag_{username}"
     if cache_key in _dag_cache:
         return _dag_cache[cache_key]
 
-    from app.routers.user_roles import get_role_hierarchy as _get_role_hierarchy
-
-    result = _get_role_hierarchy(conn=conn, credentials=credentials)
+    result = build_role_hierarchy_from_grants(conn, username)
     _dag_cache[cache_key] = result
     return result

@@ -2,19 +2,23 @@
 
 Collapses the duplicated idiom -- ``nodes``/``edges`` lists + a ``node_ids``
 dedup set + an ``edge_idx`` counter + nested ``add_node``/``add_edge`` closures --
-that is currently re-implemented across six DAG-building sites. Each site can be
-mechanically rewritten onto this builder with zero behavior change:
+that used to be re-implemented across six DAG-building sites, now all on this
+builder with zero behavior change:
 
-  1. routers/user_dag.py::get_object_hierarchy                  (nodes NOT deduped; node_role="group")
-  2. routers/admin_dag.py::get_object_hierarchy                 (identical to #1)
-  3. routers/admin_roles.py::get_role_hierarchy                 (roles NOT deduped, users deduped;
+  1. services/common/object_dag.py::build_object_hierarchy      (nodes NOT deduped; node_role="group";
+                                                                 serves both user_dag and admin_dag routers)
+  2. (same as #1 -- the user/admin duplicate collapsed into it)
+  3. services/admin/role_hierarchy.py::build_admin_role_hierarchy
+                                                                (roles NOT deduped, users deduped;
                                                                  assignment edges deduped on source/target)
-  4. routers/admin_roles.py::get_inheritance_dag                (nodes deduped; edges NOT deduped)
+  4. routers/admin_roles.py::get_inheritance_dag                (nodes deduped; edges NOT deduped;
+                                                                 via role_dag.add_role_ancestry)
   5. routers/user_roles.py::get_inheritance_dag                 (identical to #4)
-  6. routers/user_roles.py::_build_role_hierarchy_from_grants   (nodes deduped; edges NOT deduped)
+  6. services/shared/role_dag.py::build_role_hierarchy_from_grants
+                                                                (nodes deduped; edges NOT deduped)
 
-The builder owns only the bookkeeping. Metadata *shaping* stays in each router:
-sites 4/5 merge ``{"highlight": ...}`` with per-node extras, sites 1/2 derive
+The builder owns only the bookkeeping. Metadata *shaping* stays with each caller:
+sites 4/5 merge ``{"highlight": ...}`` with per-node extras, site 1 derives
 ``catalog``/``database`` keys -- the caller builds that dict and hands it in as
 ``metadata``. The builder stores whatever it is given.
 """

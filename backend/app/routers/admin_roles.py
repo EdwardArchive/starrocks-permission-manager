@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Query
 from app.config import settings
 from app.dependencies import get_db, require_admin
 from app.models.schemas import DAGGraph, RoleItem
-from app.services.admin.user_service import get_all_users
+from app.services.admin.role_hierarchy import build_admin_role_hierarchy
 from app.services.shared.constants import BUILTIN_ROLES
 from app.services.shared.dag_builder import DAGBuilder
 from app.services.shared.role_dag import add_role_ancestry, role_category
@@ -57,57 +57,8 @@ def get_role_hierarchy(conn=Depends(get_db)):
         if cache_key in _role_cache:
             return _role_cache[cache_key]
 
-    # Get all roles
-    roles_rows = execute_query(conn, "SHOW ROLES")
-    roles = []
-    for r in roles_rows:
-        name = col(r, "Name") or ""
-        if name:
-            roles.append(name)
+    result = build_admin_role_hierarchy(conn)
 
-    # Get all role edges from sys.role_edges
-    edges_data = []
-    edge_rows = execute_query(conn, "SELECT * FROM sys.role_edges")
-    for e in edge_rows:
-        parent = e.get("FROM_ROLE") or e.get("PARENT_ROLE_NAME") or ""
-        child = e.get("TO_ROLE") or e.get("ROLE_NAME") or ""
-        user = e.get("TO_USER") or e.get("USER_NAME") or ""
-        if parent and (child or user):
-            edges_data.append({"parent": parent, "child": child, "user": user})
-
-    all_users = get_all_users(conn)
-    for e in edges_data:
-        if e["user"]:
-            all_users.add(e["user"])
-
-    user_roles: dict[str, set[str]] = {}
-    for e in edges_data:
-        if e["user"]:
-            user_roles.setdefault(e["user"], set()).add(e["parent"])
-
-    dag = DAGBuilder()
-    # Role nodes append unconditionally (dedup=False), but still record their ids
-    # so the user loop below de-dups against them.
-    for role in roles:
-        dag.add_node(f"r_{role}", role, "role", metadata={"role_category": role_category(role)}, dedup=False)
-    for u in all_users:
-        dag.add_node(f"u_{u}", u, "user")
-
-    # One shared edge counter: inheritance edges (no dedup), then user-assignment
-    # edges (deduped on source/target), then implicit-public assignments.
-    for e in edges_data:
-        if e["parent"] and e["child"]:
-            dag.add_edge(f"r_{e['parent']}", f"r_{e['child']}", "inheritance")
-
-    for e in edges_data:
-        if e["user"] and e["parent"]:
-            dag.add_edge(f"r_{e['parent']}", f"u_{e['user']}", "assignment", dedup=True)
-
-    for u in all_users:
-        if u not in user_roles and "public" in roles:
-            dag.add_edge("r_public", f"u_{u}", "assignment", dedup=True)
-
-    result = dag.build()
     with _role_cache_lock:
         _role_cache[cache_key] = result
     return result
