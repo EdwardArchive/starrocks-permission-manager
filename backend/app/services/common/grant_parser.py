@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Iterator
 
 from app.models.schemas import PrivilegeGrant
 from app.services.shared.row_utils import col
@@ -18,6 +19,21 @@ _RE_ALL_IN_DB = re.compile(r"ALL\s+(\w+(?:\s+\w+)*?)S?\s+IN\s+(?:ALL\s+DATABASES
 _RE_TYPE_PATH = re.compile(r"(\w+(?:\s+\w+)*?)\s+(`[^`]+`(?:\.`[^`]+`)*|[\w.*]+(?:\.[\w.*]+)*)", re.I)
 
 
+def iter_grant_statements(rows: list[dict]) -> Iterator[tuple[dict, str]]:
+    """Shared raw row-walk over a SHOW GRANTS result set.
+
+    Yields ``(row, statement)`` for every cell whose string value is a GRANT
+    statement. Consumed by :func:`_parse_show_grants` (which fills catalog context
+    from the row) and :func:`app.utils.role_helpers.parse_role_assignments` (which
+    filters role-assignment lines) — each keeps its own downstream logic.
+    """
+    for row in rows:
+        for val in row.values():
+            s = str(val)
+            if s.upper().startswith("GRANT"):
+                yield row, s
+
+
 def _parse_show_grants(conn, grantee: str, grantee_type: str) -> list[PrivilegeGrant]:
     results = []
     try:
@@ -28,45 +44,38 @@ def _parse_show_grants(conn, grantee: str, grantee_type: str) -> list[PrivilegeG
                 rows = execute_query(conn, f"SHOW GRANTS FOR '{safe_name(grantee)}'")
         else:
             rows = execute_query(conn, f"SHOW GRANTS FOR ROLE '{safe_name(grantee)}'")
-        for row in rows:
+        for row, s in iter_grant_statements(rows):
             # SHOW GRANTS has a Catalog column indicating the catalog context
             row_catalog = col(row, "Catalog") or None
-            for val in row.values():
-                s = str(val)
-                if s.upper().startswith("GRANT"):
-                    parsed = _parse_grant_statement(s, grantee, grantee_type)
-                    # Fill in catalog from row context if not set by parsing
-                    if row_catalog:
-                        _NON_CATALOG_TYPES = {
-                            "SYSTEM",
-                            "GLOBAL FUNCTION",
-                            "STORAGE VOLUME",
-                            "RESOURCE GROUP",
-                            "RESOURCE",
-                            "WAREHOUSE",
-                            "USER",
-                            "",
-                        }
-                        for g in parsed:
-                            if not g.object_catalog and g.object_type not in _NON_CATALOG_TYPES:
-                                g.object_catalog = row_catalog
-                    results.extend(parsed)
+            parsed = _parse_grant_statement(s, grantee, grantee_type)
+            # Fill in catalog from row context if not set by parsing
+            if row_catalog:
+                _NON_CATALOG_TYPES = {
+                    "SYSTEM",
+                    "GLOBAL FUNCTION",
+                    "STORAGE VOLUME",
+                    "RESOURCE GROUP",
+                    "RESOURCE",
+                    "WAREHOUSE",
+                    "USER",
+                    "",
+                }
+                for g in parsed:
+                    if not g.object_catalog and g.object_type not in _NON_CATALOG_TYPES:
+                        g.object_catalog = row_catalog
+            results.extend(parsed)
     except Exception as e:
         logger.warning(f"SHOW GRANTS failed for {grantee_type} {grantee}: {e}")
     return results
 
 
-def _parse_grant_statement(stmt: str, grantee: str, grantee_type: str) -> list[PrivilegeGrant]:
-    """Best-effort parse of various GRANT statement formats."""
-    grants: list[PrivilegeGrant] = []
-    m = _RE_GRANT_ON.match(stmt)
-    if not m:
-        return grants
+def _parse_on_clause(on_part: str) -> tuple[str, str, str | None]:
+    """Interpret the ``ON <...>`` portion of a GRANT statement.
 
-    priv_str = m.group(1).strip()
-    on_part = m.group(2).strip()
-    privs = [p.strip() for p in priv_str.split(",")]
-
+    Returns ``(obj_type, obj_path, scoped_database)`` — handling the
+    ``ALL … IN DATABASE`` / ``ALL …`` forms, multi-word object types, and the
+    generic ``<type> <path>`` shape.
+    """
     obj_type = "SYSTEM"
     obj_path = ""
     scoped_database = None
@@ -104,8 +113,11 @@ def _parse_grant_statement(stmt: str, grantee: str, grantee_type: str) -> list[P
                     obj_path = on_match.group(2).strip().replace("`", "")
                 else:
                     obj_type = on_part.upper()
+    return obj_type, obj_path, scoped_database
 
-    # Normalize obj_type
+
+def _normalize_object_type(obj_type: str) -> str:
+    """Map a raw object-type token to its canonical name (POLICY for masking/row-access)."""
     _TYPE_MAP = [
         ("MATERIALIZED VIEW", "MATERIALIZED VIEW"),
         ("GLOBAL FUNCTION", "GLOBAL FUNCTION"),
@@ -128,7 +140,15 @@ def _parse_grant_statement(stmt: str, grantee: str, grantee_type: str) -> list[P
             break
     if "MASKING" in obj_type or "ROW ACCESS" in obj_type:
         obj_type = "POLICY"
+    return obj_type
 
+
+def _split_object_path(obj_type: str, obj_path: str) -> tuple[str | None, str | None, str | None]:
+    """Split a dotted object path into ``(catalog, database, name)`` by part count.
+
+    2-part paths resolve differently for object-level types (``database.name``) vs
+    scope-level types (``catalog.database``); ``*`` segments become ``None``.
+    """
     parts = obj_path.split(".") if obj_path else []
     catalog: str | None
     database: str | None
@@ -152,6 +172,19 @@ def _parse_grant_statement(stmt: str, grantee: str, grantee_type: str) -> list[P
         catalog, database, name = parts[0], None, None
     else:
         catalog = database = name = None
+    return catalog, database, name
+
+
+def _apply_scope_overrides(
+    obj_type: str,
+    obj_path: str,
+    catalog: str | None,
+    database: str | None,
+    name: str | None,
+    scoped_database: str | None,
+) -> tuple[str | None, str | None, str | None]:
+    """Adjust ``(catalog, database, name)`` for scoped-DB, ``ON DATABASE X`` and
+    system-object special cases."""
     if scoped_database:
         database = scoped_database
         catalog = None
@@ -176,6 +209,24 @@ def _parse_grant_statement(stmt: str, grantee: str, grantee_type: str) -> list[P
     ):
         name = obj_path  # preserve full path (e.g. "gfn_mask_email(VARCHAR(65533))")
         catalog = None
+    return catalog, database, name
+
+
+def _parse_grant_statement(stmt: str, grantee: str, grantee_type: str) -> list[PrivilegeGrant]:
+    """Best-effort parse of various GRANT statement formats."""
+    grants: list[PrivilegeGrant] = []
+    m = _RE_GRANT_ON.match(stmt)
+    if not m:
+        return grants
+
+    priv_str = m.group(1).strip()
+    on_part = m.group(2).strip()
+    privs = [p.strip() for p in priv_str.split(",")]
+
+    obj_type, obj_path, scoped_database = _parse_on_clause(on_part)
+    obj_type = _normalize_object_type(obj_type)
+    catalog, database, name = _split_object_path(obj_type, obj_path)
+    catalog, database, name = _apply_scope_overrides(obj_type, obj_path, catalog, database, name, scoped_database)
 
     for priv in privs:
         priv = priv.strip()

@@ -10,11 +10,10 @@ from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_credentials, get_db, require_admin
 from app.models.schemas import PrivilegeGrant
+from app.services.admin.sys_collector import fetch_role_grants_raw
 from app.services.common.grant_classifier import ObjectQuery
 from app.services.common.grant_resolver import GrantResolver
 from app.services.grant_collector import GrantCollector
-from app.services.starrocks_client import execute_query
-from app.utils.sql_safety import safe_name
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
@@ -61,19 +60,8 @@ def get_role_privileges(rolename: str, credentials: dict = Depends(get_credentia
 
 @router.get("/role/{rolename}/raw")
 def get_role_privileges_raw(rolename: str, conn=Depends(get_db)):
-    """Return raw GRANT data for a role from sys.grants_to_roles + SHOW GRANTS FOR ROLE."""
-    results: dict = {"sys_grants_to_roles": [], "show_grants": []}
-    try:
-        rows = execute_query(conn, "SELECT * FROM sys.grants_to_roles WHERE GRANTEE = %s", (rolename,))
-        results["sys_grants_to_roles"] = [dict(r) for r in rows]
-    except Exception as e:
-        results["sys_grants_to_roles_error"] = str(e)
-    try:
-        rows = execute_query(conn, f"SHOW GRANTS FOR ROLE '{safe_name(rolename)}'")
-        results["show_grants"] = [dict(r) for r in rows]
-    except Exception as e:
-        results["show_grants_error"] = str(e)
-    return results
+    """Return raw GRANT data for a role (delegates to sys_collector)."""
+    return fetch_role_grants_raw(conn, rolename)
 
 
 @router.get("/object", response_model=list[PrivilegeGrant])

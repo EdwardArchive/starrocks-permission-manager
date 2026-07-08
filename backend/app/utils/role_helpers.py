@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 
+from app.services.common.grant_parser import iter_grant_statements
 from app.services.starrocks_client import execute_query
 from app.utils.sql_safety import safe_name
 
@@ -50,13 +51,11 @@ def parse_role_assignments(conn, grantee: str, grantee_type: str) -> list[str]:
             rows = execute_query(conn, f"SHOW GRANTS FOR '{safe_name(grantee)}'")
         else:
             rows = execute_query(conn, f"SHOW GRANTS FOR ROLE '{safe_name(grantee)}'")
-        for row in rows:
-            for val in row.values():
-                s = str(val)
-                if s.upper().startswith("GRANT") and " ON " not in s.upper():
-                    for role_name in re.findall(r"'([^']+)'", s.split(" TO ")[0]):
-                        if role_name not in roles:
-                            roles.append(role_name)
+        for _row, s in iter_grant_statements(rows):
+            if " ON " not in s.upper():
+                for role_name in re.findall(r"'([^']+)'", s.split(" TO ")[0]):
+                    if role_name not in roles:
+                        roles.append(role_name)
     except Exception:
         logger.debug("Failed to parse role assignments for %s %s", grantee_type, grantee)
     return roles

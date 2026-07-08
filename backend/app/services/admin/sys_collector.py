@@ -16,6 +16,7 @@ from app.services.shared.name_utils import normalize_fn_name
 from app.services.shared.role_graph import fetch_role_child_map, fetch_user_role_map
 from app.services.starrocks_client import execute_query
 from app.utils.role_helpers import build_role_chain
+from app.utils.sql_safety import safe_name
 
 logger = logging.getLogger("privileges")
 
@@ -68,6 +69,23 @@ def collect_admin(conn, username: str) -> CollectedGrants:
         all_users=all_users,
         user_role_map=user_role_map,
     )
+
+
+def fetch_role_grants_raw(conn, role: str) -> dict:
+    """Return raw GRANT data for a role from ``sys.grants_to_roles`` and
+    ``SHOW GRANTS FOR ROLE`` (best-effort; per-source errors captured inline)."""
+    results: dict = {"sys_grants_to_roles": [], "show_grants": []}
+    try:
+        rows = execute_query(conn, "SELECT * FROM sys.grants_to_roles WHERE GRANTEE = %s", (role,))
+        results["sys_grants_to_roles"] = [dict(r) for r in rows]
+    except Exception as e:
+        results["sys_grants_to_roles_error"] = str(e)
+    try:
+        rows = execute_query(conn, f"SHOW GRANTS FOR ROLE '{safe_name(role)}'")
+        results["show_grants"] = [dict(r) for r in rows]
+    except Exception as e:
+        results["show_grants_error"] = str(e)
+    return results
 
 
 def _get_all_users(conn) -> set[str]:
