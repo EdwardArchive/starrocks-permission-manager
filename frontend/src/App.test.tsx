@@ -9,15 +9,14 @@ import type { UserInfo } from "./types";
 vi.mock("./api/auth", () => ({
   getMe: vi.fn(() => new Promise(() => {})),
 }));
-// DAG fetchers resolve to empty graphs so the obj/role effect's `.then` is safe.
-vi.mock("./api/user", () => ({
-  getObjectHierarchy: vi.fn(() => Promise.resolve({ nodes: [], edges: [] })),
-  getRoleHierarchy: vi.fn(() => Promise.resolve({ nodes: [], edges: [] })),
-}));
-vi.mock("./api/admin", () => ({
-  getObjectHierarchy: vi.fn(() => Promise.resolve({ nodes: [], edges: [] })),
-  getRoleHierarchy: vi.fn(() => Promise.resolve({ nodes: [], edges: [] })),
-}));
+// usePermApi() resolves to empty graphs so the obj/role effect's `.then` is safe.
+vi.mock("./api/permApi", () => {
+  const api = {
+    getObjectHierarchy: vi.fn(() => Promise.resolve({ nodes: [], edges: [] })),
+    getRoleHierarchy: vi.fn(() => Promise.resolve({ nodes: [], edges: [] })),
+  };
+  return { usePermApi: () => api };
+});
 
 // nodeIcons pulls SVG ?raw imports that do not load under jsdom.
 vi.mock("./components/dag/nodeIcons", () => ({ NODE_COLORS: {}, colorizedSvg: () => "" }));

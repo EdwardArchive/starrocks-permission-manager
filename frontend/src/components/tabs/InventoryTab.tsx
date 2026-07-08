@@ -1,11 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
-import {
-  getMyPermissions,
-  getRoles as userGetRoles,
-  getRoleHierarchy as userGetRoleHierarchy,
-  type MyPermissionsResponse,
-} from "../../api/user";
-import { getRoles as adminGetRoles, getRoleHierarchy as adminGetRoleHierarchy } from "../../api/admin";
+import { getMyPermissions, type MyPermissionsResponse } from "../../api/user";
+import { usePermApi } from "../../api/permApi";
 import { useAuthStore } from "../../stores/authStore";
 import {
   C, SUB_TAB_META, OBJECT_TYPE_MAP, formatBytes,
@@ -17,6 +12,7 @@ import DetailPanel from "./InventoryDetailPanel";
 /* ── Component ── */
 export default function InventoryTab() {
   const isAdmin = useAuthStore((s) => s.user?.is_user_admin ?? false);
+  const permApi = usePermApi();
   const [state, setState] = useState<{ data: MyPermissionsResponse | null; loading: boolean; error: boolean }>({
     data: null, loading: true, error: false,
   });
@@ -78,16 +74,14 @@ export default function InventoryTab() {
 
   /* Admin: load all roles + users; Non-admin: load own roles */
   useEffect(() => {
-    const getRoles = isAdmin ? adminGetRoles : userGetRoles;
-    const getRoleHierarchy = isAdmin ? adminGetRoleHierarchy : userGetRoleHierarchy;
-    getRoles().then(setAllRoles).catch(() => {});
+    permApi.getRoles().then(setAllRoles).catch(() => {});
     if (isAdmin) {
-      getRoleHierarchy().then((dag) => {
+      permApi.getRoleHierarchy().then((dag) => {
         const users = dag.nodes.filter((n) => n.type === "user").map((n) => n.label);
         setAllUsers(users);
       }).catch(() => {});
     }
-  }, [isAdmin]);
+  }, [isAdmin, permApi]);
 
   const { data, loading, error } = state;
 

@@ -14,13 +14,18 @@ const adminGetRoleHierarchy = vi.fn();
 
 vi.mock("../../api/user", () => ({
   getMyPermissions: (...a: unknown[]) => getMyPermissions(...a),
-  getRoles: (...a: unknown[]) => userGetRoles(...a),
-  getRoleHierarchy: (...a: unknown[]) => userGetRoleHierarchy(...a),
 }));
-vi.mock("../../api/admin", () => ({
-  getRoles: (...a: unknown[]) => adminGetRoles(...a),
-  getRoleHierarchy: (...a: unknown[]) => adminGetRoleHierarchy(...a),
-}));
+// Components now resolve getRoles/getRoleHierarchy through usePermApi(). A single
+// stable api object (per the real singleton contract) keeps the effect's [permApi]
+// dep identity constant; the store is read at call-time to route to the right spy.
+vi.mock("../../api/permApi", () => {
+  const isAdmin = () => useAuthStore.getState().user?.is_user_admin ?? false;
+  const api = {
+    getRoles: (...a: unknown[]) => (isAdmin() ? adminGetRoles : userGetRoles)(...a),
+    getRoleHierarchy: (...a: unknown[]) => (isAdmin() ? adminGetRoleHierarchy : userGetRoleHierarchy)(...a),
+  };
+  return { usePermApi: () => api };
+});
 
 // Cut the SVG ?raw import chain (inventory-ui → InlineIcon → nodeIcons).
 vi.mock("../common/InlineIcon", () => ({ default: () => <span /> }));

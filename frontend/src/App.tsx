@@ -4,8 +4,7 @@ import { useAuthStore } from "./stores/authStore";
 import { useShallow } from "zustand/react/shallow";
 import { useDagStore, type TabId } from "./stores/dagStore";
 import { getMe } from "./api/auth";
-import { getObjectHierarchy as userGetObjectHierarchy, getRoleHierarchy as userGetRoleHierarchy } from "./api/user";
-import { getObjectHierarchy as adminGetObjectHierarchy, getRoleHierarchy as adminGetRoleHierarchy } from "./api/admin";
+import { usePermApi } from "./api/permApi";
 import type { DAGGraph } from "./types";
 
 import LoginForm from "./components/auth/LoginForm";
@@ -67,6 +66,7 @@ export default function App() {
     }))
   );
 
+  const permApi = usePermApi();
   const isAdmin = user?.is_user_admin ?? false;
   const canManageGrants = user?.can_manage_grants ?? false;
   const visibleTabs = TAB_CONFIG.filter(
@@ -105,11 +105,9 @@ export default function App() {
     if (dagState.cache[dagKey]) return;
     const controller = new AbortController();
     setDagState((prev) => ({ ...prev, loading: true }));
-    const getObjectHierarchy = isAdmin ? adminGetObjectHierarchy : userGetObjectHierarchy;
-    const getRoleHierarchy = isAdmin ? adminGetRoleHierarchy : userGetRoleHierarchy;
     const fetcher =
-      activeTab === "obj" ? () => getObjectHierarchy(activeCatalog, controller.signal) :
-      () => getRoleHierarchy(controller.signal);
+      activeTab === "obj" ? () => permApi.getObjectHierarchy(activeCatalog, controller.signal) :
+      () => permApi.getRoleHierarchy(controller.signal);
     fetcher()
       .then((data) => setDagState((prev) => ({ cache: { ...prev.cache, [dagKey]: data }, loading: false })))
       .catch(() => setDagState((prev) => ({ ...prev, loading: false })));

@@ -1,12 +1,12 @@
 import { useEffect, useState, useRef } from "react";
-import { getCatalogs, getDatabases, getTables, getRoles as userGetRoles, searchAll as userSearchAll, type SearchResult } from "../../api/user";
-import { getRoles as adminGetRoles, searchAll as adminSearchAll } from "../../api/admin";
+import { getCatalogs, getDatabases, getTables } from "../../api/user";
+import { usePermApi } from "../../api/permApi";
 import { useShallow } from "zustand/react/shallow";
 import { useDagStore } from "../../stores/dagStore";
 import { useAuthStore } from "../../stores/authStore";
 import { colorizedSvg, NODE_COLORS } from "../dag/nodeIcons";
 import { C } from "../../utils/colors";
-import type { CatalogItem, DatabaseItem, ObjectItem, RoleItem } from "../../types";
+import type { CatalogItem, DatabaseItem, ObjectItem, RoleItem, SearchResult } from "../../types";
 
 /* ── Inline SVG icon (same as mockup: 16x16) ── */
 function Icon({ type, size = 16 }: { type: string; size?: number }) {
@@ -114,7 +114,7 @@ export default function Sidebar() {
     })),
   );
   const { user } = useAuthStore();
-  const isAdmin = user?.is_user_admin ?? false;
+  const permApi = usePermApi();
 
   const [catalogs, setCatalogs] = useState<CatalogItem[]>([]);
   const [dbMap, setDbMap] = useState<Record<string, DatabaseItem[]>>({});
@@ -130,9 +130,8 @@ export default function Sidebar() {
 
   useEffect(() => {
     getCatalogs().then(setCatalogs).catch(() => {});
-    const getRoles = isAdmin ? adminGetRoles : userGetRoles;
-    getRoles().then(setRoles).catch(() => {});
-  }, [isAdmin]);
+    permApi.getRoles().then(setRoles).catch(() => {});
+  }, [permApi]);
 
   // Debounced search: trigger after 300ms of no typing, min 2 chars
   useEffect(() => {
@@ -145,14 +144,13 @@ export default function Sidebar() {
     }
     setSearching(true);
     debounceRef.current = setTimeout(() => {
-      const searchAll = isAdmin ? adminSearchAll : userSearchAll;
-      searchAll(trimmed)
+      permApi.searchAll(trimmed)
         .then(setSearchResults)
         .catch(() => setSearchResults([]))
         .finally(() => setSearching(false));
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [searchQuery, isAdmin]);
+  }, [searchQuery, permApi]);
 
   const toggleCat = async (cat: string) => {
     const next = new Set(expandedCats);

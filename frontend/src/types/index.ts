@@ -102,6 +102,30 @@ export interface RoleItem {
   is_builtin: boolean;
 }
 
+// ── My Permissions ──
+export interface MyPermissionsResponse {
+  username: string;
+  direct_roles: string[];
+  role_tree: Record<string, {
+    grants: { privilege_type: string; object_type: string; object_catalog: string | null; object_database: string | null; object_name: string | null }[];
+    parent_roles: string[];
+  }>;
+  effective_privileges: { privilege_type: string; object_type: string; object_catalog: string | null; object_database: string | null; object_name: string | null; source: string }[];
+  accessible_databases: { name: string; catalog: string }[];
+  accessible_catalogs: { name: string; type: string }[];
+  accessible_objects: { catalog?: string; database: string; name: string; type: string; rows?: number; size?: number; signature?: string; return_type?: string; function_type?: string; properties?: string }[];
+  system_objects: Record<string, string>[];
+}
+
+// ── Search ──
+export interface SearchResult {
+  name: string;
+  type: "table" | "view" | "database" | "role" | "user";
+  catalog: string;
+  database: string;
+  path: string;
+}
+
 // ── DAG ──
 export interface DAGNode {
   id: string;
