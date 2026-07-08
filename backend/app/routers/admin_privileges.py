@@ -6,8 +6,6 @@ Uses GrantCollector(is_admin=True) → GrantResolver for all privilege queries.
 
 from __future__ import annotations
 
-import logging
-
 from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_credentials, get_db, require_admin
@@ -18,7 +16,6 @@ from app.services.grant_collector import GrantCollector
 from app.services.starrocks_client import execute_query
 from app.utils.sql_safety import safe_name
 
-logger = logging.getLogger("admin_privileges")
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 

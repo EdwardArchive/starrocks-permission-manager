@@ -15,7 +15,7 @@ from app.dependencies import get_credentials, get_db
 from app.models.schemas import DAGEdge, DAGGraph, DAGNode
 from app.services.shared.name_utils import normalize_fn_name
 from app.services.starrocks_client import execute_query, parallel_queries
-from app.utils.sql_safety import safe_identifier
+from app.utils.sql_safety import safe_identifier, set_catalog
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ def get_object_hierarchy(
     db_list: list[tuple[str, str]] = []  # (catalog, db)
     for cat in catalogs:
         try:
-            execute_query(conn, f"SET CATALOG `{cat}`")
+            set_catalog(conn, cat)
             db_rows = execute_query(conn, "SHOW DATABASES")
         except Exception:
             logger.debug("Failed to list databases for catalog %s", cat)
@@ -99,7 +99,7 @@ def get_object_hierarchy(
 
         for cat_name, db_names in db_set_per_cat.items():
             try:
-                execute_query(conn, f"SET CATALOG `{cat_name}`")
+                set_catalog(conn, cat_name)
             except Exception:
                 logger.debug("Failed to set catalog %s for object loading", cat_name)
                 continue
@@ -142,7 +142,7 @@ def get_object_hierarchy(
             # Functions: per-DB query, run in parallel
             def _make_fn_task(cat_n: str, db_n: str):
                 def fn(c):
-                    execute_query(c, f"SET CATALOG `{safe_identifier(cat_n)}`")
+                    set_catalog(c, cat_n)
                     fn_rows = execute_query(c, f"SHOW FUNCTIONS FROM `{safe_identifier(db_n)}`")
                     fns = []
                     for fr in fn_rows:

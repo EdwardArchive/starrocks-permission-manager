@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_credentials, get_db, require_admin
 from app.services.starrocks_client import execute_query, parallel_queries
-from app.utils.sql_safety import safe_identifier
+from app.utils.sql_safety import restore_default_catalog, set_catalog
 
 logger = logging.getLogger("admin_search")
 router = APIRouter(dependencies=[Depends(require_admin)])
@@ -139,7 +139,7 @@ def search(
     # 2. Helper: search one catalog
     def _search_catalog(c, cat: str, kw: str, lim: int) -> list[dict]:
         cat_results = []
-        execute_query(c, f"SET CATALOG `{safe_identifier(cat)}`")
+        set_catalog(c, cat)
         try:
             rows = execute_query(
                 c,
@@ -185,7 +185,7 @@ def search(
             logger.debug("Failed to search default_catalog")
         # Restore for subsequent sys.* queries
         try:
-            execute_query(conn, "SET CATALOG `default_catalog`")
+            restore_default_catalog(conn)
         except Exception:
             logger.debug("Failed to restore catalog context to default_catalog")
 

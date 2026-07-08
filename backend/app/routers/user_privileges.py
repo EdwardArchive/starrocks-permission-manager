@@ -6,8 +6,6 @@ Non-admin: SHOW GRANTS path. Admin: sys.* path. Same GrantResolver for both.
 
 from __future__ import annotations
 
-import logging
-
 from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_credentials, get_db
@@ -16,7 +14,6 @@ from app.services.common.grant_classifier import ObjectQuery
 from app.services.common.grant_resolver import GrantResolver
 from app.services.grant_collector import GrantCollector
 
-logger = logging.getLogger("user_privileges")
 router = APIRouter()
 
 

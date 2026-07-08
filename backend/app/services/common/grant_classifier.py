@@ -73,6 +73,23 @@ _WILDCARD_TYPE_MAP: dict[str, frozenset[str]] = {
     "CATALOG": frozenset({"TABLE", "VIEW", "MATERIALIZED VIEW", "MV", "FUNCTION", "DATABASE", "CATALOG"}),
 }
 
+_SYSTEM_CREATE_MAP = {
+    "CREATE RESOURCE GROUP": "RESOURCE GROUP",
+    "CREATE RESOURCE": "RESOURCE",
+    "CREATE EXTERNAL CATALOG": "CATALOG",
+    "CREATE STORAGE VOLUME": "STORAGE VOLUME",
+    "CREATE WAREHOUSE": "WAREHOUSE",
+    "CREATE GLOBAL FUNCTION": "GLOBAL FUNCTION",
+}
+
+_CREATE_TYPE_MAP = {
+    "CREATE TABLE": "TABLE",
+    "CREATE VIEW": "VIEW",
+    "CREATE MATERIALIZED VIEW": "MATERIALIZED VIEW",
+    "CREATE FUNCTION": "FUNCTION",
+    "CREATE PIPE": "PIPE",
+}
+
 
 # ══════════════════════════════════════════════════════════════════════
 # Query context + Grant classification
@@ -126,14 +143,6 @@ def classify_grant(g: PrivilegeGrant, q: ObjectQuery) -> Relevance:
         return Relevance.EXACT if otype == "SYSTEM" else Relevance.IRRELEVANT
     priv_upper = g.privilege_type.upper()
     # Allow CREATE X privileges to pass through to their target type queries
-    _SYSTEM_CREATE_MAP = {
-        "CREATE RESOURCE GROUP": "RESOURCE GROUP",
-        "CREATE RESOURCE": "RESOURCE",
-        "CREATE EXTERNAL CATALOG": "CATALOG",
-        "CREATE STORAGE VOLUME": "STORAGE VOLUME",
-        "CREATE WAREHOUSE": "WAREHOUSE",
-        "CREATE GLOBAL FUNCTION": "GLOBAL FUNCTION",
-    }
     system_create_target = _SYSTEM_CREATE_MAP.get(priv_upper)
     if system_create_target and q.type_upper == system_create_target:
         return Relevance.PARENT_SCOPE
@@ -163,13 +172,6 @@ def classify_grant(g: PrivilegeGrant, q: ObjectQuery) -> Relevance:
         priv_upper = g.privilege_type.upper()
         if otype == "DATABASE" and priv_upper in _DB_ONLY_PRIVS:
             # Allow CREATE X if queried object type matches X
-            _CREATE_TYPE_MAP = {
-                "CREATE TABLE": "TABLE",
-                "CREATE VIEW": "VIEW",
-                "CREATE MATERIALIZED VIEW": "MATERIALIZED VIEW",
-                "CREATE FUNCTION": "FUNCTION",
-                "CREATE PIPE": "PIPE",
-            }
             create_target = _CREATE_TYPE_MAP.get(priv_upper)
             if not create_target or create_target != q.type_upper:
                 return Relevance.IRRELEVANT
@@ -237,34 +239,6 @@ def _make_inherited_grant(
 # ══════════════════════════════════════════════════════════════════════
 # Shared post-processing
 # ══════════════════════════════════════════════════════════════════════
-
-
-def _convert_implicit_usage(results: list[PrivilegeGrant], q: ObjectQuery) -> list[PrivilegeGrant]:
-    """For DATABASE/CATALOG queries: convert child-scope grants to implicit USAGE."""
-    if not q.is_scope_query:
-        return results
-    converted: set[str] = set()
-    out: list[PrivilegeGrant] = []
-    for r in results:
-        if (r.object_type or "").upper() in q.child_types:
-            if r.grantee not in converted:
-                converted.add(r.grantee)
-                out.append(
-                    PrivilegeGrant(
-                        grantee=r.grantee,
-                        grantee_type=r.grantee_type,
-                        object_catalog=q.catalog,
-                        object_database=q.database,
-                        object_name=None,
-                        object_type=q.type_upper,
-                        privilege_type="USAGE",
-                        is_grantable=False,
-                        source=r.source + " (implicit)",
-                    )
-                )
-        else:
-            out.append(r)
-    return out
 
 
 def _deduplicate(results: list[PrivilegeGrant]) -> list[PrivilegeGrant]:

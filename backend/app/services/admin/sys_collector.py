@@ -100,33 +100,3 @@ def _merge_show_grants_scope(conn, sys_grants: list[PrivilegeGrant]) -> list[Pri
             logger.debug("SHOW GRANTS failed for %s %s", gtype, grantee)
 
     return sys_grants
-
-
-def query_grants_merged(conn, grantee: str, grantee_type: str) -> list[PrivilegeGrant]:
-    """Get grants for a single grantee. Merges sys + SHOW GRANTS.
-    sys.grants_to_* expands wildcards; SHOW GRANTS captures scope-level grants."""
-    table = "sys.grants_to_users" if grantee_type == "USER" else "sys.grants_to_roles"
-    sys_grants: list[PrivilegeGrant] = []
-    try:
-        rows = execute_query(conn, f"SELECT * FROM {table} WHERE GRANTEE = %s", (grantee,))
-        if rows:
-            sys_grants = [g for r in rows for g in _row_to_grants(r, grantee_type)]
-    except Exception:
-        logger.debug("Query failed, skipping")
-
-    if not sys_grants:
-        return _parse_show_grants(conn, grantee, grantee_type)
-
-    # Supplement with scope-level grants from SHOW GRANTS
-    show_grants = _parse_show_grants(conn, grantee, grantee_type)
-    _sys_covered_types = {"TABLE", "DATABASE", "CATALOG"}
-
-    existing = {(g.object_type, normalize_fn_name(g.object_name or ""), g.privilege_type) for g in sys_grants}
-    for g in show_grants:
-        if g.object_type in _sys_covered_types and g.object_name:
-            continue
-        key = (g.object_type, normalize_fn_name(g.object_name or ""), g.privilege_type)
-        if key not in existing:
-            sys_grants.append(g)
-            existing.add(key)
-    return sys_grants

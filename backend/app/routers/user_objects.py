@@ -18,7 +18,7 @@ from app.dependencies import get_credentials, get_db
 from app.models.schemas import CatalogItem, ColumnInfo, DatabaseItem, ObjectItem, TableDetail
 from app.services.shared.name_utils import normalize_fn_name
 from app.services.starrocks_client import execute_query, execute_single
-from app.utils.sql_safety import safe_identifier
+from app.utils.sql_safety import safe_identifier, set_catalog
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -57,7 +57,7 @@ def list_catalogs(credentials: dict = Depends(get_credentials), conn=Depends(get
 
 @router.get("/databases", response_model=list[DatabaseItem])
 def list_databases(catalog: str = Query(...), conn=Depends(get_db)):
-    execute_query(conn, f"SET CATALOG `{safe_identifier(catalog)}`")
+    set_catalog(conn, catalog)
     rows = execute_query(conn, "SHOW DATABASES")
     result = []
     for r in rows:
@@ -74,7 +74,7 @@ def list_tables(
     database: str = Query(...),
     conn=Depends(get_db),
 ):
-    execute_query(conn, f"SET CATALOG `{safe_identifier(catalog)}`")
+    set_catalog(conn, catalog)
     rows = execute_query(
         conn,
         "SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.tables "
@@ -130,7 +130,7 @@ def get_table_detail(
 ):
     # Set catalog and database context
     try:
-        execute_query(conn, f"SET CATALOG `{safe_identifier(catalog)}`")
+        set_catalog(conn, catalog)
     except Exception as e:
         logger.warning(f"SET CATALOG failed: {e}")
     try:

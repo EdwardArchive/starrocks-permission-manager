@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Query
 from app.dependencies import get_credentials, get_db
 from app.services.starrocks_client import execute_query, parallel_queries
 from app.utils.role_helpers import collect_all_roles_via_grants
+from app.utils.sql_safety import restore_default_catalog, set_catalog
 
 router = APIRouter()
 logger = logging.getLogger("search")
@@ -61,7 +62,7 @@ def search(
     # 2. Helper: search one catalog using INFORMATION_SCHEMA
     def _search_catalog(c, cat: str, kw: str, lim: int) -> list[dict]:
         cat_results = []
-        execute_query(c, f"SET CATALOG `{cat}`")
+        set_catalog(c, cat)
         # Search tables and views
         try:
             rows = execute_query(
@@ -109,7 +110,7 @@ def search(
             logger.debug("Failed to search default_catalog")
         # Restore for subsequent queries
         try:
-            execute_query(conn, "SET CATALOG `default_catalog`")
+            restore_default_catalog(conn)
         except Exception:
             logger.debug("Failed to restore catalog context to default_catalog")
 

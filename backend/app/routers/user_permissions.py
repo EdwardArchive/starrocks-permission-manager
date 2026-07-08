@@ -17,7 +17,7 @@ from app.services.common.grant_parser import _parse_show_grants
 from app.services.shared.name_utils import normalize_fn_name
 from app.services.starrocks_client import execute_query
 from app.utils.role_helpers import parse_role_assignments
-from app.utils.sql_safety import safe_identifier
+from app.utils.sql_safety import restore_default_catalog, safe_identifier, set_catalog
 
 logger = logging.getLogger("privileges")
 router = APIRouter()
@@ -83,7 +83,7 @@ def get_my_permissions(
     for cat_info in accessible_catalogs:
         cat_name = cat_info["name"]
         try:
-            execute_query(conn, f"SET CATALOG `{cat_name}`")
+            set_catalog(conn, cat_name)
         except Exception:
             logger.debug("Failed to SET CATALOG %s", cat_name)
             continue
@@ -178,7 +178,7 @@ def get_my_permissions(
 
     # Restore to default_catalog
     try:
-        execute_query(conn, "SET CATALOG `default_catalog`")
+        restore_default_catalog(conn)
     except Exception:
         logger.debug("Query failed, skipping")
 
@@ -309,7 +309,7 @@ def get_my_permissions(
 
     # Pipes
     try:
-        execute_query(conn, "SET CATALOG `default_catalog`")
+        restore_default_catalog(conn)
         for r in execute_query(conn, "SELECT * FROM information_schema.pipes"):
             pipe_name = r.get("PIPE_NAME") or r.get("pipe_name") or ""
             _add_sys(
