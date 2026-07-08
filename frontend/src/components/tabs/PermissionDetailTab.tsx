@@ -11,6 +11,7 @@ import { useDagStore } from "../../stores/dagStore";
 import { C, ENTITY_BADGE } from "../../utils/colors";
 import { parseGrantee } from "../../utils/granteeName";
 import { useAsyncData } from "../../hooks/useAsyncData";
+import { useServerSearch } from "../../hooks/useServerSearch";
 import type { DAGNode } from "../../types";
 
 interface SelectedEntity {
@@ -23,10 +24,8 @@ export default function PermissionDetailTab() {
   const [searchText, setSearchText] = useState("");
   const [filterText, setFilterText] = useState("");
 
-  // Search state
-  const [search, setSearch] = useState<{ results: { name: string; type: string }[]; searching: boolean }>({
-    results: [], searching: false,
-  });
+  // Debounced user/role search (300ms, min 2 chars — see useServerSearch)
+  const { results: searchResults, searching, reset: resetSearch } = useServerSearch(searchText, searchUsersRoles);
 
   // Entity data (DAG + grants for selected user/role)
   const dagRes = useAsyncData(
@@ -65,28 +64,12 @@ export default function PermissionDetailTab() {
     { enabled: !!clickedNode },
   );
 
-  // Debounced search
-  useEffect(() => {
-    const trimmed = searchText.trim();
-    if (trimmed.length < 2) {
-      setSearch({ results: [], searching: false });
-      return;
-    }
-    setSearch((prev) => ({ ...prev, searching: true }));
-    const timer = setTimeout(() => {
-      searchUsersRoles(trimmed)
-        .then((results) => setSearch({ results, searching: false }))
-        .catch(() => setSearch({ results: [], searching: false }));
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchText]);
-
   const handleSelect = useCallback((name: string, type: "user" | "role") => {
     setSelected({ name, type });
     setSearchText("");
-    setSearch({ results: [], searching: false });
+    resetSearch();
     setFilterText("");
-  }, []);
+  }, [resetSearch]);
 
   // Group grants by scope (shared utility)
   const grouped = buildGrantDisplay(grantsRes.data ?? [], { filter: filterText });
@@ -111,20 +94,20 @@ export default function PermissionDetailTab() {
             />
             {searchText && (
               <button
-                onClick={() => { setSearchText(""); setSearch({ results: [], searching: false }); }}
+                onClick={() => { setSearchText(""); resetSearch(); }}
                 style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: C.text2, cursor: "pointer", fontSize: 16 }}
               >
                 &times;
               </button>
             )}
           </div>
-          {search.searching && <p style={{ fontSize: 11, color: C.text3, marginTop: 4 }}>Searching...</p>}
+          {searching && <p style={{ fontSize: 11, color: C.text3, marginTop: 4 }}>Searching...</p>}
         </div>
 
         {/* Search results dropdown */}
-        {search.results.length > 0 && (
+        {searchResults && searchResults.length > 0 && (
           <div style={{ maxHeight: 200, overflowY: "auto", borderBottom: `1px solid ${C.borderLight}` }}>
-            {search.results.map((r, i) => (
+            {searchResults.map((r, i) => (
               <button
                 key={`${r.type}-${r.name}-${i}`}
                 onClick={() => handleSelect(r.name, r.type as "user" | "role")}
