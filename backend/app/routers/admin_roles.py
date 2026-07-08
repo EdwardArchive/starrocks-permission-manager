@@ -12,9 +12,11 @@ from fastapi import APIRouter, Depends, Query
 
 from app.config import settings
 from app.dependencies import get_db, require_admin
-from app.models.schemas import DAGEdge, DAGGraph, DAGNode, RoleItem
+from app.models.schemas import DAGGraph, RoleItem
 from app.services.admin.user_service import get_all_users
 from app.services.shared.constants import BUILTIN_ROLES
+from app.services.shared.dag_builder import DAGBuilder
+from app.services.shared.role_dag import add_role_ancestry, role_category
 from app.services.shared.row_utils import col
 from app.services.starrocks_client import execute_query
 from app.utils.cache import make_ttl_cache
@@ -83,51 +85,29 @@ def get_role_hierarchy(conn=Depends(get_db)):
         if e["user"]:
             user_roles.setdefault(e["user"], set()).add(e["parent"])
 
-    nodes = []
-    node_ids = set()
+    dag = DAGBuilder()
+    # Role nodes append unconditionally (dedup=False), but still record their ids
+    # so the user loop below de-dups against them.
     for role in roles:
-        nid = f"r_{role}"
-        role_category = "root" if role == "root" else "builtin" if role in BUILTIN_ROLES else "custom"
-        nodes.append(DAGNode(id=nid, label=role, type="role", color=None, metadata={"role_category": role_category}))
-        node_ids.add(nid)
-
+        dag.add_node(f"r_{role}", role, "role", metadata={"role_category": role_category(role)}, dedup=False)
     for u in all_users:
-        uid = f"u_{u}"
-        if uid not in node_ids:
-            nodes.append(DAGNode(id=uid, label=u, type="user", color=None))
-            node_ids.add(uid)
+        dag.add_node(f"u_{u}", u, "user")
 
-    dag_edges = []
-    edge_idx = 0
+    # One shared edge counter: inheritance edges (no dedup), then user-assignment
+    # edges (deduped on source/target), then implicit-public assignments.
     for e in edges_data:
         if e["parent"] and e["child"]:
-            dag_edges.append(
-                DAGEdge(id=f"e{edge_idx}", source=f"r_{e['parent']}", target=f"r_{e['child']}", edge_type="inheritance")
-            )
-            edge_idx += 1
+            dag.add_edge(f"r_{e['parent']}", f"r_{e['child']}", "inheritance")
 
-    added_user_edges: set[tuple[str, str]] = set()
     for e in edges_data:
         if e["user"] and e["parent"]:
-            key = (e["parent"], e["user"])
-            if key not in added_user_edges:
-                dag_edges.append(
-                    DAGEdge(
-                        id=f"e{edge_idx}", source=f"r_{e['parent']}", target=f"u_{e['user']}", edge_type="assignment"
-                    )
-                )
-                added_user_edges.add(key)
-                edge_idx += 1
+            dag.add_edge(f"r_{e['parent']}", f"u_{e['user']}", "assignment", dedup=True)
 
     for u in all_users:
         if u not in user_roles and "public" in roles:
-            key = ("public", u)
-            if key not in added_user_edges:
-                dag_edges.append(DAGEdge(id=f"e{edge_idx}", source="r_public", target=f"u_{u}", edge_type="assignment"))
-                added_user_edges.add(key)
-                edge_idx += 1
+            dag.add_edge("r_public", f"u_{u}", "assignment", dedup=True)
 
-    result = DAGGraph(nodes=nodes, edges=dag_edges)
+    result = dag.build()
     with _role_cache_lock:
         _role_cache[cache_key] = result
     return result
@@ -140,28 +120,14 @@ def get_inheritance_dag(name: str = Query(""), type: str = Query("user"), conn=D
     Shows the selected entity and its role inheritance chain upward,
     plus child roles and assigned users downward.
     """
-    nodes: list[DAGNode] = []
-    edges: list[DAGEdge] = []
-    node_ids: set[str] = set()
-    edge_idx = 0
+    dag = DAGBuilder()
 
-    def add_node(nid: str, label: str, ntype: str, highlight: bool = False, metadata_extra: dict | None = None):
-        if nid not in node_ids:
-            meta = {"highlight": highlight}
-            if metadata_extra:
-                meta.update(metadata_extra)
-            nodes.append(DAGNode(id=nid, label=label, type=ntype, color=None, metadata=meta))
-            node_ids.add(nid)
-
-    def add_edge(src: str, tgt: str, etype: str):
-        nonlocal edge_idx
-        eid = f"e{edge_idx}"
-        edges.append(DAGEdge(id=eid, source=src, target=tgt, edge_type=etype))
-        edge_idx += 1
+    def meta(role: str) -> dict:
+        return {"highlight": False, "role_category": role_category(role)}
 
     if type == "user":
         # Add user node
-        add_node(f"u_{name}", name, "user", highlight=True)
+        dag.add_node(f"u_{name}", name, "user", metadata={"highlight": True})
 
         # Get directly assigned roles
         direct_roles = get_user_roles(conn, name)
@@ -169,47 +135,17 @@ def get_inheritance_dag(name: str = Query(""), type: str = Query("user"), conn=D
             direct_roles = ["public"]
 
         for role in direct_roles:
-            rc = "root" if role == "root" else "builtin" if role in BUILTIN_ROLES else "custom"
-            add_node(f"r_{role}", role, "role", metadata_extra={"role_category": rc})
-            add_edge(f"r_{role}", f"u_{name}", "assignment")
+            dag.add_node(f"r_{role}", role, "role", metadata=meta(role))
+            dag.add_edge(f"r_{role}", f"u_{name}", "assignment")
 
         # BFS upward through role hierarchy
-        queue = list(direct_roles)
-        visited: set[str] = set(direct_roles)
-        while queue:
-            current = queue.pop(0)
-            parents = get_parent_roles(conn, current)
-            for p in parents:
-                if p not in visited:
-                    visited.add(p)
-                    queue.append(p)
-                rc = "root" if p == "root" else "builtin" if p in BUILTIN_ROLES else "custom"
-                add_node(f"r_{p}", p, "role", metadata_extra={"role_category": rc})
-                add_edge(f"r_{p}", f"r_{current}", "inheritance")
+        add_role_ancestry(dag, direct_roles, lambda r: get_parent_roles(conn, r), meta)
     else:
         # Role: show selected role + parent chain + child roles + assigned users
-        rc = "root" if name == "root" else "builtin" if name in BUILTIN_ROLES else "custom"
-        add_node(
-            f"r_{name}",
-            name,
-            "role",
-            highlight=True,
-            metadata_extra={"role_category": rc},
-        )
+        dag.add_node(f"r_{name}", name, "role", metadata={"highlight": True, "role_category": role_category(name)})
 
         # BFS upward
-        queue = [name]
-        visited_up: set[str] = {name}
-        while queue:
-            current = queue.pop(0)
-            parents = get_parent_roles(conn, current)
-            for p in parents:
-                if p not in visited_up:
-                    visited_up.add(p)
-                    queue.append(p)
-                rc = "root" if p == "root" else "builtin" if p in BUILTIN_ROLES else "custom"
-                add_node(f"r_{p}", p, "role", metadata_extra={"role_category": rc})
-                add_edge(f"r_{p}", f"r_{current}", "inheritance")
+        add_role_ancestry(dag, [name], lambda r: get_parent_roles(conn, r), meta)
 
         # BFS downward: child roles + users via sys.role_edges
         down_queue = [name]
@@ -228,15 +164,14 @@ def get_inheritance_dag(name: str = Query(""), type: str = Query("user"), conn=D
                 child = r.get("TO_ROLE") or ""
                 user = r.get("TO_USER") or ""
                 if child and child not in down_visited:
-                    rc = "root" if child == "root" else "builtin" if child in BUILTIN_ROLES else "custom"
-                    add_node(f"r_{child}", child, "role", metadata_extra={"role_category": rc})
-                    add_edge(f"r_{current_role}", f"r_{child}", "inheritance")
+                    dag.add_node(f"r_{child}", child, "role", metadata=meta(child))
+                    dag.add_edge(f"r_{current_role}", f"r_{child}", "inheritance")
                     down_queue.append(child)
                 if user:
-                    add_node(f"u_{user}", user, "user")
-                    add_edge(f"r_{current_role}", f"u_{user}", "assignment")
+                    dag.add_node(f"u_{user}", user, "user", metadata={"highlight": False})
+                    dag.add_edge(f"r_{current_role}", f"u_{user}", "assignment")
 
-    return DAGGraph(nodes=nodes, edges=edges)
+    return dag.build()
 
 
 @router.get("/{role_name}/users", response_model=list[str])

@@ -6,15 +6,14 @@ Admin-only search using sys.* tables directly (no silent fallback).
 from __future__ import annotations
 
 import logging
-import time
 
 from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_credentials, get_db, require_admin
+from app.services.common.catalog_search import search_all_catalogs
 from app.services.shared.row_utils import col
 from app.services.starrocks_client import execute_query, parallel_queries
 from app.utils.cache import make_ttl_cache
-from app.utils.sql_safety import restore_default_catalog, set_catalog
 
 logger = logging.getLogger("admin_search")
 router = APIRouter(dependencies=[Depends(require_admin)])
@@ -137,86 +136,20 @@ def search(
         if name:
             catalogs.append(name)
 
-    # 2. Helper: search one catalog
-    def _search_catalog(c, cat: str, kw: str, lim: int) -> list[dict]:
-        cat_results = []
-        set_catalog(c, cat)
-        try:
-            rows = execute_query(
-                c,
-                "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE "
-                "FROM information_schema.tables "
-                "WHERE (TABLE_NAME LIKE %s OR TABLE_SCHEMA LIKE %s) "
-                "AND TABLE_TYPE != 'SYSTEM VIEW' "
-                "ORDER BY TABLE_NAME LIMIT %s",
-                (kw, kw, lim),
-            )
-            for r in rows:
-                db = col(r, "TABLE_SCHEMA") or ""
-                name = col(r, "TABLE_NAME") or ""
-                ttype = (col(r, "TABLE_TYPE") or "").upper()
-                obj_type = "view" if "VIEW" in ttype else "table"
-                cat_results.append(
-                    {"name": name, "type": obj_type, "catalog": cat, "database": db, "path": f"{cat}.{db}.{name}"}
-                )
-        except Exception:
-            logger.debug("Failed to search tables in catalog %s", cat)
-        try:
-            rows = execute_query(
-                c,
-                "SELECT SCHEMA_NAME FROM information_schema.schemata "
-                "WHERE SCHEMA_NAME LIKE %s AND SCHEMA_NAME != 'information_schema' "
-                "ORDER BY SCHEMA_NAME LIMIT %s",
-                (kw, lim),
-            )
-            for r in rows:
-                name = col(r, "SCHEMA_NAME") or ""
-                cat_results.append(
-                    {"name": name, "type": "database", "catalog": cat, "database": "", "path": f"{cat}.{name}"}
-                )
-        except Exception:
-            logger.debug("Failed to search databases in catalog %s", cat)
-        return cat_results
+    # 2. Search catalog objects (tables/views/databases) via the shared engine.
+    results.extend(
+        search_all_catalogs(
+            conn,
+            catalogs,
+            keyword,
+            limit,
+            credentials=credentials,
+            failed_catalogs=_failed_catalogs,
+            parallel_fn=parallel_queries,
+        )
+    )
 
-    # 3. Search default_catalog first on main connection (fast, no extra connection)
-    if "default_catalog" in catalogs:
-        try:
-            results.extend(_search_catalog(conn, "default_catalog", keyword, limit))
-        except Exception:
-            logger.debug("Failed to search default_catalog")
-        # Restore for subsequent sys.* queries
-        try:
-            restore_default_catalog(conn)
-        except Exception:
-            logger.debug("Failed to restore catalog context to default_catalog")
-
-    # 4. Search remaining catalogs in parallel (skip failed ones)
-    other_cats = [c for c in catalogs if c != "default_catalog" and c not in _failed_catalogs]
-    if other_cats:
-
-        def _make_search_fn(cat: str, kw: str, lim: int):
-            def fn(c):
-                t = time.monotonic()
-                try:
-                    return _search_catalog(c, cat, kw, lim)
-                except Exception:
-                    # Mark as failed if it took too long
-                    if time.monotonic() - t > 3:
-                        _failed_catalogs[cat] = True
-                    return []
-
-            return fn
-
-        tasks = [(cat, _make_search_fn(cat, keyword, limit)) for cat in other_cats]
-        cat_results = parallel_queries(credentials, tasks, timeout=3.0)
-        for cat in other_cats:
-            if cat in cat_results:
-                results.extend(cat_results[cat])
-            else:
-                # Timed out — blacklist for 5 min
-                _failed_catalogs[cat] = True
-
-    # Deduplicate by path and limit
+    # 3. Merge tail: dedup by path + limit across users/roles (added first) and objects
     seen = set()
     unique = []
     for r in results:
