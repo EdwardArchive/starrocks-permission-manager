@@ -340,6 +340,12 @@ function WizardBody() {
   // privileges the grantee already holds on the currently selected object
   const alreadyGranted = useMemo(() => {
     const set = new Set<string>();
+    // "already granted" is only meaningful once the object is fully specified.
+    // An empty field would otherwise match db-wide/wildcard grants (null object_name),
+    // spuriously flagging privileges as held (and, in revoke, enabling them).
+    const needsDbSel = objectType !== "CATALOG";
+    const needsNameSel = !["CATALOG", "DATABASE"].includes(objectType);
+    if (!catalog.trim() || (needsDbSel && !database.trim()) || (needsNameSel && !objName.trim())) return set;
     for (const g of granteeGrants ?? []) {
       if (grantMatchesObject(g, objectType, catalog.trim(), database.trim(), objName.trim())) {
         set.add(g.privilege_type);

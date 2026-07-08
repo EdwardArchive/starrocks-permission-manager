@@ -177,6 +177,25 @@ describe("ManagePrivilegesModal", () => {
     });
   });
 
+  it("does not flag privileges as granted while the object field is empty (ignores db-wide grants)", async () => {
+    // a db-wide grant has a null object_name; without the completeness guard it
+    // spuriously matches an empty object field and shows GRANTED.
+    getUserPrivileges.mockResolvedValue([
+      makeGrant({ object_name: "orders" }), // specific: SELECT on sales.orders
+      makeGrant({ privilege_type: "INSERT", object_name: null }), // db-wide INSERT
+    ]);
+    render(<ManagePrivilegesModal />);
+    openWith({
+      grantee: { name: "alice", type: "USER" },
+      object: { object_type: "TABLE", catalog: "default_catalog", database: "sales", name: "orders" },
+    });
+    // object fully specified → SELECT shows GRANTED
+    expect(await screen.findByTestId("mp-already-granted", {}, { timeout: 3000 })).toBeInTheDocument();
+    // empty the object → the db-wide INSERT must NOT leak in as granted
+    await userEvent.clear(screen.getByTestId("mp-name"));
+    await waitFor(() => expect(screen.queryByTestId("mp-already-granted")).toBeNull());
+  });
+
   it("revoke mode: privileges the grantee does not hold are disabled", async () => {
     getUserPrivileges.mockResolvedValue([makeGrant()]); // only SELECT on sales.orders
     render(<ManagePrivilegesModal />);
