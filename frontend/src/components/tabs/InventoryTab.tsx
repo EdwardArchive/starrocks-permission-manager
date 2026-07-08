@@ -6,6 +6,7 @@ import {
   C, SUB_TAB_META, OBJECT_TYPE_MAP, formatBytes,
   type SubTab, type AllTab, type RoleRow, type SelectedItem,
 } from "../../utils/inventory-helpers";
+import { ALL_HOSTS_LABEL, parseGrantee } from "../../utils/granteeName";
 import { SearchInput, Chip, Badge, SortTH, TH, TD } from "./inventory-ui";
 import DetailPanel from "./InventoryDetailPanel";
 
@@ -269,13 +270,11 @@ export default function InventoryTab() {
                         </>
                       ) : subTab === "users" ? (
                         (() => {
-                          const m = row.name.match(/^'?([^'@]+)'?@'?([^']*)'?$/);
-                          const uname = m ? m[1] : row.name;
-                          const rawHost = m ? (m[2] || "%") : "%";
-                          const host = !rawHost || rawHost === "%" ? "ALL CIDR" : rawHost.includes("/") ? rawHost : rawHost + "/32";
+                          const { uname, hostLabel } = parseGrantee(row.name);
+                          const host = hostLabel ?? ALL_HOSTS_LABEL;
                           return <>
                             <TD><span style={{ fontWeight: 500, color: C.text1 }}>{uname}</span></TD>
-                            <TD><span style={{ fontSize: 11, fontFamily: "monospace", padding: "2px 6px", borderRadius: 4, background: host === "ALL CIDR" ? "rgba(14,165,233,0.12)" : "rgba(249,115,22,0.12)", color: host === "ALL CIDR" ? "#38bdf8" : "#fb923c" }}>{host}</span></TD>
+                            <TD><span style={{ fontSize: 11, fontFamily: "monospace", padding: "2px 6px", borderRadius: 4, background: host === ALL_HOSTS_LABEL ? "rgba(14,165,233,0.12)" : "rgba(249,115,22,0.12)", color: host === ALL_HOSTS_LABEL ? "#38bdf8" : "#fb923c" }}>{host}</span></TD>
                           </>;
                         })()
                       ) : subTab === "catalogs" ? (

@@ -2,6 +2,7 @@ import { getObjectPrivileges } from "../../api/user";
 import type { PrivilegeGrant } from "../../types";
 import InlineIcon from "../common/InlineIcon";
 import { C, PRIV_BY_TYPE, PRIV_KEY_MAP, matrixTh } from "../../utils/inventory-helpers";
+import { parseGrantee } from "../../utils/granteeName";
 import { Loader } from "./inventory-ui";
 import { useAsyncData } from "../../hooks/useAsyncData";
 import { useAuthStore } from "../../stores/authStore";
@@ -11,10 +12,8 @@ import type { GrantObjectRef } from "../../types";
 /* ── GranteeName ── */
 export function GranteeName({ name, grants }: { name: string; grants: PrivilegeGrant[] }) {
   const isRole = grants[0]?.grantee_type === "ROLE";
-  const m = name.match(/^'?([^'@]+)'?@'?([^']*)'?$/);
-  if (m) {
-    const uname = m[1];
-    const host = !m[2] || m[2] === "%" ? "ALL CIDR" : m[2].includes("/") ? m[2] : m[2] + "/32";
+  const { uname, hostLabel: host } = parseGrantee(name);
+  if (host) {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <InlineIcon type="user" size={16} />

@@ -52,8 +52,6 @@ export interface GrantPreviewResponse {
 }
 
 export interface GrantExecuteResponse {
-  sql: string[];
-  status: "ok";
   audit: "ok" | "failed";
 }
 

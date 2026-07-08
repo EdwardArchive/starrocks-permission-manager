@@ -9,6 +9,7 @@ import DAGView from "../dag/DAGView";
 import ExportPngBtn from "../common/ExportPngBtn";
 import { useDagStore } from "../../stores/dagStore";
 import { C, ENTITY_BADGE } from "../../utils/colors";
+import { parseGrantee } from "../../utils/granteeName";
 import { useAsyncData } from "../../hooks/useAsyncData";
 import type { DAGNode } from "../../types";
 
@@ -258,10 +259,8 @@ export default function PermissionDetailTab() {
 /* ── Helpers ── */
 
 function FormattedName({ name }: { name: string }) {
-  const match = name.match(/^'?([^'@]+)'?@'?([^']*)'?$/);
-  if (match) {
-    const [, uname, host] = match;
-    const hostLabel = !host || host === "%" ? "ALL CIDR" : host.includes("/") ? host : host + "/32";
+  const { uname, hostLabel } = parseGrantee(name);
+  if (hostLabel) {
     return (
       <>
         {uname} <span style={{ fontSize: 10, color: C.text3, fontWeight: 400 }}>({hostLabel})</span>

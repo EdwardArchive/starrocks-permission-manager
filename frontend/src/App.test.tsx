@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, waitFor, userEvent } from "./test/test-utils";
+import { render, screen, waitFor, userEvent, act } from "./test/test-utils";
 import { useAuthStore } from "./stores/authStore";
 import { useDagStore } from "./stores/dagStore";
+import { usePermApi } from "./api/permApi";
 import type { UserInfo } from "./types";
 
 // getMe stays pending: exercises the "restoring session" branch without a
@@ -65,7 +66,8 @@ function login(user: UserInfo, tab: "obj" | "role" | "perm" | "myperm" | "audit"
 beforeEach(() => {
   localStorage.clear();
   window.location.hash = "";
-  useDagStore.setState({ activeTab: "myperm", activeCatalog: "default_catalog", panelMode: null, dagData: null });
+  vi.clearAllMocks(); // deterministic fetch call counts per test (implementations survive)
+  useDagStore.setState({ activeTab: "myperm", activeCatalog: "default_catalog", panelMode: null, dagData: null, dagCache: {}, dagLoading: false, currentKey: null });
   useAuthStore.setState({ user: null, isLoggedIn: false, token: null, connectionInfo: null });
 });
 
@@ -167,5 +169,41 @@ describe("App", () => {
 
     expect(screen.getByTestId("cluster-tab")).toBeInTheDocument();
     expect(screen.queryByTestId("inventory-tab")).not.toBeInTheDocument();
+  });
+
+  it("fetches a tab's DAG once and serves revisits from the store cache (no refetch)", async () => {
+    login(nonAdmin, "obj");
+    render(<App />);
+    expect(await screen.findByTestId("dag-view")).toBeInTheDocument();
+    const api = usePermApi();
+    await waitFor(() => expect(useDagStore.getState().dagCache["obj_default_catalog"]).toBeTruthy());
+    expect(api.getObjectHierarchy).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByText("Role Map"));
+    await waitFor(() => expect(useDagStore.getState().dagCache["role_default_catalog"]).toBeTruthy());
+    expect(api.getRoleHierarchy).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByText("Object Hierarchy"));
+    await waitFor(() => expect(useDagStore.getState().currentKey).toBe("obj_default_catalog"));
+    // second visit is a cache hit — the object hierarchy is not fetched again
+    expect(api.getObjectHierarchy).toHaveBeenCalledTimes(1);
+    expect(useDagStore.getState().dagData).toEqual({ nodes: [], edges: [] });
+    expect(useDagStore.getState().dagLoading).toBe(false);
+  });
+
+  it("clears the DAG store cache on logout", async () => {
+    login(nonAdmin, "obj");
+    render(<App />);
+    expect(await screen.findByTestId("dag-view")).toBeInTheDocument();
+    await waitFor(() => expect(useDagStore.getState().dagCache["obj_default_catalog"]).toBeTruthy());
+
+    act(() => {
+      useAuthStore.setState({ user: null, isLoggedIn: false, token: null });
+    });
+
+    expect(screen.getByTestId("login-form")).toBeInTheDocument();
+    expect(useDagStore.getState().dagCache).toEqual({});
+    expect(useDagStore.getState().dagData).toBeNull();
+    expect(useDagStore.getState().dagLoading).toBe(false);
   });
 });

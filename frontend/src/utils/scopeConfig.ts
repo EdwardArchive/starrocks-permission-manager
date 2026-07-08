@@ -1,5 +1,5 @@
 /** Canonical display order of object-type scopes. */
-export const SCOPE_ORDER = ["SYSTEM", "CATALOG", "DATABASE", "TABLE", "VIEW", "MATERIALIZED VIEW", "FUNCTION", "RESOURCE", "STORAGE VOLUME", "USER"];
+export const SCOPE_ORDER = ["SYSTEM", "CATALOG", "DATABASE", "TABLE", "VIEW", "MATERIALIZED VIEW", "FUNCTION", "RESOURCE", "STORAGE VOLUME", "RESOURCE GROUP", "GLOBAL FUNCTION", "WAREHOUSE", "PIPE", "TASK", "USER"];
 
 /** Map scope name to icon type key used by colorizedSvg / InlineIcon. */
 export const SCOPE_ICONS: Record<string, string> = {
@@ -10,4 +10,11 @@ export const SCOPE_ICONS: Record<string, string> = {
   VIEW: "view",
   "MATERIALIZED VIEW": "mv",
   FUNCTION: "function",
+  WAREHOUSE: "system",
+  "RESOURCE GROUP": "system",
+  "STORAGE VOLUME": "system",
+  RESOURCE: "system",
+  "GLOBAL FUNCTION": "function",
+  PIPE: "system",
+  TASK: "system",
 };

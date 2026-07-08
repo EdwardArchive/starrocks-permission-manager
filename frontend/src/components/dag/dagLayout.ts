@@ -1,5 +1,6 @@
 import Dagre from "@dagrejs/dagre";
 import type { Node, Edge } from "@xyflow/react";
+import { BUILTIN_ROLES } from "../../utils/constants";
 
 // Must match CustomNode FIXED_W
 const CHILD_W = 168;
@@ -126,7 +127,6 @@ export function applyDagreLayout(
       Dagre.layout(cg);
 
       // Post-layout: force builtin roles to Y=0, shift everything else down
-      const BUILTIN_ROLES = new Set(["root", "db_admin", "cluster_admin", "user_admin", "security_admin", "public"]);
       const builtinInComp: string[] = [];
       let minBuiltinY = Infinity;
       for (const nid of comp) {

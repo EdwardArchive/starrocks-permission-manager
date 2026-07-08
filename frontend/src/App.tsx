@@ -1,11 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
 import { useAuthStore } from "./stores/authStore";
 import { useShallow } from "zustand/react/shallow";
 import { useDagStore, type TabId } from "./stores/dagStore";
 import { getMe } from "./api/auth";
 import { usePermApi } from "./api/permApi";
-import type { DAGGraph } from "./types";
 
 import LoginForm from "./components/auth/LoginForm";
 import Header from "./components/layout/Header";
@@ -50,7 +49,7 @@ const ROLE_FILTERS = [
 
 export default function App() {
   const { isLoggedIn, user, setAuth } = useAuthStore();
-  const { activeTab, setActiveTab, activeCatalog, panelMode, setPanelMode, visibleTypes, toggleType, groupsOnly, setGroupsOnly, hiddenNodes, setDagData } = useDagStore(
+  const { activeTab, setActiveTab, activeCatalog, panelMode, setPanelMode, visibleTypes, toggleType, groupsOnly, setGroupsOnly, hiddenNodes, dagData, dagLoading, loadDag, clearDagCache } = useDagStore(
     useShallow((s) => ({
       activeTab: s.activeTab,
       setActiveTab: s.setActiveTab,
@@ -62,7 +61,10 @@ export default function App() {
       groupsOnly: s.groupsOnly,
       setGroupsOnly: s.setGroupsOnly,
       hiddenNodes: s.hiddenNodes,
-      setDagData: s.setDagData,
+      dagData: s.dagData,
+      dagLoading: s.dagLoading,
+      loadDag: s.loadDag,
+      clearDagCache: s.clearDagCache,
     }))
   );
 
@@ -80,10 +82,6 @@ export default function App() {
     }
   }, [user, isAdmin, canManageGrants, activeTab, setActiveTab]);
 
-  const [dagState, setDagState] = useState<{ cache: Record<string, DAGGraph | null>; loading: boolean }>({
-    cache: {}, loading: false,
-  });
-
   useEffect(() => {
     if (isLoggedIn && !user) {
       getMe().then((me) => setAuth(localStorage.getItem("sr_token")!, me)).catch(() => useAuthStore.getState().logout());
@@ -93,34 +91,22 @@ export default function App() {
 
   // Clear DAG cache on logout (isLoggedIn goes false)
   useEffect(() => {
-    if (!isLoggedIn) {
-      setDagState({ cache: {}, loading: false });
-    }
-  }, [isLoggedIn]);
+    if (!isLoggedIn) clearDagCache();
+  }, [isLoggedIn, clearDagCache]);
 
-  // Load DAG data when tab or catalog changes (skip perm tab - it manages its own DAG)
+  // Load DAG data when tab or catalog changes (skip perm tab - it manages its own DAG).
+  // The cache lives in dagStore; the fetcher is injected so the store stays api-free.
   const dagKey = `${activeTab}_${activeCatalog}`;
   useEffect(() => {
     if (!isLoggedIn || !user || activeTab === "perm" || activeTab === "myperm" || activeTab === "audit" || activeTab === "cluster") return;
-    if (dagState.cache[dagKey]) return;
     const controller = new AbortController();
-    setDagState((prev) => ({ ...prev, loading: true }));
     const fetcher =
       activeTab === "obj" ? () => permApi.getObjectHierarchy(activeCatalog, controller.signal) :
       () => permApi.getRoleHierarchy(controller.signal);
-    fetcher()
-      .then((data) => setDagState((prev) => ({ cache: { ...prev.cache, [dagKey]: data }, loading: false })))
-      .catch(() => setDagState((prev) => ({ ...prev, loading: false })));
+    void loadDag(dagKey, fetcher);
     return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload only when tab/catalog changes or user loads (post-refresh); dagState.cache checked inside
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reload only when tab/catalog changes or user loads (post-refresh); cache hit is short-circuited inside loadDag
   }, [isLoggedIn, user, isAdmin, activeTab, activeCatalog]);
-
-  const rawDag = dagState.cache[dagKey] || null;
-  const loading = dagState.loading;
-
-  // Sync current DAG data to store for use by detail panels
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- setDagData is stable, dagKey drives updates
-  useEffect(() => { setDagData(rawDag); }, [dagKey, dagState.cache]);
 
   if (!isLoggedIn) return <LoginForm />;
   if (!user) return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh" }}><Loader /></div>;  // restoring session
@@ -200,7 +186,7 @@ export default function App() {
               </div>
 
               <ReactFlowProvider>
-                <DAGView data={rawDag} direction={direction} loading={loading} hiddenNodes={hiddenNodes} />
+                <DAGView data={dagData} direction={direction} loading={dagLoading} hiddenNodes={hiddenNodes} />
               </ReactFlowProvider>
             </div>
           )}

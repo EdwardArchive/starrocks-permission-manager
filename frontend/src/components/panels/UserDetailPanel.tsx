@@ -6,6 +6,7 @@ import InlineIcon from "../common/InlineIcon";
 import GrantTreeView from "../common/GrantTreeView";
 import { C } from "../../utils/colors";
 import { buildGrantDisplay, extractSourceRoles } from "../../utils/grantDisplay";
+import { parseGrantee } from "../../utils/granteeName";
 import { useAsyncData } from "../../hooks/useAsyncData";
 
 export default function UserDetailPanel() {
@@ -48,11 +49,9 @@ export default function UserDetailPanel() {
       </div>
       <p style={{ fontSize: 12, color: C.text2, marginBottom: 14 }}>
         {(() => {
-          const m = selectedNode.label.match(/^'?([^'@]+)'?@'?([^']*)'?$/);
-          if (m) {
-            const host = m[2];
-            const hostLabel = !host || host === "%" ? "ALL CIDR" : host.includes("/") ? host : host + "/32";
-            return <>{m[1]} <span style={{ color: C.text3 }}>({hostLabel})</span></>;
+          const { uname, hostLabel } = parseGrantee(selectedNode.label);
+          if (hostLabel) {
+            return <>{uname} <span style={{ color: C.text3 }}>({hostLabel})</span></>;
           }
           return selectedNode.label;
         })()}

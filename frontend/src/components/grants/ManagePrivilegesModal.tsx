@@ -13,24 +13,17 @@ import {
 import { getCatalogs, getDatabases, getTables } from "../../api/user";
 import { showToast } from "../../utils/toast";
 import { C } from "../../utils/colors";
+import { BUILTIN_ROLES } from "../../utils/constants";
+import { SCOPE_ICONS } from "../../utils/scopeConfig";
 import ComboInput from "../common/ComboInput";
 import InlineIcon from "../common/InlineIcon";
 import type { GrantRequest, GrantSpec, PrivilegeGrant } from "../../types";
 
+// Wizard picker order — deliberately the grantable-object subset of scopeConfig SCOPE_ORDER (no SYSTEM/RESOURCE/… scopes)
 const OBJECT_TYPE_ORDER = ["CATALOG", "DATABASE", "TABLE", "VIEW", "MATERIALIZED VIEW", "FUNCTION"];
 
-// object_type → InlineIcon key (mirrors nodeIcons NODE_SVG_RAW)
-const OBJ_ICON: Record<string, string> = {
-  CATALOG: "catalog",
-  DATABASE: "database",
-  TABLE: "table",
-  VIEW: "view",
-  "MATERIALIZED VIEW": "mv",
-  FUNCTION: "function",
-};
-
-// StarRocks rejects any grant change on these ("role X is not mutable")
-const BUILTIN_ROLES = new Set(["root", "cluster_admin", "db_admin", "user_admin", "security_admin", "public"]);
+// object_type → InlineIcon key (grantable subset of the canonical SCOPE_ICONS)
+const OBJ_ICON: Record<string, string> = Object.fromEntries(OBJECT_TYPE_ORDER.map((t) => [t, SCOPE_ICONS[t]]));
 
 const RED = "#ef4444"; // REVOKE mode accent
 
