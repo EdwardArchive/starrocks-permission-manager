@@ -7,7 +7,6 @@ No real database connection is needed to run tests.
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 from app.dependencies import get_credentials, get_db
@@ -288,20 +287,46 @@ DEFAULT_QUERY_MAP: dict[str, list[dict[str, Any]]] = {
 
 
 class FakeCursor:
-    def __init__(self, query_map: dict):
+    def __init__(
+        self,
+        query_map: dict,
+        strict: bool = False,
+        fail_prefixes: dict[str, Exception] | None = None,
+        unmatched: list[str] | None = None,
+    ):
         self._query_map = query_map
+        self._strict = strict
+        self._fail_prefixes = fail_prefixes or {}
+        self._unmatched = unmatched if unmatched is not None else []
         self._results: list[dict] = []
 
     def execute(self, sql: str, params: tuple = ()):
         self._results = []
-        sql_upper = sql.strip().upper()
+        sql_stripped = sql.strip()
+        sql_upper = sql_stripped.upper()
+        # Opt-in failure injection: raise for any matching prefix (mirrors
+        # RecordingConnection in test_admin_grants.py).
+        for prefix, exc in self._fail_prefixes.items():
+            if sql_upper.startswith(prefix.upper()):
+                raise exc
         # Longest prefix match to avoid short prefixes shadowing longer ones
         best_match = ""
+        matched = False
         for prefix, rows in self._query_map.items():
-            if sql_upper.startswith(prefix.upper()) and len(prefix) > len(best_match):
-                best_match = prefix
-                self._results = rows
-        # No match → empty result
+            if sql_upper.startswith(prefix.upper()):
+                matched = True
+                if len(prefix) > len(best_match):
+                    best_match = prefix
+                    self._results = rows
+        # No match → empty result. Record the miss (survives the caller's
+        # try/except) and, in strict mode, surface the offending SQL.
+        if not matched:
+            self._unmatched.append(sql_stripped)
+            if self._strict:
+                raise AssertionError(
+                    "strict_queries: unmatched SQL (add a query_map entry, "
+                    f"or map the prefix to [] to allow): {sql_stripped!r}"
+                )
 
     def fetchall(self) -> list[dict]:
         return self._results
@@ -311,11 +336,27 @@ class FakeCursor:
 
 
 class FakeConnection:
-    def __init__(self, query_map: dict):
+    def __init__(
+        self,
+        query_map: dict,
+        strict: bool = False,
+        fail_prefixes: dict[str, Exception] | None = None,
+    ):
         self._query_map = query_map
+        # Public knobs a test may flip after construction (e.g. mock_db.strict = True).
+        self.strict = strict
+        self.fail_prefixes = fail_prefixes
+        # SQL statements issued with no matching prefix (records misses even when
+        # the endpoint swallows the strict-mode AssertionError).
+        self.unmatched: list[str] = []
 
     def cursor(self, dictionary=False):
-        return FakeCursor(self._query_map)
+        return FakeCursor(
+            self._query_map,
+            strict=self.strict,
+            fail_prefixes=self.fail_prefixes,
+            unmatched=self.unmatched,
+        )
 
     def close(self):
         pass
@@ -333,6 +374,20 @@ def query_map():
 def mock_db(query_map):
     """FakeConnection with the given query_map."""
     return FakeConnection(query_map)
+
+
+@pytest.fixture()
+def strict_queries(mock_db):
+    """Opt-in strict mode for the shared ``mock_db``.
+
+    With this fixture requested, any SQL the endpoint issues that has no matching
+    prefix in ``query_map`` is recorded on ``mock_db.unmatched`` and raises
+    AssertionError (with the offending SQL). Map a prefix to ``[]`` to allow it.
+    Returns the same ``mock_db`` the ``client`` fixture wires into ``get_db`` so a
+    test can seed entries and later assert ``mock_db.unmatched == []``.
+    """
+    mock_db.strict = True
+    return mock_db
 
 
 @pytest.fixture()
