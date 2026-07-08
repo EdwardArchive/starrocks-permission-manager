@@ -13,6 +13,7 @@ from app.config import settings
 from app.dependencies import get_credentials, get_db, require_admin
 from app.models.schemas import DAGEdge, DAGGraph, DAGNode
 from app.services.shared.name_utils import normalize_fn_name
+from app.services.shared.row_utils import col
 from app.services.starrocks_client import execute_query, parallel_queries
 from app.utils.cache import make_ttl_cache
 from app.utils.sql_safety import safe_identifier, set_catalog
@@ -61,7 +62,7 @@ def get_object_hierarchy(
     cat_rows = execute_query(conn, "SHOW CATALOGS")
     catalogs = []
     for r in cat_rows:
-        name = r.get("Catalog") or r.get("catalog") or ""
+        name = col(r, "Catalog") or ""
         if catalog and name != catalog:
             continue
         catalogs.append(name)
@@ -81,7 +82,7 @@ def get_object_hierarchy(
 
         _SKIP_DBS = {"information_schema", "_statistics_", "sys"}
         for dr in db_rows:
-            db = dr.get("Database") or dr.get("database") or ""
+            db = col(dr, "Database") or ""
             if db in _SKIP_DBS:
                 continue
             did = f"d_{cat}_{db}"
@@ -125,11 +126,11 @@ def get_object_hierarchy(
             # Group by DB -> type
             db_objects: dict[str, dict[str, list[str]]] = {}
             for o in all_tables:
-                schema = o.get("TABLE_SCHEMA") or o.get("table_schema") or ""
+                schema = col(o, "TABLE_SCHEMA") or ""
                 if schema not in db_names:
                     continue
-                name = o.get("TABLE_NAME") or o.get("table_name") or ""
-                ttype = o.get("TABLE_TYPE") or o.get("table_type") or ""
+                name = col(o, "TABLE_NAME") or ""
+                ttype = col(o, "TABLE_TYPE") or ""
                 groups = db_objects.setdefault(schema, {"table": [], "view": [], "mv": [], "function": []})
                 if (schema, name) in all_mvs:
                     groups["mv"].append(name)

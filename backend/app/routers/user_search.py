@@ -11,6 +11,7 @@ import time
 from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_credentials, get_db
+from app.services.shared.row_utils import col
 from app.services.starrocks_client import execute_query, parallel_queries
 from app.utils.cache import make_ttl_cache
 from app.utils.role_helpers import collect_all_roles_via_grants
@@ -53,7 +54,7 @@ def search(
     try:
         cat_rows = execute_query(conn, "SHOW CATALOGS")
         for r in cat_rows:
-            name = r.get("Catalog") or r.get("catalog") or ""
+            name = col(r, "Catalog") or ""
             if name:
                 catalogs.append(name)
     except Exception as e:
@@ -75,9 +76,9 @@ def search(
                 (kw, kw, lim),
             )
             for r in rows:
-                db = r.get("TABLE_SCHEMA") or r.get("table_schema") or ""
-                name = r.get("TABLE_NAME") or r.get("table_name") or ""
-                ttype = (r.get("TABLE_TYPE") or r.get("table_type") or "").upper()
+                db = col(r, "TABLE_SCHEMA") or ""
+                name = col(r, "TABLE_NAME") or ""
+                ttype = (col(r, "TABLE_TYPE") or "").upper()
                 obj_type = "view" if "VIEW" in ttype else "table"
                 cat_results.append(
                     {"name": name, "type": obj_type, "catalog": cat, "database": db, "path": f"{cat}.{db}.{name}"}
@@ -94,7 +95,7 @@ def search(
                 (kw, lim),
             )
             for r in rows:
-                name = r.get("SCHEMA_NAME") or r.get("schema_name") or ""
+                name = col(r, "SCHEMA_NAME") or ""
                 cat_results.append(
                     {"name": name, "type": "database", "catalog": cat, "database": "", "path": f"{cat}.{name}"}
                 )

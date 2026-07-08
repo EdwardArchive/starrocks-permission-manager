@@ -15,6 +15,7 @@ from app.dependencies import get_db, require_admin
 from app.models.schemas import DAGEdge, DAGGraph, DAGNode, RoleItem
 from app.services.admin.user_service import get_all_users
 from app.services.shared.constants import BUILTIN_ROLES
+from app.services.shared.row_utils import col
 from app.services.starrocks_client import execute_query
 from app.utils.cache import make_ttl_cache
 from app.utils.role_helpers import get_parent_roles, get_user_roles
@@ -38,7 +39,7 @@ def list_roles(conn=Depends(get_db)):
     rows = execute_query(conn, "SHOW ROLES")
     result = []
     for r in rows:
-        name = r.get("Name") or r.get("name") or ""
+        name = col(r, "Name") or ""
         result.append(RoleItem(name=name, is_builtin=name in BUILTIN_ROLES))
 
     with _role_cache_lock:
@@ -58,7 +59,7 @@ def get_role_hierarchy(conn=Depends(get_db)):
     roles_rows = execute_query(conn, "SHOW ROLES")
     roles = []
     for r in roles_rows:
-        name = r.get("Name") or r.get("name") or ""
+        name = col(r, "Name") or ""
         if name:
             roles.append(name)
 

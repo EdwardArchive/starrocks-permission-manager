@@ -11,6 +11,7 @@ from app.models.schemas import PrivilegeGrant
 from app.services.common.grant_parser import _parse_show_grants
 from app.services.grant_collector import CollectedGrants
 from app.services.shared.role_graph import fetch_role_child_map
+from app.services.shared.row_utils import col
 from app.services.starrocks_client import execute_query
 from app.utils.role_helpers import build_role_chain
 from app.utils.sql_safety import safe_identifier
@@ -90,7 +91,7 @@ def _probe_public_defaults(conn) -> list[PrivilegeGrant]:
     try:
         wh_rows = execute_query(conn, "SHOW WAREHOUSES")
         for r in wh_rows:
-            wh_name = r.get("Name") or r.get("name") or ""
+            wh_name = col(r, "Name") or ""
             if wh_name:
                 results.append(
                     PrivilegeGrant(

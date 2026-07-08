@@ -16,6 +16,7 @@ from app.config import settings
 from app.dependencies import get_credentials, get_db
 from app.models.schemas import CatalogItem, ColumnInfo, DatabaseItem, ObjectItem, TableDetail
 from app.services.shared.name_utils import normalize_fn_name
+from app.services.shared.row_utils import col
 from app.services.starrocks_client import execute_query, execute_single
 from app.utils.cache import make_ttl_cache
 from app.utils.sql_safety import safe_identifier, set_catalog
@@ -47,8 +48,8 @@ def list_catalogs(credentials: dict = Depends(get_credentials), conn=Depends(get
     rows = execute_query(conn, "SHOW CATALOGS")
     result = []
     for r in rows:
-        name = r.get("Catalog") or r.get("catalog") or ""
-        ctype = r.get("Type") or r.get("type") or "InternalCatalog"
+        name = col(r, "Catalog") or ""
+        ctype = col(r, "Type") or "InternalCatalog"
         result.append(CatalogItem(name=name, catalog_type=ctype))
     with _catalog_cache_lock:
         _catalog_cache[cache_key] = result
@@ -61,7 +62,7 @@ def list_databases(catalog: str = Query(...), conn=Depends(get_db)):
     rows = execute_query(conn, "SHOW DATABASES")
     result = []
     for r in rows:
-        name = r.get("Database") or r.get("database") or ""
+        name = col(r, "Database") or ""
         if name == "information_schema":
             continue
         result.append(DatabaseItem(name=name, catalog=catalog))
@@ -89,14 +90,14 @@ def list_tables(
             "SELECT TABLE_NAME FROM information_schema.materialized_views WHERE TABLE_SCHEMA = %s",
             (database,),
         )
-        mvs = {r.get("TABLE_NAME") or r.get("table_name") for r in mv_rows}
+        mvs = {col(r, "TABLE_NAME") for r in mv_rows}
     except Exception:
         logger.debug("Failed to query materialized views for %s.%s", catalog, database)
 
     result = []
     for r in rows:
-        name = r.get("TABLE_NAME") or r.get("table_name") or ""
-        ttype = r.get("TABLE_TYPE") or r.get("table_type") or ""
+        name = col(r, "TABLE_NAME") or ""
+        ttype = col(r, "TABLE_TYPE") or ""
         if name in mvs:
             obj_type = "MATERIALIZED VIEW"
         elif "VIEW" in ttype.upper():
@@ -169,13 +170,13 @@ def get_table_detail(
         logger.warning(f"information_schema.columns query failed: {e}")
     columns = [
         ColumnInfo(
-            name=c.get("COLUMN_NAME") or c.get("column_name") or "",
-            column_type=c.get("COLUMN_TYPE") or c.get("column_type") or "",
-            ordinal_position=c.get("ORDINAL_POSITION") or c.get("ordinal_position") or 0,
-            is_nullable=c.get("IS_NULLABLE") or c.get("is_nullable") or "YES",
-            column_default=c.get("COLUMN_DEFAULT") or c.get("column_default"),
-            column_key=c.get("COLUMN_KEY") or c.get("column_key"),
-            comment=c.get("COLUMN_COMMENT") or c.get("column_comment"),
+            name=col(c, "COLUMN_NAME") or "",
+            column_type=col(c, "COLUMN_TYPE") or "",
+            ordinal_position=col(c, "ORDINAL_POSITION") or 0,
+            is_nullable=col(c, "IS_NULLABLE") or "YES",
+            column_default=col(c, "COLUMN_DEFAULT"),
+            column_key=col(c, "COLUMN_KEY"),
+            comment=col(c, "COLUMN_COMMENT"),
         )
         for c in col_rows
     ]
@@ -229,14 +230,14 @@ def get_table_detail(
         logger.debug(f"partitions_meta query failed (expected for external): {e}")
 
     return TableDetail(
-        table_name=tbl.get("TABLE_NAME") or tbl.get("table_name") or table,
-        table_type=tbl.get("TABLE_TYPE") or tbl.get("table_type") or "",
-        engine=tbl.get("ENGINE") or tbl.get("engine"),
-        row_count=tbl.get("TABLE_ROWS") or tbl.get("table_rows"),
-        data_size=tbl.get("DATA_LENGTH") or tbl.get("data_length"),
-        create_time=str(tbl.get("CREATE_TIME") or tbl.get("create_time") or ""),
-        update_time=str(tbl.get("UPDATE_TIME") or tbl.get("update_time") or ""),
-        comment=tbl.get("TABLE_COMMENT") or tbl.get("table_comment"),
+        table_name=col(tbl, "TABLE_NAME") or table,
+        table_type=col(tbl, "TABLE_TYPE") or "",
+        engine=col(tbl, "ENGINE"),
+        row_count=col(tbl, "TABLE_ROWS"),
+        data_size=col(tbl, "DATA_LENGTH"),
+        create_time=str(col(tbl, "CREATE_TIME") or ""),
+        update_time=str(col(tbl, "UPDATE_TIME") or ""),
+        comment=col(tbl, "TABLE_COMMENT"),
         columns=columns,
         ddl=ddl,
         key_type=key_type,

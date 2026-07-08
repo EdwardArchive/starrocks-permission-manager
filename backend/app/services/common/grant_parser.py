@@ -6,6 +6,7 @@ import logging
 import re
 
 from app.models.schemas import PrivilegeGrant
+from app.services.shared.row_utils import col
 from app.services.starrocks_client import execute_query
 from app.utils.sql_safety import safe_name
 
@@ -29,7 +30,7 @@ def _parse_show_grants(conn, grantee: str, grantee_type: str) -> list[PrivilegeG
             rows = execute_query(conn, f"SHOW GRANTS FOR ROLE '{safe_name(grantee)}'")
         for row in rows:
             # SHOW GRANTS has a Catalog column indicating the catalog context
-            row_catalog = row.get("Catalog") or row.get("catalog") or None
+            row_catalog = col(row, "Catalog") or None
             for val in row.values():
                 s = str(val)
                 if s.upper().startswith("GRANT"):

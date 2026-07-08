@@ -15,6 +15,7 @@ from app.dependencies import get_credentials, get_db
 from app.models.schemas import PrivilegeGrant
 from app.services.common.grant_parser import _parse_show_grants
 from app.services.shared.name_utils import normalize_fn_name
+from app.services.shared.row_utils import col
 from app.services.starrocks_client import execute_query
 from app.utils.role_helpers import parse_role_assignments
 from app.utils.sql_safety import restore_default_catalog, safe_identifier, set_catalog
@@ -69,8 +70,8 @@ def get_my_permissions(
     try:
         rows = execute_query(conn, "SHOW CATALOGS")
         for r in rows:
-            cat_name = r.get("Catalog") or r.get("catalog") or ""
-            cat_type = r.get("Type") or r.get("type") or "InternalCatalog"
+            cat_name = col(r, "Catalog") or ""
+            cat_type = col(r, "Type") or "InternalCatalog"
             if cat_name:
                 accessible_catalogs.append({"name": cat_name, "type": cat_type})
     except Exception:
@@ -96,11 +97,7 @@ def get_my_permissions(
                 "SELECT SCHEMA_NAME FROM information_schema.schemata "
                 "WHERE SCHEMA_NAME NOT IN ('information_schema', '_statistics_', 'sys') ORDER BY SCHEMA_NAME",
             )
-            cat_databases = [
-                r.get("SCHEMA_NAME") or r.get("schema_name") or ""
-                for r in rows
-                if r.get("SCHEMA_NAME") or r.get("schema_name")
-            ]
+            cat_databases = [col(r, "SCHEMA_NAME") or "" for r in rows if col(r, "SCHEMA_NAME")]
         except Exception:
             logger.debug("Failed to query schemata for catalog %s", cat_name)
 
@@ -252,7 +249,7 @@ def get_my_permissions(
     _res_data: dict[str, dict] = {}
     try:
         for r in execute_query(conn, "SHOW RESOURCES"):
-            name = r.get("Name") or r.get("name") or ""
+            name = col(r, "Name") or ""
             if not name:
                 continue
             if name not in _res_data:
@@ -271,7 +268,7 @@ def get_my_permissions(
         wh_rows = execute_query(conn, "SHOW WAREHOUSES")
         for r in wh_rows:
             _add_sys(
-                r.get("Name") or r.get("name") or "",
+                col(r, "Name") or "",
                 "WAREHOUSE",
                 state=str(r.get("State") or ""),
                 node_count=str(r.get("NodeCount") or "0"),
@@ -282,7 +279,7 @@ def get_my_permissions(
         try:
             for r in execute_query(conn, "SHOW PROC '/warehouses'"):
                 _add_sys(
-                    r.get("Name") or r.get("name") or "",
+                    col(r, "Name") or "",
                     "WAREHOUSE",
                     state=str(r.get("State") or ""),
                     node_count=str(r.get("NodeCount") or "0"),
@@ -311,14 +308,14 @@ def get_my_permissions(
     try:
         restore_default_catalog(conn)
         for r in execute_query(conn, "SELECT * FROM information_schema.pipes"):
-            pipe_name = r.get("PIPE_NAME") or r.get("pipe_name") or ""
+            pipe_name = col(r, "PIPE_NAME") or ""
             _add_sys(
                 pipe_name,
                 "PIPE",
-                database=str(r.get("DATABASE_NAME") or r.get("database_name") or ""),
-                state=str(r.get("STATE") or r.get("state") or ""),
-                table_name=str(r.get("TABLE_NAME") or r.get("table_name") or ""),
-                load_status=str(r.get("LOAD_STATUS") or r.get("load_status") or ""),
+                database=str(col(r, "DATABASE_NAME") or ""),
+                state=str(col(r, "STATE") or ""),
+                table_name=str(col(r, "TABLE_NAME") or ""),
+                load_status=str(col(r, "LOAD_STATUS") or ""),
             )
     except Exception:
         logger.debug("Query failed, skipping")

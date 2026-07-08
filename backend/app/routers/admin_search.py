@@ -11,6 +11,7 @@ import time
 from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_credentials, get_db, require_admin
+from app.services.shared.row_utils import col
 from app.services.starrocks_client import execute_query, parallel_queries
 from app.utils.cache import make_ttl_cache
 from app.utils.sql_safety import restore_default_catalog, set_catalog
@@ -53,7 +54,7 @@ def search_users_roles(
         (keyword, limit),
     )
     for r in rows:
-        name = r.get("GRANTEE") or r.get("grantee") or ""
+        name = col(r, "GRANTEE") or ""
         if name and name not in seen_users:
             seen_users.add(name)
             results.append({"name": name, "type": "user", "catalog": "", "database": "", "path": f"user:{name}"})
@@ -61,7 +62,7 @@ def search_users_roles(
     # Roles from SHOW ROLES
     rows = execute_query(conn, "SHOW ROLES")
     for r in rows:
-        name = r.get("Name") or r.get("name") or ""
+        name = col(r, "Name") or ""
         if q.lower() in name.lower():
             results.append({"name": name, "type": "role", "catalog": "", "database": "", "path": f"role:{name}"})
 
@@ -116,7 +117,7 @@ def search(
         (keyword, limit),
     )
     for r in rows:
-        name = r.get("GRANTEE") or r.get("grantee") or ""
+        name = col(r, "GRANTEE") or ""
         if name and name not in seen_users:
             seen_users.add(name)
             results.append({"name": name, "type": "user", "catalog": "", "database": "", "path": f"user:{name}"})
@@ -124,7 +125,7 @@ def search(
     # 0c. Roles
     rows = execute_query(conn, "SHOW ROLES")
     for r in rows:
-        name = r.get("Name") or r.get("name") or ""
+        name = col(r, "Name") or ""
         if q.lower() in name.lower():
             results.append({"name": name, "type": "role", "catalog": "", "database": "", "path": f"role:{name}"})
 
@@ -132,7 +133,7 @@ def search(
     catalogs = []
     cat_rows = execute_query(conn, "SHOW CATALOGS")
     for r in cat_rows:
-        name = r.get("Catalog") or r.get("catalog") or ""
+        name = col(r, "Catalog") or ""
         if name:
             catalogs.append(name)
 
@@ -151,9 +152,9 @@ def search(
                 (kw, kw, lim),
             )
             for r in rows:
-                db = r.get("TABLE_SCHEMA") or r.get("table_schema") or ""
-                name = r.get("TABLE_NAME") or r.get("table_name") or ""
-                ttype = (r.get("TABLE_TYPE") or r.get("table_type") or "").upper()
+                db = col(r, "TABLE_SCHEMA") or ""
+                name = col(r, "TABLE_NAME") or ""
+                ttype = (col(r, "TABLE_TYPE") or "").upper()
                 obj_type = "view" if "VIEW" in ttype else "table"
                 cat_results.append(
                     {"name": name, "type": obj_type, "catalog": cat, "database": db, "path": f"{cat}.{db}.{name}"}
@@ -169,7 +170,7 @@ def search(
                 (kw, lim),
             )
             for r in rows:
-                name = r.get("SCHEMA_NAME") or r.get("schema_name") or ""
+                name = col(r, "SCHEMA_NAME") or ""
                 cat_results.append(
                     {"name": name, "type": "database", "catalog": cat, "database": "", "path": f"{cat}.{name}"}
                 )
