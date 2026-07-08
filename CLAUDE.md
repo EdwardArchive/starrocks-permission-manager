@@ -43,7 +43,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   ├── routers/
 │   │   │   ├── auth.py              # POST /api/auth/login|logout, GET /api/auth/me
 │   │   │   ├── user_objects.py      # GET /api/user/objects/* (Layer 1, all users)
-│   │   │   ├── user_permissions.py  # GET /api/user/my-permissions (Layer 1, all users)
+│   │   │   ├── user_permissions.py  # GET /api/user/my-permissions (Layer 1; delegates to common/my_permissions)
 │   │   │   ├── user_roles.py        # GET /api/user/roles/* (Layer 1, all users)
 │   │   │   ├── user_dag.py          # GET /api/user/dag/* (Layer 1, all users)
 │   │   │   ├── user_search.py       # GET /api/user/search (Layer 1, all users)
@@ -52,7 +52,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   │   ├── admin_roles.py       # GET /api/admin/roles/* (Layer 1+2, admin only)
 │   │   │   ├── admin_dag.py         # GET /api/admin/dag/* (Layer 1+2, admin only)
 │   │   │   ├── admin_search.py      # GET /api/admin/search/* (Layer 1+2, admin only)
-│   │   │   ├── cluster.py           # GET /api/cluster/status|queries (no require_admin; SR enforces cluster_admin)
+│   │   │   ├── cluster.py           # /api/cluster/status|queries|queries/history|queries/kill (delegates to cluster_status/cluster_queries; SR enforces cluster_admin)
 │   │   │   └── admin_grants.py      # GRANT/REVOKE write routes (require_grant_admin)
 │   │   ├── services/
 │   │   │   ├── starrocks_client.py        # MySQL connector wrapper + connection pool + parallel_queries
@@ -60,30 +60,39 @@ When code or project structure changes, run a sub-agent after completing the tas
 │   │   │   ├── fe_metrics.py              # FE /metrics HTTP probe for cluster status (limited mode)
 │   │   │   ├── be_metrics.py              # BE /metrics probe: CPU % from starrocks_be_cpu counter deltas
 │   │   │   ├── cluster_queries.py         # Running queries: SHOW PROC '/global_current_queries' + PROCESSLIST join, server_now
+│   │   │   ├── cluster_status.py          # SHOW FRONTENDS/BACKENDS/COMPUTE NODES parse + metrics compute (DI-injected seams)
 │   │   │   ├── shared/                    # Shared constants and utilities
 │   │   │   │   ├── constants.py           # BUILTIN_ROLES, BFS_MAX_DEPTH
 │   │   │   │   ├── grant_spec.py          # object_type → grantable privileges allowlist (docs-derived)
 │   │   │   │   ├── name_utils.py          # normalize_fn_name()
 │   │   │   │   ├── role_graph.py          # fetch_role_child_map()
-│   │   │   │   └── size_utils.py          # parse_size_bytes / bytes_to_human ("256.78 GB" ↔ bytes)
+│   │   │   │   ├── size_utils.py          # parse_size_bytes / bytes_to_human ("256.78 GB" ↔ bytes)
+│   │   │   │   ├── dag_builder.py         # DAGBuilder — shared DAG node/edge assembly
+│   │   │   │   ├── role_dag.py            # role_category, add_role_ancestry, build_role_hierarchy_from_grants
+│   │   │   │   └── row_utils.py           # col() — case-insensitive SHOW-row accessor
 │   │   │   ├── common/                    # Layer 1: SHOW + INFORMATION_SCHEMA only
 │   │   │   │   ├── grant_parser.py        # SHOW GRANTS parsing → PrivilegeGrant objects
 │   │   │   │   ├── grant_classifier.py    # ObjectQuery + Relevance + classify_grant()
 │   │   │   │   ├── grant_resolver.py      # Resolve grants for user/role/object queries
-│   │   │   │   └── show_grants_collector.py # Non-admin grant collection
+│   │   │   │   ├── show_grants_collector.py # Non-admin grant collection
+│   │   │   │   ├── object_dag.py          # build_object_hierarchy — serves user_dag + admin_dag
+│   │   │   │   ├── catalog_search.py      # search engine for user/admin search
+│   │   │   │   ├── my_permissions.py      # get_my_permissions collectors (role chain, catalogs, objects, sys)
+│   │   │   │   └── table_ddl.py           # fetch_table_detail — DDL regex parsing
 │   │   │   ├── admin/                     # Layer 2: sys.* tables (admin only)
 │   │   │   │   ├── sys_collector.py       # Admin grant collection via sys.*
 │   │   │   │   ├── grant_writer.py        # GRANT/REVOKE SQL builder (strict identity validation, SET CATALOG pair)
 │   │   │   │   ├── audit.py               # Best-effort audit log (srpm_audit.grant_log; failures logged too)
 │   │   │   │   ├── bfs_resolver.py        # BFS traversal: child roles, user privs, ancestors
-│   │   │   │   └── user_service.py        # get_all_users (cached)
+│   │   │   │   ├── user_service.py        # get_all_users (cached)
+│   │   │   │   └── role_hierarchy.py      # build_admin_role_hierarchy (sys.role_edges → DAG)
 │   │   ├── models/
 │   │   │   └── schemas.py     # Pydantic request/response models
 │   │   └── utils/
 │   │       ├── session.py     # JWT encode/decode
 │   │       ├── session_store.py # In-memory server-side session store (includes is_admin)
-│   │       ├── sql_safety.py  # SQL injection protection (safe_name, safe_identifier)
-│   │       ├── cache.py       # Central cache clearing utility
+│   │       ├── sql_safety.py  # SQL injection protection (safe_name, safe_identifier); set_catalog/restore_default_catalog
+│   │       ├── cache.py       # make_ttl_cache factory + clear_all_caches (self-registering TTL cache registry)
 │   │       ├── sys_access.py  # can_access_sys() — verifies full admin capability (see "Admin Detection" below)
 │   │       └── role_helpers.py # Shared: get_user_roles, get_parent_roles, parse_role_assignments
 │   └── tests/
@@ -106,20 +115,31 @@ When code or project structure changes, run a sub-agent after completing the tas
         ├── api/
         │   ├── client.ts            # Axios instance + interceptors
         │   ├── auth.ts              # Auth API
-        │   ├── user.ts              # /api/user/* endpoints (all users)
-        │   ├── admin.ts             # /api/admin/* endpoints (admin only)
+        │   ├── permApi.ts           # makePermApi factory + userPermApi/adminPermApi + usePermApi() (shared user/admin fns)
+        │   ├── user.ts              # thin re-export shim → permApi (user-bound)
+        │   ├── admin.ts             # thin re-export shim → permApi (admin-bound)
         │   └── cluster.ts           # /api/cluster/* (new category, separate from user/admin)
+        ├── hooks/               # Reusable data hooks
+        │   ├── useAsyncData.ts      # fetch + loading/error/reload state (detail panels/panes)
+        │   ├── usePolling.ts        # interval polling paused on document.hidden (+ useTickerNow)
+        │   └── useServerSearch.ts   # debounced server-side search with cancel-on-supersede
         ├── stores/              # Zustand (authStore, dagStore, clusterStore, grantStore)
         │   ├── clusterStore.ts      # Drawer open state + expanded nodes
         │   └── grantStore.ts        # Manage Privileges wizard open/prefill + refreshTick
         ├── utils/
+        │   ├── constants.ts         # BUILTIN_ROLES (frontend single source)
         │   ├── grantDisplay.ts      # buildGrantDisplay() — unified grant grouping + implicit USAGE
+        │   ├── granteeName.ts       # parse 'user'@'host' grantee identity (single source)
+        │   ├── grantHelpers.ts      # pure grant-domain helpers for the wizard (OBJECT_TYPE_ORDER, isRevocableRow)
         │   ├── inventory-helpers.ts  # SubTab/AllTab types, SUB_TAB_META, formatSQL/Bytes
         │   ├── privColors.ts        # Privilege tag color map
         │   ├── relativeTime.ts      # formatRelativeTime + clockSkewMs/skewedNow (cluster-TZ correction)
         │   ├── querySort.ts         # sortQueries/sortHistory for the queries panel
         │   ├── queryFormat.ts       # fmtRows/fmtBytes/fmtDurationMs/fmtCpuShare
-        │   ├── scopeConfig.ts       # SCOPE_ORDER, SCOPE_ICONS
+        │   ├── queryCpu.ts          # deriveInstCores() — instantaneous CPU share from poll deltas
+        │   ├── resourceGroupClassifiers.ts # parse resource-group classifiers JSON → rules
+        │   ├── sysObjectFields.ts   # per-type [label, value] detail rows for sys objects
+        │   ├── scopeConfig.ts       # SCOPE_ORDER, SCOPE_ICONS (canonical scope order/icon source)
         │   └── toast.ts             # Deduplicating toast
         └── components/
             ├── auth/LoginForm.tsx
@@ -127,10 +147,21 @@ When code or project structure changes, run a sub-agent after completing the tas
             │   ├── ClusterDrawer.tsx  # Live gauge glance (15s poll, KPI band + alerts + query preview, jumps to tab)
             │   ├── ClusterSummary.tsx # Shared: compact summary, ClusterKpiBand (gauges+jump), alerts, banners
             │   ├── NodeCards.tsx      # FENodeCard/BENodeCard/UtilBar(variant)/Sparkline/StatusDot (shared)
-            │   └── QueriesPanel.tsx   # Running|Recent subtabs: filter, refresh-interval, instant CPU%, grant-admin KILL
-            ├── grants/
-            │   └── ManagePrivilegesModal.tsx  # GRANT/REVOKE wizard (presets, multi-revoke, keep-open)
-            ├── layout/Header.tsx, Sidebar.tsx  # Sidebar uses isAdmin-conditional APIs; Header has cluster icon
+            │   ├── QueriesPanel.tsx   # Running|Recent subtabs: filter, refresh-interval, instant CPU%, grant-admin KILL
+            │   ├── useRunningQueries.ts # Running subtab data domain (fetch/poll + instant CPU)
+            │   ├── useQueryHistory.ts   # Recent subtab data domain (AuditLoader history fetch/poll)
+            │   └── QueryDetail.tsx      # expanded-row SQL + resource detail (presentational)
+            ├── grants/               # Manage Privileges wizard (decomposed)
+            │   ├── ManagePrivilegesModal.tsx  # orchestrator (GRANT/REVOKE: presets, multi-revoke, keep-open)
+            │   ├── useGrantForm.ts / useGrantDataSources.ts / useGranteeGrants.ts / useGrantPreview.ts / useGrantExecutor.ts  # 5 wizard hooks
+            │   ├── CurrentGrantsList.tsx / ObjectSelector.tsx / PrivilegeGrid.tsx / SqlPreviewRail.tsx / ModalFooter.tsx  # 5 subcomponents
+            │   └── primitives.tsx / grantSql.tsx / styles.ts  # shared primitives, SQL text builders, styles
+            ├── layout/
+            │   ├── Header.tsx           # Header (cluster icon + Manage Privileges entry)
+            │   ├── Sidebar.tsx          # Searchable hierarchy browser (isAdmin-conditional APIs)
+            │   ├── sidebarParts.tsx     # Sidebar presentational pieces (Icon, EyeToggle)
+            │   ├── sidebarStyles.ts     # Sidebar style map (S)
+            │   └── useTreeExpansion.ts  # object-tree data + expand/collapse state hook
             ├── common/
             │   ├── ComboInput.tsx     # Themed combobox (input + chevron + dark dropdown; replaces datalist/select)
             │   ├── InlineIcon.tsx     # SVG icon renderer
@@ -141,15 +172,24 @@ When code or project structure changes, run a sub-agent after completing the tas
             │   ├── CustomNode.tsx    # SVG icon node (20x20, FIXED_W=168)
             │   ├── GroupNode.tsx     # Dashed container (16x16 icon)
             │   ├── dagLayout.ts     # dagre layout (3-col grid, cluster overlap correction)
-            │   └── nodeIcons.ts     # SVG import + colorizedSvg()
+            │   ├── nodeIcons.ts     # SVG import + colorizedSvg()
+            │   ├── DagControls.tsx  # filter/re-layout/export control bar
+            │   ├── useDagHighlight.ts   # clicked-node highlight + connected-subgraph styling
+            │   ├── useDagLayoutSync.ts  # owns ReactFlow node/edge state + dagre layout
+            │   └── useNodeContextMenu.ts # right-click "Manage privileges…" menu (grant admins)
             ├── tabs/
             │   ├── PermissionDetailTab.tsx  # Permission Focus (admin API only)
             │   ├── PermissionMatrix.tsx     # GranteeName, PermissionMatrixView, ObjectPrivilegesPane
             │   ├── InventoryTab.tsx         # My Inventory (isAdmin-conditional API for roles/users)
-            │   ├── InventoryDetailPanel.tsx # Detail panel for inventory items (privs, members, objects)
+            │   ├── InventoryDetailPanel.tsx # Detail-panel router (~100 lines) → panes/*
             │   ├── AuditTab.tsx             # Grant Audit history table (can_manage_grants only)
             │   ├── ClusterTab.tsx           # Cluster Monitor dashboard (30s poll, node grid + QueriesPanel)
-            │   └── inventory-ui.tsx         # Shared UI: SearchInput, Chip, Badge, SortTH, etc.
+            │   ├── inventory-ui.tsx         # Shared UI: SearchInput, Chip, Badge, SortTH, etc.
+            │   └── panes/               # Inventory detail panes (rendered by InventoryDetailPanel)
+            │       ├── objectPanes.tsx        # Table/View/MV/Function detail panes
+            │       ├── entityPanes.tsx        # Role/User/Catalog/Database privilege panes
+            │       ├── systemPanes.tsx        # Resource-group/warehouse/system-object panes
+            │       └── RequiredPrivilegesTable.tsx  # "no grantable privileges" explainer (TASK/PIPE)
             └── panels/
                 ├── ObjectDetailPanel.tsx  # Permission matrix + Details
                 ├── UserDetailPanel.tsx    # GrantTreeView effective privileges
@@ -184,7 +224,7 @@ When code or project structure changes, run a sub-agent after completing the tas
 - **3-Tier Data Access Architecture**: ← CHANGED (replaces previous "Admin vs Non-Admin")
   - **Common Tier**: `services/common/` — Uses only `INFORMATION_SCHEMA` and `SHOW` commands. StarRocks performs per-user permission filtering automatically, so no additional backend filtering is required. Used by all users, including admins.
   - **Admin Tier**: `services/admin/` — Queries `sys.grants_to_users`, `sys.grants_to_roles`, `sys.role_edges`. Used exclusively for "viewing other users'/roles' permissions." May import Common Tier services for supplemental data.
-  - **Shared**: `services/shared/` — `grant_parser.py`, `constants.py`, and other code imported by both tiers.
+  - **Shared**: `services/shared/` — `constants.py`, `name_utils.py`, and other code imported by both tiers.
 
 - **API Route Separation**: ← NEW
   - `/api/auth/*`: Shared (login, session, logout)
@@ -197,7 +237,7 @@ When code or project structure changes, run a sub-agent after completing the tas
     - Maps full role hierarchy from `sys.role_edges`
     - Supplements builtin role/user grants via `SHOW GRANTS`
     - → `GrantResolver` interprets collected grants per query type (`for_user()`, `for_user_effective()`, `for_role()`, `for_object()`)
-  - **User path** (facade `services/grant_collector.py` → `services/common/show_grants_collector.py`; `routers/user_permissions.py` for the my-permissions tree):
+  - **User path** (facade `services/grant_collector.py` → `services/common/show_grants_collector.py`; `services/common/my_permissions.py` for the my-permissions tree):
     - Collects current user's grants via `SHOW GRANTS FOR {current_user}`
     - Traverses role chain via `SHOW GRANTS FOR ROLE {role}` with BFS
     - Enumerates accessible objects via `INFORMATION_SCHEMA`
@@ -264,6 +304,11 @@ When code or project structure changes, run a sub-agent after completing the tas
 - No duplicate function name normalization — use services/shared/name_utils.py
 - All new endpoints must have pytest tests
 - Router files must NOT contain business logic (delegate to services)
+- No hand-rolled TTL caches — create via utils/cache.make_ttl_cache (registry-backed; cleared by clear_all_caches)
+- No direct SET CATALOG SQL — use sql_safety.set_catalog()/restore_default_catalog()
+- Case-tolerant SHOW-row access — use services/shared/row_utils.col()
+- DAG node/edge assembly — use services/shared/dag_builder.DAGBuilder
+- Frontend: fetch/loading/error via hooks/useAsyncData, polling via hooks/usePolling; user/admin-shared endpoints via api/permApi (never re-duplicate in user.ts/admin.ts)
 
 ## Tabs
 | Tab | Description | Admin Only |
