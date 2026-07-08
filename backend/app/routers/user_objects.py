@@ -10,7 +10,6 @@ import logging
 import re
 import threading
 
-from cachetools import TTLCache
 from fastapi import APIRouter, Depends, Query
 
 from app.config import settings
@@ -18,6 +17,7 @@ from app.dependencies import get_credentials, get_db
 from app.models.schemas import CatalogItem, ColumnInfo, DatabaseItem, ObjectItem, TableDetail
 from app.services.shared.name_utils import normalize_fn_name
 from app.services.starrocks_client import execute_query, execute_single
+from app.utils.cache import make_ttl_cache
 from app.utils.sql_safety import safe_identifier, set_catalog
 
 router = APIRouter()
@@ -32,7 +32,7 @@ _RE_PARTITION_GENERIC = re.compile(r"PARTITION BY\s+(\w+)\(([^)]+)\)", re.I)
 _RE_PARTITION_SIMPLE = re.compile(r"PARTITION BY\s*\(([^)]+)\)", re.I)
 
 # ── TTL cache for catalogs (keyed per user — SHOW CATALOGS is permission-filtered) ──
-_catalog_cache: TTLCache = TTLCache(maxsize=256, ttl=settings.cache_ttl_seconds)
+_catalog_cache = make_ttl_cache("user_objects.catalogs", maxsize=256, ttl=settings.cache_ttl_seconds)
 _catalog_cache_lock = threading.Lock()
 
 

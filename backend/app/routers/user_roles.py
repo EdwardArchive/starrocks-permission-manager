@@ -8,13 +8,13 @@ from __future__ import annotations
 import logging
 import threading
 
-from cachetools import TTLCache
 from fastapi import APIRouter, Depends, Query
 
 from app.config import settings
 from app.dependencies import get_credentials, get_db
 from app.models.schemas import DAGEdge, DAGGraph, DAGNode, RoleItem
 from app.services.shared.constants import BUILTIN_ROLES
+from app.utils.cache import make_ttl_cache
 from app.utils.role_helpers import (
     collect_all_roles_via_grants,
     get_parent_roles,
@@ -26,7 +26,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # ── TTL cache for roles (keyed by username) ──
-_role_cache: TTLCache = TTLCache(maxsize=64, ttl=settings.cache_ttl_seconds)
+_role_cache = make_ttl_cache("user_roles.roles", maxsize=64, ttl=settings.cache_ttl_seconds)
 _role_cache_lock = threading.Lock()
 
 

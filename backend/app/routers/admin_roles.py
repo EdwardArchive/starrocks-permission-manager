@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 import threading
 
-from cachetools import TTLCache
 from fastapi import APIRouter, Depends, Query
 
 from app.config import settings
@@ -17,13 +16,14 @@ from app.models.schemas import DAGEdge, DAGGraph, DAGNode, RoleItem
 from app.services.admin.user_service import get_all_users
 from app.services.shared.constants import BUILTIN_ROLES
 from app.services.starrocks_client import execute_query
+from app.utils.cache import make_ttl_cache
 from app.utils.role_helpers import get_parent_roles, get_user_roles
 
 logger = logging.getLogger("admin_roles")
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 # ── TTL cache for admin roles ──
-_role_cache: TTLCache = TTLCache(maxsize=4, ttl=settings.cache_ttl_seconds)
+_role_cache = make_ttl_cache("admin_roles.roles", maxsize=4, ttl=settings.cache_ttl_seconds)
 _role_cache_lock = threading.Lock()
 
 

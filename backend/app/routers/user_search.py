@@ -8,11 +8,11 @@ from __future__ import annotations
 import logging
 import time
 
-from cachetools import TTLCache
 from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_credentials, get_db
 from app.services.starrocks_client import execute_query, parallel_queries
+from app.utils.cache import make_ttl_cache
 from app.utils.role_helpers import collect_all_roles_via_grants
 from app.utils.sql_safety import restore_default_catalog, set_catalog
 
@@ -20,7 +20,7 @@ router = APIRouter()
 logger = logging.getLogger("search")
 
 # Track catalogs that failed (connection timeout etc.) — skip for 5 min
-_failed_catalogs: TTLCache = TTLCache(maxsize=64, ttl=300)
+_failed_catalogs = make_ttl_cache("user_search.failed_catalogs", maxsize=64, ttl=300)
 
 
 @router.get("")

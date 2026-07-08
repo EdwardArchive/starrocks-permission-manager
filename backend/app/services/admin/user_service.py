@@ -5,15 +5,14 @@ from __future__ import annotations
 import logging
 import threading
 
-from cachetools import TTLCache
-
 from app.config import settings
 from app.services.starrocks_client import execute_query
+from app.utils.cache import make_ttl_cache
 
 logger = logging.getLogger(__name__)
 
 # ── TTL cache for users ──
-_user_cache: TTLCache = TTLCache(maxsize=1, ttl=settings.cache_ttl_seconds)
+_user_cache = make_ttl_cache("user_service.users", maxsize=1, ttl=settings.cache_ttl_seconds)
 _user_cache_lock = threading.Lock()
 
 

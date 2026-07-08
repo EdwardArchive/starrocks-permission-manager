@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 
-from cachetools import TTLCache
 from fastapi import APIRouter, Depends, Query
 
 from app.config import settings
@@ -15,13 +14,14 @@ from app.dependencies import get_credentials, get_db
 from app.models.schemas import DAGEdge, DAGGraph, DAGNode
 from app.services.shared.name_utils import normalize_fn_name
 from app.services.starrocks_client import execute_query, parallel_queries
+from app.utils.cache import make_ttl_cache
 from app.utils.sql_safety import safe_identifier, set_catalog
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # Server-side TTL cache for DAG results
-_dag_cache: TTLCache = TTLCache(maxsize=64, ttl=settings.cache_ttl_seconds)
+_dag_cache = make_ttl_cache("user_dag.dag", maxsize=64, ttl=settings.cache_ttl_seconds)
 
 
 @router.get("/object-hierarchy", response_model=DAGGraph)

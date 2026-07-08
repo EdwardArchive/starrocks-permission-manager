@@ -22,7 +22,6 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Literal
 
 import mysql.connector.errors
-from cachetools import TTLCache
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.config import settings
@@ -49,18 +48,19 @@ from app.services.fe_metrics import FEMetricsData, FEMetricsError, fetch_fe_metr
 from app.services.shared.size_utils import bytes_to_human as _bytes_to_human
 from app.services.shared.size_utils import parse_size_bytes as _parse_size_bytes
 from app.services.starrocks_client import execute_query
+from app.utils.cache import make_ttl_cache
 from app.utils.sys_access import is_access_denied
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # ── TTL cache (per username) ──
-_cluster_cache: TTLCache = TTLCache(maxsize=256, ttl=settings.cache_ttl_seconds)
+_cluster_cache = make_ttl_cache("cluster.status", maxsize=256, ttl=settings.cache_ttl_seconds)
 _cluster_cache_lock = threading.Lock()
 
 # Running queries change fast — much shorter TTL than node status.
 _QUERIES_CACHE_TTL_SECONDS = 5
-_queries_cache: TTLCache = TTLCache(maxsize=256, ttl=_QUERIES_CACHE_TTL_SECONDS)
+_queries_cache = make_ttl_cache("cluster.queries", maxsize=256, ttl=_QUERIES_CACHE_TTL_SECONDS)
 _queries_cache_lock = threading.Lock()
 
 # Module-level executor — reused across requests to avoid per-request thread-pool creation overhead.

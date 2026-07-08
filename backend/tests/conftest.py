@@ -394,26 +394,14 @@ def strict_queries(mock_db):
 def client(mock_db, query_map):
     """FastAPI TestClient with mocked DB dependency."""
 
-    # Clear TTL caches to prevent cross-test leakage
-    from app.routers.admin_dag import _dag_cache as admin_dag_cache
-    from app.routers.admin_roles import _role_cache as admin_role_cache
-    from app.routers.cluster import _cluster_cache, _queries_cache
-    from app.routers.user_dag import _dag_cache as user_dag_cache
-    from app.routers.user_objects import _catalog_cache
-    from app.routers.user_roles import _role_cache as user_role_cache
-    from app.services.admin.user_service import _user_cache
-    from app.services.grant_collector import _grants_cache
-    _catalog_cache.clear()
-    admin_role_cache.clear()
-    user_role_cache.clear()
-    admin_dag_cache.clear()
-    user_dag_cache.clear()
-    _user_cache.clear()
-    _cluster_cache.clear()
-    _queries_cache.clear()
-    _grants_cache.clear()
+    # Clear all registered TTL caches to prevent cross-test leakage.
+    # (app.main is imported at module load, so every cache module has already
+    # registered itself by the time this runs.)
+    from app.utils.cache import clear_all_caches
+    clear_all_caches()
 
     # Reset the login rate limiter so attempts don't accumulate across tests
+    # (not a TTL cache, so not covered by clear_all_caches()).
     from app.utils.rate_limit import login_rate_limiter
     login_rate_limiter.reset()
 
