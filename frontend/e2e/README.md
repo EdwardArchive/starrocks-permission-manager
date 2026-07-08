@@ -22,13 +22,28 @@ CREATE ROLE IF NOT EXISTS srpm_e2e_role;
 
 2. **Environment variables**: `E2E_SR_PASS` (required; tests skip without it),
    `E2E_SR_HOST` / `E2E_SR_PORT` / `E2E_SR_USER` (default `192.168.10.5` / `9030` / `root`).
+   Put them in a gitignored **`frontend/e2e/.env`** (copy `e2e/.env.example`) so you
+   don't have to pass them inline. Inline environment variables still override the file.
 
 ## Run
 
 ```bash
 cd frontend
-E2E_SR_PASS='<root password>' npx playwright test
+cp e2e/.env.example e2e/.env   # then fill in E2E_SR_PASS
+npx playwright test            # reads e2e/.env
+# or inline:  E2E_SR_PASS='<root password>' npx playwright test
 npx playwright show-report --host 0.0.0.0   # view from another machine
+```
+
+## Regenerate documentation screenshots
+
+`capture-docs-screenshots.mjs` refreshes the Manage Privileges screenshots in
+`docs/screenshots/` (grant wizard, revoke, grant audit). It needs the dev servers
+running (vite :5199, backend :8888) and reads the same `e2e/.env`:
+
+```bash
+cd frontend
+node e2e/capture-docs-screenshots.mjs
 ```
 
 The Playwright config auto-starts both dev servers (backend on :8888, vite on
