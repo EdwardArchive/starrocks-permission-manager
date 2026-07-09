@@ -1,15 +1,36 @@
 import { defineConfig } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 /**
  * E2E tests for the GRANT/REVOKE feature against a live StarRocks cluster.
  *
  * Requires:
- *  - env E2E_SR_PASS (and optionally E2E_SR_HOST/PORT/USER) for the cluster login
+ *  - env E2E_SR_PASS (and optionally E2E_SR_HOST/PORT/USER) for the cluster login,
+ *    either exported inline or in the gitignored e2e/.env (see e2e/.env.example)
  *  - fixture objects on the cluster (see e2e/README.md): srpm_audit.grant_log,
  *    srpm_e2e_db.demo_t, user srpm_e2e_target, role srpm_e2e_role
  *
- * Run: E2E_SR_PASS=... npx playwright test
+ * Run: npx playwright test          (reads e2e/.env)
+ *  or: E2E_SR_PASS=... npx playwright test
  */
+
+// Load the gitignored e2e/.env (KEY=VALUE per line). Inline environment wins.
+// Same idiom as e2e/capture-docs-screenshots.mjs.
+try {
+  const envPath = join(dirname(fileURLToPath(import.meta.url)), "e2e", ".env");
+  for (const line of readFileSync(envPath, "utf8").split("\n")) {
+    const m = line.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (!m) continue;
+    let v = m[2];
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+    if (process.env[m[1]] === undefined) process.env[m[1]] = v;
+  }
+} catch {
+  /* no e2e/.env — fall back to the process environment (tests skip without E2E_SR_PASS) */
+}
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
