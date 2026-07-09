@@ -10,7 +10,7 @@ import { useServerSearch } from "../../hooks/useServerSearch";
 import { useTreeExpansion } from "./useTreeExpansion";
 import { Icon, EyeToggle } from "./sidebarParts";
 import { S } from "./sidebarStyles";
-import type { CatalogItem, RoleItem, SearchResult } from "../../types";
+import type { CatalogItem, ObjectItem, RoleItem, SearchResult } from "../../types";
 
 export default function Sidebar() {
   const {

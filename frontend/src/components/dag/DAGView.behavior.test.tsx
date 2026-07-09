@@ -199,7 +199,7 @@ describe("useNodeContextMenu", () => {
 
   beforeEach(() => {
     openWizard = vi.fn();
-    useGrantStore.setState({ openWizard });
+    useGrantStore.setState({ openWizard: openWizard as unknown as typeof origOpenWizard });
     useAuthStore.setState({ user: admin });
   });
 
@@ -321,27 +321,27 @@ describe("DAGView (handler wiring)", () => {
 
   it("node click on a user node selects it and opens the user panel", () => {
     render(<DAGView data={DATA} />);
-    act(() => (rf.props.onNodeClick as NodeMouseHandler)({} as never, { id: "u1", data: { nodeType: "user", label: "alice" } } as Node));
+    act(() => (rf.props.onNodeClick as NodeMouseHandler)({} as never, { id: "u1", data: { nodeType: "user", label: "alice" } } as unknown as Node));
     expect(useDagStore.getState().selectedNode?.id).toBe("u1");
     expect(useDagStore.getState().panelMode).toBe("user");
   });
 
   it("node click on a plain object opens the object panel", () => {
     render(<DAGView data={DATA} />);
-    act(() => (rf.props.onNodeClick as NodeMouseHandler)({} as never, { id: "t1", data: { nodeType: "table", label: "orders" } } as Node));
+    act(() => (rf.props.onNodeClick as NodeMouseHandler)({} as never, { id: "t1", data: { nodeType: "table", label: "orders" } } as unknown as Node));
     expect(useDagStore.getState().panelMode).toBe("object");
   });
 
   it("node click on a group node collects children and opens the group panel", () => {
     render(<DAGView data={DATA} />);
-    act(() => (rf.props.onNodeClick as NodeMouseHandler)({} as never, { id: "g1", data: { nodeType: "table", nodeRole: "group", label: "Tables" } } as Node));
+    act(() => (rf.props.onNodeClick as NodeMouseHandler)({} as never, { id: "g1", data: { nodeType: "table", nodeRole: "group", label: "Tables" } } as unknown as Node));
     expect(useDagStore.getState().panelMode).toBe("group");
     expect(useDagStore.getState().groupChildren.map((n) => n.id)).toEqual(["t1"]);
   });
 
   it("node click for an id absent from data is a no-op", () => {
     render(<DAGView data={DATA} />);
-    act(() => (rf.props.onNodeClick as NodeMouseHandler)({} as never, { id: "ghost", data: { nodeType: "table", label: "?" } } as Node));
+    act(() => (rf.props.onNodeClick as NodeMouseHandler)({} as never, { id: "ghost", data: { nodeType: "table", label: "?" } } as unknown as Node));
     expect(useDagStore.getState().panelMode).toBeNull();
   });
 

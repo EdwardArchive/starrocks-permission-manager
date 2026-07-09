@@ -354,7 +354,7 @@ mypy backend/app/ --config-file pyproject.toml     # also enforced in CI lint.ym
 
 # Frontend
 cd frontend
-npx tsc --noEmit
+npx tsc -b
 npx eslint src/ --max-warnings 0
 ```
 
