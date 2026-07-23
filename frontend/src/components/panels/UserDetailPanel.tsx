@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { useDagStore } from "../../stores/dagStore";
 import { useAuthStore } from "../../stores/authStore";
 import { useGrantStore } from "../../stores/grantStore";
@@ -7,28 +6,22 @@ import InlineIcon from "../common/InlineIcon";
 import GrantTreeView from "../common/GrantTreeView";
 import { C } from "../../utils/colors";
 import { buildGrantDisplay, extractSourceRoles } from "../../utils/grantDisplay";
-import type { PrivilegeGrant } from "../../types";
+import { parseGrantee } from "../../utils/granteeName";
+import { useAsyncData } from "../../hooks/useAsyncData";
 
 export default function UserDetailPanel() {
   const selectedNode = useDagStore((s) => s.selectedNode);
   const canManageGrants = useAuthStore((s) => s.user?.can_manage_grants ?? false);
   const openWizard = useGrantStore((s) => s.openWizard);
-  const [state, setState] = useState<{ grants: PrivilegeGrant[]; loading: boolean; loadedNodeId: string | null }>({
-    grants: [], loading: false, loadedNodeId: null,
-  });
-
-  useEffect(() => {
-    if (!selectedNode) return;
-    const nodeId = selectedNode.id;
-    getUserEffectivePrivileges(selectedNode.label)
-      .then((data) => setState({ grants: data, loading: false, loadedNodeId: nodeId }))
-      .catch(() => setState((prev) => ({ ...prev, loading: false, loadedNodeId: nodeId })));
-    return () => setState({ grants: [], loading: true, loadedNodeId: null });
-  }, [selectedNode]);
+  const { data, loading } = useAsyncData(
+    () => getUserEffectivePrivileges(selectedNode!.label),
+    [selectedNode],
+    { enabled: !!selectedNode },
+  );
 
   if (!selectedNode) return null;
 
-  const { grants, loading, loadedNodeId } = state;
+  const grants = data ?? [];
   const groups = buildGrantDisplay(grants);
   const sourceRoles = extractSourceRoles(grants);
 
@@ -56,17 +49,15 @@ export default function UserDetailPanel() {
       </div>
       <p style={{ fontSize: 12, color: C.text2, marginBottom: 14 }}>
         {(() => {
-          const m = selectedNode.label.match(/^'?([^'@]+)'?@'?([^']*)'?$/);
-          if (m) {
-            const host = m[2];
-            const hostLabel = !host || host === "%" ? "ALL CIDR" : host.includes("/") ? host : host + "/32";
-            return <>{m[1]} <span style={{ color: C.text3 }}>({hostLabel})</span></>;
+          const { uname, hostLabel } = parseGrantee(selectedNode.label);
+          if (hostLabel) {
+            return <>{uname} <span style={{ color: C.text3 }}>({hostLabel})</span></>;
           }
           return selectedNode.label;
         })()}
       </p>
 
-      {(loading || loadedNodeId !== selectedNode?.id) ? (
+      {loading ? (
         <p style={{ fontSize: 13, color: C.text2, fontStyle: "italic" }}>Loading...</p>
       ) : (
         <GrantTreeView

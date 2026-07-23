@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from app.utils.sql_safety import safe_identifier, safe_name
+from app.utils.sql_safety import restore_default_catalog, safe_identifier, safe_name, set_catalog
 
 
 class TestSafeName:
@@ -67,3 +67,49 @@ class TestSafeIdentifier:
 
     def test_empty_string(self):
         assert safe_identifier("") == ""
+
+
+class _RecordingCursor:
+    """Cursor stub that records executed SQL text and returns no rows."""
+
+    def __init__(self, log: list[str]):
+        self._log = log
+
+    def execute(self, sql: str, params: tuple = ()):
+        self._log.append(sql)
+
+    def fetchall(self) -> list:
+        return []
+
+    def close(self):
+        pass
+
+
+class _RecordingConn:
+    """Connection stub whose cursor records the SQL the helpers emit."""
+
+    def __init__(self):
+        self.executed: list[str] = []
+
+    def cursor(self, dictionary: bool = False):
+        return _RecordingCursor(self.executed)
+
+
+class TestSetCatalog:
+    def test_normal_name_emits_backtick_quoted(self):
+        conn = _RecordingConn()
+        set_catalog(conn, "analytics_db")
+        assert conn.executed == ["SET CATALOG `analytics_db`"]
+
+    def test_backtick_in_name_is_escaped(self):
+        # safe_identifier doubles backticks rather than rejecting the name.
+        conn = _RecordingConn()
+        set_catalog(conn, "we`ird")
+        assert conn.executed == ["SET CATALOG `we``ird`"]
+
+
+class TestRestoreDefaultCatalog:
+    def test_emits_default_catalog_statement(self):
+        conn = _RecordingConn()
+        restore_default_catalog(conn)
+        assert conn.executed == ["SET CATALOG `default_catalog`"]

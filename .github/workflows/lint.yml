@@ -80,7 +80,7 @@ jobs:
         run: cd frontend && npx eslint ${{ steps.changed.outputs.files }} --max-warnings 0
 
       - name: TypeScript type check
-        run: cd frontend && npx tsc --noEmit
+        run: cd frontend && npx tsc -b
 
   frontend-tests:
     name: Frontend Tests

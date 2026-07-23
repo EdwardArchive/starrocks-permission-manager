@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useClusterStore } from "../../stores/clusterStore";
 import { getClusterStatus } from "../../api/cluster";
+import { usePolling } from "../../hooks/usePolling";
 import { clockSkewMs, skewedNow } from "../../utils/relativeTime";
 import type { ClusterStatusResponse, FENodeInfo, BENodeInfo } from "../../types";
 import { C } from "../../utils/colors";
@@ -92,17 +93,12 @@ export default function ClusterTab() {
       });
   }, []);
 
+  // Initial fetch on mount (rides the server cache); abort in-flight on unmount
   useEffect(() => {
     fetchData();
-    const interval = setInterval(() => {
-      if (document.hidden) return;
-      fetchData(true);
-    }, STATUS_POLL_MS);
-    return () => {
-      clearInterval(interval);
-      abortRef.current?.abort();
-    };
+    return () => abortRef.current?.abort();
   }, [fetchData]);
+  usePolling(() => fetchData(true), STATUS_POLL_MS);
 
   // Respond to a focus request from the drawer: scroll + briefly highlight
   useEffect(() => {

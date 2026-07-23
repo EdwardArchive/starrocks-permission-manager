@@ -65,11 +65,6 @@ class RoleItem(BaseModel):
     is_builtin: bool = False
 
 
-class RoleEdge(BaseModel):
-    parent_role: str
-    child_role: str
-
-
 # ── DAG ──
 class DAGNode(BaseModel):
     id: str

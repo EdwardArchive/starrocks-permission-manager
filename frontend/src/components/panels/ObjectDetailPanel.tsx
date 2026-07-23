@@ -8,7 +8,8 @@ import { buildGrantDisplay, extractSourceRoles } from "../../utils/grantDisplay"
 import { PermissionMatrixView } from "../tabs/PermissionMatrix";
 import { formatBytes } from "../../utils/inventory-helpers";
 import { C } from "../../utils/colors";
-import type { PrivilegeGrant, TableDetail } from "../../types";
+import { useAsyncData } from "../../hooks/useAsyncData";
+import type { TableDetail } from "../../types";
 
 // Extract catalog/database from DAG node metadata
 function getNodeContext(node: { label: string; metadata?: Record<string, unknown> | null }) {
@@ -25,69 +26,61 @@ export default function ObjectDetailPanel() {
   const canManageGrants = useAuthStore((s) => s.user?.can_manage_grants ?? false);
   const openWizard = useGrantStore((s) => s.openWizard);
   const [tab, setTab] = useState<"privileges" | "details">("privileges");
-
-  interface PanelData {
-    grants: PrivilegeGrant[];
-    detail: TableDetail | null;
-    loadedNodeId: string | null;
-    loadingPrivs: boolean;
-    loadingDetail: boolean;
-  }
-  const [data, setData] = useState<PanelData>({
-    grants: [], detail: null, loadedNodeId: null, loadingPrivs: false, loadingDetail: false,
+  const [detailState, setDetailState] = useState<{ detail: TableDetail | null; loading: boolean }>({
+    detail: null, loading: false,
   });
 
   const parsed = selectedNode ? getNodeContext(selectedNode) : {} as ReturnType<typeof getNodeContext>;
 
+  const privsRes = useAsyncData(
+    () => {
+      const nt = selectedNode!.type.toLowerCase();
+      let fetchCatalog = parsed.catalog;
+      let fetchDatabase = parsed.database;
+      let fetchName: string | undefined = parsed.name || selectedNode!.label;
+      if (nt === "database") {
+        fetchDatabase = selectedNode!.label;
+        fetchName = undefined;
+      } else if (nt === "catalog") {
+        fetchCatalog = selectedNode!.label;
+        fetchDatabase = undefined;
+        fetchName = undefined;
+      } else if (nt === "system") {
+        fetchCatalog = undefined;
+        fetchDatabase = undefined;
+        fetchName = undefined;
+      }
+      return nt === "role"
+        ? getRolePrivileges(selectedNode!.label)
+        : getObjectPrivileges(fetchCatalog, fetchDatabase, fetchName, nt === "mv" ? "MATERIALIZED VIEW" : nt.toUpperCase());
+    },
+    [selectedNode],
+    { enabled: !!selectedNode },
+  );
+
+  // Back to the privileges tab (and drop stale detail) whenever the node changes
   useEffect(() => {
     if (!selectedNode) return;
     setTab("privileges");
-    setData({ grants: [], detail: null, loadedNodeId: null, loadingPrivs: true, loadingDetail: false });
-
-    const nodeId = selectedNode.id;
-    const nodeType = selectedNode.type.toLowerCase();
-    const srObjectType = nodeType === "mv" ? "MATERIALIZED VIEW" : nodeType.toUpperCase();
-
-    let fetchCatalog = parsed.catalog;
-    let fetchDatabase = parsed.database;
-    let fetchName: string | undefined = parsed.name || selectedNode.label;
-    if (nodeType === "database") {
-      fetchCatalog = parsed.catalog;
-      fetchDatabase = selectedNode.label;
-      fetchName = undefined;
-    } else if (nodeType === "catalog") {
-      fetchCatalog = selectedNode.label;
-      fetchDatabase = undefined;
-      fetchName = undefined;
-    } else if (nodeType === "system") {
-      fetchCatalog = undefined;
-      fetchDatabase = undefined;
-      fetchName = undefined;
-    }
-
-    const fetcher = nodeType === "role"
-      ? getRolePrivileges(selectedNode.label)
-      : getObjectPrivileges(fetchCatalog, fetchDatabase, fetchName, srObjectType);
-    fetcher
-      .then((grants) => setData((prev) => ({ ...prev, grants, loadedNodeId: nodeId, loadingPrivs: false })))
-      .catch(() => setData((prev) => ({ ...prev, loadedNodeId: nodeId, loadingPrivs: false })));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setDetailState({ detail: null, loading: false });
   }, [selectedNode]);
 
+  // Fetch table detail once when the Details tab is opened (retries while detail is null)
   useEffect(() => {
     if (tab !== "details" || !selectedNode) return;
-    if (data.detail) return;
+    if (detailState.detail) return;
     if (!parsed.catalog || !parsed.database || !parsed.name) return;
-    setData((prev) => ({ ...prev, loadingDetail: true }));
+    setDetailState((prev) => ({ ...prev, loading: true }));
     getTableDetail(parsed.catalog, parsed.database, parsed.name)
-      .then((detail) => setData((prev) => ({ ...prev, detail, loadingDetail: false })))
-      .catch(() => setData((prev) => ({ ...prev, loadingDetail: false })));
+      .then((detail) => setDetailState({ detail, loading: false }))
+      .catch(() => setDetailState((prev) => ({ ...prev, loading: false })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, selectedNode]);
 
   if (!selectedNode) return null;
 
-  const { grants, detail, loadedNodeId, loadingPrivs, loadingDetail } = data;
+  const grants = privsRes.data ?? [];
+  const { detail, loading: loadingDetail } = detailState;
   const color = selectedNode.color || C.text2;
   const isRole = selectedNode.type.toLowerCase() === "role";
   const nodeType = selectedNode.type.toLowerCase();
@@ -157,7 +150,7 @@ export default function ObjectDetailPanel() {
 
       {tab === "privileges" && (
         <div>
-          {(loadingPrivs || loadedNodeId !== selectedNode?.id) ? (
+          {privsRes.loading ? (
             <p style={{ fontSize: 13, color: C.text2, fontStyle: "italic" }}>Loading...</p>
           ) : grants.length === 0 ? (
             <p style={{ fontSize: 13, color: C.text2, fontStyle: "italic" }}>No grants found</p>

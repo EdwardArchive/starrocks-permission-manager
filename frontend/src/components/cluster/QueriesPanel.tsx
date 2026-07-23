@@ -10,23 +10,24 @@
  *
  * StarRocks gates the data behind cluster_admin; a 403 renders in place.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getClusterQueries, getClusterQueryHistory, killClusterQuery } from "../../api/cluster";
-import { ApiError } from "../../api/client";
+import { useMemo, useState } from "react";
+import { killClusterQuery } from "../../api/cluster";
+import { useTickerNow } from "../../hooks/usePolling";
 import { clockSkewMs, formatRelativeTime, skewedNow } from "../../utils/relativeTime";
 import { sortQueries, sortHistory, type QuerySortKey, type HistorySortKey } from "../../utils/querySort";
 import { fmtRows, fmtBytes, fmtDurationMs, fmtCpuShare } from "../../utils/queryFormat";
 import { showToast } from "../../utils/toast";
 import type {
-  ClusterQueriesResponse,
   ClusterHistoryResponse,
   RunningQueryInfo,
   HistoryQueryInfo,
 } from "../../types";
 import { C } from "../../utils/colors";
 import { Badge, Loader, TH } from "../tabs/inventory-ui";
-import { Detail } from "./NodeCards";
 import InlineIcon from "../common/InlineIcon";
+import { RunningDetail, HistoryDetail } from "./QueryDetail";
+import { useRunningQueries } from "./useRunningQueries";
+import { useQueryHistory } from "./useQueryHistory";
 
 const REFRESH_OPTIONS = [
   { label: "5s", ms: 5_000 },
@@ -35,7 +36,6 @@ const REFRESH_OPTIONS = [
   { label: "Off", ms: 0 },
 ];
 const DEFAULT_INTERVAL_MS = 10_000;
-const HISTORY_LIMIT = 100;
 
 type Tab = "running" | "history";
 
@@ -85,126 +85,6 @@ function StateBadge({ state, isError }: { state: string | null; isError?: boolea
   return <Badge text={state ?? "?"} color={color} />;
 }
 
-/* Copyable SQL block — shared by both detail panels */
-function SqlBlock({ sql }: { sql: string | null }) {
-  const [copied, setCopied] = useState(false);
-  if (!sql) {
-    return <div style={{ fontSize: 12, color: C.text3, fontStyle: "italic" }}>SQL text unavailable</div>;
-  }
-  return (
-    <div style={{ position: "relative" }}>
-      <pre style={{
-        margin: 0, padding: "10px 12px", background: C.bg, border: `1px solid ${C.border}`,
-        borderRadius: 6, fontSize: 12, color: C.text1, whiteSpace: "pre-wrap", wordBreak: "break-word",
-        maxHeight: 240, overflowY: "auto", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-      }}>{sql}</pre>
-      <button
-        onClick={() => navigator.clipboard?.writeText(sql).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })}
-        style={{
-          position: "absolute", top: 6, right: 6, padding: "3px 8px", fontSize: 11,
-          border: `1px solid ${C.borderLight}`, borderRadius: 4, background: C.card,
-          color: copied ? C.green : C.text2, cursor: "pointer", fontFamily: "inherit",
-        }}
-      >{copied ? "Copied" : "Copy SQL"}</button>
-    </div>
-  );
-}
-
-/* Two-step inline KILL confirm (grant-admin only) */
-function KillButton({ onKill }: { onKill: () => Promise<void> }) {
-  const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
-  if (!confirming) {
-    return (
-      <button
-        data-testid="kill-btn"
-        onClick={() => setConfirming(true)}
-        style={{
-          padding: "4px 12px", fontSize: 12, fontWeight: 600, fontFamily: "inherit",
-          border: "1px solid #ef444455", borderRadius: 4, background: "rgba(239,68,68,0.08)",
-          color: "#ef4444", cursor: "pointer",
-        }}
-      >Kill query</button>
-    );
-  }
-  return (
-    <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-      <span style={{ fontSize: 12, color: C.text2 }}>Cancel this query?</span>
-      <button
-        data-testid="kill-confirm-btn"
-        disabled={busy}
-        onClick={async () => { setBusy(true); try { await onKill(); } finally { setBusy(false); setConfirming(false); } }}
-        style={{
-          padding: "4px 12px", fontSize: 12, fontWeight: 600, fontFamily: "inherit",
-          border: "1px solid #ef4444", borderRadius: 4, background: "#ef4444",
-          color: "#fff", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1,
-        }}
-      >{busy ? "Killing…" : "Confirm kill"}</button>
-      <button
-        onClick={() => setConfirming(false)}
-        style={{ padding: "4px 10px", fontSize: 12, fontFamily: "inherit", border: `1px solid ${C.borderLight}`, borderRadius: 4, background: "transparent", color: C.text2, cursor: "pointer" }}
-      >Cancel</button>
-    </span>
-  );
-}
-
-/* ── Running query detail ── */
-function RunningDetail({ q, now, totalCores, instCores, canKill, onKill }: {
-  q: RunningQueryInfo; now: Date; totalCores: number | null; instCores: number | null;
-  canKill: boolean; onKill: () => Promise<void>;
-}) {
-  return (
-    <div style={{ padding: "10px 12px", background: "rgba(59,130,246,0.04)", borderBottom: `1px solid ${C.border}` }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "6px 16px", marginBottom: 10 }}>
-        <Detail label="Query ID" value={q.query_id} />
-        {q.connection_id != null && <Detail label="Connection ID" value={String(q.connection_id)} />}
-        {q.start_time && <Detail label="Started" value={`${formatRelativeTime(q.start_time, now)} (${q.start_time})`} />}
-        {q.fe_ip && <Detail label="Frontend" value={q.fe_ip} />}
-        {q.warehouse && <Detail label="Warehouse" value={q.warehouse} />}
-        {q.resource_group && <Detail label="Resource Group" value={q.resource_group} />}
-        {q.cpu_avg_cores != null && (
-          <Detail label="Avg CPU (since start)" value={`${q.cpu_avg_cores} cores${totalCores ? ` · ${((q.cpu_avg_cores / totalCores) * 100).toFixed(1)}% of ${totalCores}` : ""}`} />
-        )}
-        {instCores != null && (
-          <Detail label="CPU now (last interval)" value={`${instCores.toFixed(2)} cores${totalCores ? ` · ${((instCores / totalCores) * 100).toFixed(1)}%` : ""}`} />
-        )}
-        {q.exec_progress && <Detail label="Progress" value={q.exec_progress} />}
-        {q.spill_display && <Detail label="Disk Spill" value={q.spill_display} />}
-      </div>
-      <SqlBlock sql={q.sql} />
-      {canKill && (
-        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
-          <KillButton onKill={onKill} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ── History query detail ── */
-function HistoryDetail({ q, now }: { q: HistoryQueryInfo; now: Date }) {
-  return (
-    <div style={{ padding: "10px 12px", background: "rgba(59,130,246,0.04)", borderBottom: `1px solid ${C.border}` }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "6px 16px", marginBottom: 10 }}>
-        {q.query_id && <Detail label="Query ID" value={q.query_id} />}
-        {q.timestamp && <Detail label="Finished" value={`${formatRelativeTime(q.timestamp, now)} (${q.timestamp})`} />}
-        {q.user && <Detail label="User" value={q.user} />}
-        {q.warehouse && <Detail label="Warehouse" value={q.warehouse} />}
-        {q.query_type && <Detail label="Type" value={q.query_type} />}
-        <Detail label="Duration" value={fmtDurationMs(q.query_time_ms)} />
-        {q.mem_cost_bytes != null && <Detail label="Peak Memory" value={fmtBytes(q.mem_cost_bytes)} />}
-        {q.cpu_cost_ns != null && <Detail label="CPU Cost" value={`${(q.cpu_cost_ns / 1e9).toFixed(2)} s`} />}
-      </div>
-      {q.is_error && q.error_code && (
-        <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 4, fontSize: 12, color: "#ef4444", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)", whiteSpace: "pre-wrap" }}>
-          {q.error_code}
-        </div>
-      )}
-      <SqlBlock sql={q.sql} />
-    </div>
-  );
-}
-
 /* Shared filter test across the visible text columns */
 function matchesFilter(text: string, ...fields: (string | null | undefined)[]): boolean {
   if (!text) return true;
@@ -221,111 +101,23 @@ export default function QueriesPanel({ totalCores = null }: { totalCores?: numbe
   const [tab, setTab] = useState<Tab>("running");
   const [intervalMs, setIntervalMs] = useState(DEFAULT_INTERVAL_MS);
   const [filter, setFilter] = useState("");
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-  const [nowTick, setNowTick] = useState(() => Date.now()); // 1s ticker for "updated Xs ago"
+  const nowTick = useTickerNow(); // 1s ticker for "updated Xs ago"
 
-  // Running
-  const [running, setRunning] = useState<ClusterQueriesResponse | null>(null);
-  const [runErr, setRunErr] = useState<{ status: number | null; message: string } | null>(null);
-  const [runLoading, setRunLoading] = useState(true);
+  // Running UI state (fetch/response state lives in useRunningQueries)
   const [runSortKey, setRunSortKey] = useState<QuerySortKey>("exec_time_ms");
   const [runSortDir, setRunSortDir] = useState<"asc" | "desc">("desc");
   const [runExpanded, setRunExpanded] = useState<string | null>(null);
-  const runAbort = useRef<AbortController | null>(null);
-  const deniedRef = useRef(false);
-  // instantaneous CPU: query_id → { cpuMs, atMs }; and the derived cores
-  const cpuSamples = useRef<Map<string, { cpuMs: number; atMs: number }>>(new Map());
-  const [instCores, setInstCores] = useState<Map<string, number>>(new Map());
 
-  // History
-  const [history, setHistory] = useState<ClusterHistoryResponse | null>(null);
-  const [histErr, setHistErr] = useState<{ status: number | null; message: string } | null>(null);
-  const [histLoading, setHistLoading] = useState(false);
+  // History UI state (fetch/response state lives in useQueryHistory)
   const [errorsOnly, setErrorsOnly] = useState(false);
   const [histSortKey, setHistSortKey] = useState<HistorySortKey>("timestamp");
   const [histSortDir, setHistSortDir] = useState<"asc" | "desc">("desc");
   const [histExpanded, setHistExpanded] = useState<string | null>(null);
-  const histAbort = useRef<AbortController | null>(null);
 
-  const fetchRunning = useCallback((refresh = false) => {
-    runAbort.current?.abort();
-    const controller = new AbortController();
-    runAbort.current = controller;
-    getClusterQueries(controller.signal, refresh)
-      .then((res) => {
-        deniedRef.current = false;
-        // derive instantaneous CPU from the delta vs the previous sample
-        const nowMs = Date.now();
-        const nextSamples = new Map<string, { cpuMs: number; atMs: number }>();
-        const nextInst = new Map<string, number>();
-        for (const q of res.queries) {
-          if (q.cpu_time_ms != null) {
-            const prev = cpuSamples.current.get(q.query_id);
-            nextSamples.set(q.query_id, { cpuMs: q.cpu_time_ms, atMs: nowMs });
-            if (prev && nowMs > prev.atMs) {
-              const cores = (q.cpu_time_ms - prev.cpuMs) / (nowMs - prev.atMs);
-              if (cores >= 0) nextInst.set(q.query_id, cores);
-            }
-          }
-        }
-        cpuSamples.current = nextSamples;
-        setInstCores(nextInst);
-        setRunning(res);
-        setRunErr(null);
-        setRunLoading(false);
-        setLastUpdated(nowMs);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        const status = err instanceof ApiError ? err.status : null;
-        if (status === 403) deniedRef.current = true;
-        setRunErr({ status, message: err instanceof Error ? err.message : "Unknown error" });
-        setRunLoading(false);
-      });
-  }, []);
-
-  const fetchHistory = useCallback((errOnly: boolean) => {
-    histAbort.current?.abort();
-    const controller = new AbortController();
-    histAbort.current = controller;
-    setHistLoading(true);
-    getClusterQueryHistory({ limit: HISTORY_LIMIT, errorsOnly: errOnly }, controller.signal)
-      .then((res) => { setHistory(res); setHistErr(null); setHistLoading(false); setLastUpdated(Date.now()); })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        const status = err instanceof ApiError ? err.status : null;
-        setHistErr({ status, message: err instanceof Error ? err.message : "Unknown error" });
-        setHistLoading(false);
-      });
-  }, []);
-
-  // Running poll (only while the running tab is active)
-  useEffect(() => {
-    if (tab !== "running") return;
-    fetchRunning();
-    if (intervalMs <= 0) return;
-    const id = setInterval(() => {
-      if (document.hidden || deniedRef.current) return;
-      fetchRunning();
-    }, intervalMs);
-    return () => { clearInterval(id); runAbort.current?.abort(); };
-  }, [tab, intervalMs, fetchRunning]);
-
-  // History fetch on tab open / filter change (+ optional polling)
-  useEffect(() => {
-    if (tab !== "history") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchHistory's sync setLoading(true) is intentional: enter loading on tab open
-    fetchHistory(errorsOnly);
-    if (intervalMs <= 0) return;
-    const id = setInterval(() => { if (!document.hidden) fetchHistory(errorsOnly); }, intervalMs);
-    return () => { clearInterval(id); histAbort.current?.abort(); };
-  }, [tab, errorsOnly, intervalMs, fetchHistory]);
-
-  // 1s ticker so "updated Xs ago" stays fresh
-  useEffect(() => {
-    const id = setInterval(() => setNowTick(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  const run = useRunningQueries({ active: tab === "running", intervalMs });
+  const hist = useQueryHistory({ active: tab === "history", intervalMs, errorsOnly });
+  const running = run.running;
+  const history = hist.history;
 
   const now = skewedNow(clockSkewMs(tab === "running" ? running?.server_now : history?.server_now));
 
@@ -355,12 +147,13 @@ export default function QueriesPanel({ totalCores = null }: { totalCores?: numbe
       await killClusterQuery(q.query_id);
       showToast(`Query killed (${q.user})`, "info");
       setRunExpanded(null);
-      fetchRunning(true);
+      run.refresh(true);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Kill failed", "error");
     }
   };
 
+  const lastUpdated = tab === "running" ? run.lastUpdated : hist.lastUpdated;
   const updatedAgo = lastUpdated ? Math.max(0, Math.round((nowTick - lastUpdated) / 1000)) : null;
   const canKill = running?.can_kill ?? false;
 
@@ -413,7 +206,7 @@ export default function QueriesPanel({ totalCores = null }: { totalCores?: numbe
             <span style={{ fontSize: 11, color: C.text3, whiteSpace: "nowrap" }}>updated {updatedAgo}s ago</span>
           )}
           <button
-            onClick={() => (tab === "running" ? fetchRunning(true) : fetchHistory(errorsOnly))}
+            onClick={() => (tab === "running" ? run.refresh(true) : hist.refresh())}
             title="Refresh now"
             data-testid="queries-refresh-btn"
             style={{ width: 26, height: 26, border: `1px solid ${C.borderLight}`, borderRadius: 6, background: "transparent", color: C.text2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}
@@ -428,16 +221,16 @@ export default function QueriesPanel({ totalCores = null }: { totalCores?: numbe
 
       {tab === "running" ? (
         <RunningView
-          rows={runRows} loading={runLoading} error={runErr} now={now} totalCores={totalCores}
-          instCores={instCores} sortKey={runSortKey} sortDir={runSortDir} onSort={toggleRunSort}
+          rows={runRows} loading={run.loading} error={run.error} now={now} totalCores={totalCores}
+          instCores={run.instCores} sortKey={runSortKey} sortDir={runSortDir} onSort={toggleRunSort}
           expandedId={runExpanded} onExpand={setRunExpanded} canKill={canKill} onKill={doKill}
-          onRetry={() => fetchRunning(true)}
+          onRetry={() => run.refresh(true)}
         />
       ) : (
         <HistoryView
-          data={history} rows={histRows} loading={histLoading} error={histErr} now={now}
+          data={history} rows={histRows} loading={hist.loading} error={hist.error} now={now}
           sortKey={histSortKey} sortDir={histSortDir} onSort={toggleHistSort}
-          expandedId={histExpanded} onExpand={setHistExpanded} onRetry={() => fetchHistory(errorsOnly)}
+          expandedId={histExpanded} onExpand={setHistExpanded} onRetry={() => hist.refresh()}
         />
       )}
     </div>

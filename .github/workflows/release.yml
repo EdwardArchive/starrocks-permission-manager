@@ -44,7 +44,7 @@ jobs:
         run: cd frontend && npm ci
 
       - name: TypeScript check
-        run: cd frontend && npx tsc --noEmit
+        run: cd frontend && npx tsc -b
 
   # ── Build & Push (Rapidfort hardening temporarily disabled — see NOTE below) ──
   #

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import re
 
+from app.services.starrocks_client import execute_query
+
 # A single quote is the only character that can break out of a single-quoted
 # SQL string literal, so it is NOT allowed in a bare name. It is permitted ONLY
 # in the exact 'user'@'host' shape, where both parts are themselves quote-free —
@@ -39,3 +41,17 @@ def safe_identifier(value: str) -> str:
     breaking out of `identifier` quoting.
     """
     return value.replace("`", "``")
+
+
+def set_catalog(conn, name: str) -> None:
+    """Switch the session's active catalog to ``name`` on ``conn``.
+
+    ``name`` is backtick-escaped via :func:`safe_identifier` so a name
+    containing a backtick cannot break out of the identifier quoting.
+    """
+    execute_query(conn, f"SET CATALOG `{safe_identifier(name)}`")
+
+
+def restore_default_catalog(conn) -> None:
+    """Restore the session's active catalog to ``default_catalog`` on ``conn``."""
+    execute_query(conn, "SET CATALOG `default_catalog`")

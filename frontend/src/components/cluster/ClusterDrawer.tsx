@@ -11,6 +11,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useClusterStore, type ClusterFocus } from "../../stores/clusterStore";
 import { useDagStore } from "../../stores/dagStore";
 import { getClusterStatus, getClusterQueries } from "../../api/cluster";
+import { usePolling } from "../../hooks/usePolling";
 import { fmtCpuShare } from "../../utils/queryFormat";
 import type { ClusterStatusResponse, RunningQueryInfo } from "../../types";
 import { C } from "../../utils/colors";
@@ -65,18 +66,15 @@ export default function ClusterDrawer() {
       .catch(() => setQueries(null));
   }, []);
 
-  // Fetch on open + 15s auto-refresh while open and visible
+  // Fetch on open (with spinner); abort in-flight on close/unmount
   useEffect(() => {
-    if (!isOpen) {
-      abortRef.current?.abort();
-      qAbortRef.current?.abort();
-      return;
-    }
+    if (!isOpen) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: enter loading on open
     fetchData();
-    const id = setInterval(() => { if (!document.hidden) fetchData(true, /* withSpinner */ false); }, DRAWER_POLL_MS);
-    return () => { clearInterval(id); abortRef.current?.abort(); qAbortRef.current?.abort(); };
+    return () => { abortRef.current?.abort(); qAbortRef.current?.abort(); };
   }, [isOpen, fetchData]);
+  // 15s quiet auto-refresh while open and visible
+  usePolling(() => fetchData(true, /* withSpinner */ false), DRAWER_POLL_MS, { enabled: isOpen });
 
   // ESC closes
   useEffect(() => {

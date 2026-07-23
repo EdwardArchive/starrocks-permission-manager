@@ -16,6 +16,7 @@ from app.services.shared.name_utils import normalize_fn_name
 from app.services.shared.role_graph import fetch_role_child_map, fetch_user_role_map
 from app.services.starrocks_client import execute_query
 from app.utils.role_helpers import build_role_chain
+from app.utils.sql_safety import safe_name
 
 logger = logging.getLogger("privileges")
 
@@ -70,6 +71,23 @@ def collect_admin(conn, username: str) -> CollectedGrants:
     )
 
 
+def fetch_role_grants_raw(conn, role: str) -> dict:
+    """Return raw GRANT data for a role from ``sys.grants_to_roles`` and
+    ``SHOW GRANTS FOR ROLE`` (best-effort; per-source errors captured inline)."""
+    results: dict = {"sys_grants_to_roles": [], "show_grants": []}
+    try:
+        rows = execute_query(conn, "SELECT * FROM sys.grants_to_roles WHERE GRANTEE = %s", (role,))
+        results["sys_grants_to_roles"] = [dict(r) for r in rows]
+    except Exception as e:
+        results["sys_grants_to_roles_error"] = str(e)
+    try:
+        rows = execute_query(conn, f"SHOW GRANTS FOR ROLE '{safe_name(role)}'")
+        results["show_grants"] = [dict(r) for r in rows]
+    except Exception as e:
+        results["show_grants_error"] = str(e)
+    return results
+
+
 def _get_all_users(conn) -> set[str]:
     from app.services.admin.user_service import get_all_users
 
@@ -99,34 +117,4 @@ def _merge_show_grants_scope(conn, sys_grants: list[PrivilegeGrant]) -> list[Pri
         except Exception:
             logger.debug("SHOW GRANTS failed for %s %s", gtype, grantee)
 
-    return sys_grants
-
-
-def query_grants_merged(conn, grantee: str, grantee_type: str) -> list[PrivilegeGrant]:
-    """Get grants for a single grantee. Merges sys + SHOW GRANTS.
-    sys.grants_to_* expands wildcards; SHOW GRANTS captures scope-level grants."""
-    table = "sys.grants_to_users" if grantee_type == "USER" else "sys.grants_to_roles"
-    sys_grants: list[PrivilegeGrant] = []
-    try:
-        rows = execute_query(conn, f"SELECT * FROM {table} WHERE GRANTEE = %s", (grantee,))
-        if rows:
-            sys_grants = [g for r in rows for g in _row_to_grants(r, grantee_type)]
-    except Exception:
-        logger.debug("Query failed, skipping")
-
-    if not sys_grants:
-        return _parse_show_grants(conn, grantee, grantee_type)
-
-    # Supplement with scope-level grants from SHOW GRANTS
-    show_grants = _parse_show_grants(conn, grantee, grantee_type)
-    _sys_covered_types = {"TABLE", "DATABASE", "CATALOG"}
-
-    existing = {(g.object_type, normalize_fn_name(g.object_name or ""), g.privilege_type) for g in sys_grants}
-    for g in show_grants:
-        if g.object_type in _sys_covered_types and g.object_name:
-            continue
-        key = (g.object_type, normalize_fn_name(g.object_name or ""), g.privilege_type)
-        if key not in existing:
-            sys_grants.append(g)
-            existing.add(key)
     return sys_grants

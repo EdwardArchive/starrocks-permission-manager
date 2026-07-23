@@ -14,6 +14,14 @@ interface DagState {
   dagData: DAGGraph | null;
   setDagData: (data: DAGGraph | null) => void;
 
+  // DAG graph cache (owned here; the caller injects the fetcher so the store
+  // never imports api modules). `currentKey` guards against stale settles.
+  dagCache: Record<string, DAGGraph>;
+  dagLoading: boolean;
+  currentKey: string | null;
+  loadDag: (key: string, fetchGraph: () => Promise<DAGGraph>) => Promise<void>;
+  clearDagCache: () => void;
+
   selectedNode: DAGNode | null;
   setSelectedNode: (node: DAGNode | null) => void;
 
@@ -44,7 +52,7 @@ const defaultTypes: Record<string, boolean> = {
   view: true, mv: true, function: true, user: true, role: true,
 };
 
-export const useDagStore = create<DagState>((set) => ({
+export const useDagStore = create<DagState>((set, get) => ({
   activeTab: (window.location.hash.replace("#", "").split("/")[0] as TabId) || "obj",
   setActiveTab: (tab) => { window.location.hash = tab; set({ activeTab: tab }); },
 
@@ -53,6 +61,29 @@ export const useDagStore = create<DagState>((set) => ({
 
   dagData: null,
   setDagData: (data) => set({ dagData: data }),
+
+  dagCache: {},
+  dagLoading: false,
+  currentKey: null,
+  loadDag: async (key, fetchGraph) => {
+    const cached = get().dagCache[key];
+    if (cached) {
+      // Cache hit: publish immediately, no fetch. Marking `key` current also
+      // makes any older in-flight fetch settle as stale (dropped below).
+      set({ currentKey: key, dagData: cached, dagLoading: false });
+      return;
+    }
+    set({ currentKey: key, dagData: null, dagLoading: true });
+    try {
+      const data = await fetchGraph();
+      if (get().currentKey !== key) return; // stale settle — key changed while fetching
+      set((s) => ({ dagCache: { ...s.dagCache, [key]: data }, dagData: data, dagLoading: false }));
+    } catch {
+      if (get().currentKey !== key) return; // stale abort/failure — a newer load owns the flags
+      set({ dagLoading: false });
+    }
+  },
+  clearDagCache: () => set({ dagCache: {}, dagData: null, dagLoading: false, currentKey: null }),
 
   selectedNode: null,
   setSelectedNode: (node) => set({ selectedNode: node }),

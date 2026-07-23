@@ -1,91 +1,16 @@
-import { useEffect, useState, useRef } from "react";
-import { getCatalogs, getDatabases, getTables, getRoles as userGetRoles, searchAll as userSearchAll, type SearchResult } from "../../api/user";
-import { getRoles as adminGetRoles, searchAll as adminSearchAll } from "../../api/admin";
+import { useEffect, useState } from "react";
+import { getCatalogs } from "../../api/user";
+import { usePermApi } from "../../api/permApi";
 import { useShallow } from "zustand/react/shallow";
 import { useDagStore } from "../../stores/dagStore";
 import { useAuthStore } from "../../stores/authStore";
-import { colorizedSvg, NODE_COLORS } from "../dag/nodeIcons";
+import { NODE_COLORS } from "../dag/nodeIcons";
 import { C } from "../../utils/colors";
-import type { CatalogItem, DatabaseItem, ObjectItem, RoleItem } from "../../types";
-
-/* ── Inline SVG icon (same as mockup: 16x16) ── */
-function Icon({ type, size = 16 }: { type: string; size?: number }) {
-  const svg = colorizedSvg(type);
-  if (!svg) return null;
-  const sized = svg
-    .replace(/width="[^"]*"/, `width="${size}"`)
-    .replace(/height="[^"]*"/, `height="${size}"`);
-  return (
-    <span
-      style={{ width: size, height: size, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", verticalAlign: "middle" }}
-      dangerouslySetInnerHTML={{ __html: sized }}
-    />
-  );
-}
-
-/* ── Styles matching mockup.html exactly ── */
-const S = {
-  aside: {
-    width: 300, flexShrink: 0, display: "flex" as const, flexDirection: "column" as const,
-    borderRight: `1px solid ${C.borderLight}`, background: C.card, overflow: "hidden",
-  },
-  searchWrap: { padding: "12px 16px", borderBottom: `1px solid ${C.borderLight}` },
-  searchInput: {
-    width: "100%", padding: "8px 12px", background: C.bg, border: `1px solid ${C.borderLight}`,
-    borderRadius: 6, color: C.text1, fontSize: 13, outline: "none", fontFamily: "inherit",
-  },
-  content: { flex: 1, overflowY: "auto" as const, padding: "8px 0" },
-  sectionTitle: {
-    padding: "8px 16px", fontSize: 11, fontWeight: 700, textTransform: "uppercase" as const,
-    letterSpacing: "0.05em", color: C.text2,
-  },
-  item: (indent: number, isGroup?: boolean): React.CSSProperties => ({
-    display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
-    padding: `6px 16px 6px ${24 + indent * 16}px`,
-    fontSize: isGroup ? 12 : 13, fontWeight: isGroup ? 600 : 400,
-    color: isGroup ? C.text2 : C.text1,
-    border: "none", background: "transparent", width: "100%", textAlign: "left",
-    fontFamily: "inherit",
-  }),
-  badge: (color?: string): React.CSSProperties => ({
-    marginLeft: "auto", background: color || C.border, padding: "1px 6px",
-    borderRadius: 10, fontSize: 11, color: color ? undefined : C.text2,
-  }),
-  expand: { fontSize: 10, marginRight: 2, color: C.text2, flexShrink: 0 } as React.CSSProperties,
-};
-
-/* ── Eye toggle for hide/show ── */
-function EyeToggle({ label, hidden, onToggle }: { label: string; hidden: boolean; onToggle: (e: React.MouseEvent) => void }) {
-  return (
-    <span
-      role="button"
-      tabIndex={0}
-      onClick={onToggle}
-      title={hidden ? `Show ${label}` : `Hide ${label}`}
-      style={{
-        background: "none", border: "none", cursor: "pointer", padding: 2,
-        color: hidden ? C.borderLight : C.text3, flexShrink: 0,
-        display: "inline-flex", alignItems: "center", justifyContent: "center",
-        opacity: hidden ? 0.5 : 0.7,
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.opacity = hidden ? "0.5" : "0.7"; }}
-    >
-      {hidden ? (
-        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94"/>
-          <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19"/>
-          <line x1="1" y1="1" x2="23" y2="23"/>
-        </svg>
-      ) : (
-        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-          <circle cx="12" cy="12" r="3"/>
-        </svg>
-      )}
-    </span>
-  );
-}
+import { useServerSearch } from "../../hooks/useServerSearch";
+import { useTreeExpansion } from "./useTreeExpansion";
+import { Icon, EyeToggle } from "./sidebarParts";
+import { S } from "./sidebarStyles";
+import type { CatalogItem, ObjectItem, RoleItem, SearchResult } from "../../types";
 
 export default function Sidebar() {
   const {
@@ -114,70 +39,27 @@ export default function Sidebar() {
     })),
   );
   const { user } = useAuthStore();
-  const isAdmin = user?.is_user_admin ?? false;
+  const permApi = usePermApi();
 
   const [catalogs, setCatalogs] = useState<CatalogItem[]>([]);
-  const [dbMap, setDbMap] = useState<Record<string, DatabaseItem[]>>({});
-  const [objMap, setObjMap] = useState<Record<string, ObjectItem[]>>({});
   const [roles, setRoles] = useState<RoleItem[]>([]);
-  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
-  const [expandedDbs, setExpandedDbs] = useState<Set<string>>(new Set());
 
-  // Server-side search
-  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
-  const [searching, setSearching] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const { expandedCats, expandedDbs, dbMap, objMap, toggleCat, toggleDb: expandDb } = useTreeExpansion();
+
+  // Server-side search (300ms debounce, min 2 chars — see useServerSearch)
+  const { results: searchResults, searching, reset: resetSearch } = useServerSearch<SearchResult>(
+    searchQuery,
+    permApi.searchAll,
+  );
 
   useEffect(() => {
     getCatalogs().then(setCatalogs).catch(() => {});
-    const getRoles = isAdmin ? adminGetRoles : userGetRoles;
-    getRoles().then(setRoles).catch(() => {});
-  }, [isAdmin]);
+    permApi.getRoles().then(setRoles).catch(() => {});
+  }, [permApi]);
 
-  // Debounced search: trigger after 300ms of no typing, min 2 chars
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    const trimmed = searchQuery.trim();
-    if (trimmed.length < 2) {
-      setSearchResults(null);
-      setSearching(false);
-      return;
-    }
-    setSearching(true);
-    debounceRef.current = setTimeout(() => {
-      const searchAll = isAdmin ? adminSearchAll : userSearchAll;
-      searchAll(trimmed)
-        .then(setSearchResults)
-        .catch(() => setSearchResults([]))
-        .finally(() => setSearching(false));
-    }, 300);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [searchQuery, isAdmin]);
-
-  const toggleCat = async (cat: string) => {
-    const next = new Set(expandedCats);
-    if (next.has(cat)) { next.delete(cat); } else {
-      next.add(cat);
-      if (!dbMap[cat]) {
-        const dbs = await getDatabases(cat).catch(() => []);
-        setDbMap((m) => ({ ...m, [cat]: dbs }));
-      }
-    }
-    setExpandedCats(next);
-  };
-
-  const toggleDb = async (cat: string, db: string) => {
+  const toggleDb = (cat: string, db: string) => {
     if (activeTab !== "obj") setActiveTab("obj");
-    const key = `${cat}.${db}`;
-    const next = new Set(expandedDbs);
-    if (next.has(key)) { next.delete(key); } else {
-      next.add(key);
-      if (!objMap[key]) {
-        const objs = await getTables(cat, db).catch(() => []);
-        setObjMap((m) => ({ ...m, [key]: objs }));
-      }
-    }
-    setExpandedDbs(next);
+    expandDb(cat, db);
   };
 
   const selectItem = (type: string, label: string, metadata?: Record<string, unknown>) => {
@@ -223,7 +105,7 @@ export default function Sidebar() {
         />
         {searchQuery && (
           <button
-            onClick={() => { setSearchQuery(""); setSearchResults(null); }}
+            onClick={() => { setSearchQuery(""); resetSearch(); }}
             style={{
               position: "absolute", right: 20, top: "50%", transform: "translateY(-50%)",
               width: 18, height: 18, border: "none", background: C.borderLight, borderRadius: "50%",

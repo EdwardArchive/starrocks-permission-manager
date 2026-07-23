@@ -10,14 +10,9 @@ from app.services.common.grant_classifier import (
     Relevance,
     _deduplicate,
 )
-from app.services.shared.role_graph import fetch_role_child_map
 from app.utils.role_helpers import get_parent_roles, get_user_roles
 
 logger = logging.getLogger("privileges")
-
-
-# Backward-compatible alias
-_fetch_role_child_map = fetch_role_child_map
 
 
 def _bfs_child_roles(

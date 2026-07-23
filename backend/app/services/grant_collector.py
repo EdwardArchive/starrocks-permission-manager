@@ -16,16 +16,15 @@ import threading
 from copy import deepcopy
 from dataclasses import dataclass, field
 
-from cachetools import TTLCache
-
 from app.config import settings
 from app.models.schemas import PrivilegeGrant
+from app.utils.cache import make_ttl_cache
 
 logger = logging.getLogger("privileges")
 
 # Collecting all grants is expensive (full sys.* scans + a SHOW GRANTS per
 # grantee). Cache the assembled CollectedGrants per (host, username, is_admin).
-_grants_cache: TTLCache = TTLCache(maxsize=256, ttl=settings.cache_ttl_seconds)
+_grants_cache = make_ttl_cache("grant_collector.grants", maxsize=256, ttl=settings.cache_ttl_seconds)
 _grants_cache_lock = threading.Lock()
 
 

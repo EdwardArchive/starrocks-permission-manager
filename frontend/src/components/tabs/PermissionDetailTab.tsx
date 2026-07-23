@@ -9,7 +9,10 @@ import DAGView from "../dag/DAGView";
 import ExportPngBtn from "../common/ExportPngBtn";
 import { useDagStore } from "../../stores/dagStore";
 import { C, ENTITY_BADGE } from "../../utils/colors";
-import type { DAGGraph, DAGNode, PrivilegeGrant } from "../../types";
+import { parseGrantee } from "../../utils/granteeName";
+import { useAsyncData } from "../../hooks/useAsyncData";
+import { useServerSearch } from "../../hooks/useServerSearch";
+import type { DAGNode } from "../../types";
 
 interface SelectedEntity {
   name: string;
@@ -21,87 +24,55 @@ export default function PermissionDetailTab() {
   const [searchText, setSearchText] = useState("");
   const [filterText, setFilterText] = useState("");
 
-  // Search state
-  const [search, setSearch] = useState<{ results: { name: string; type: string }[]; searching: boolean }>({
-    results: [], searching: false,
-  });
+  // Debounced user/role search (300ms, min 2 chars — see useServerSearch)
+  const { results: searchResults, searching, reset: resetSearch } = useServerSearch(searchText, searchUsersRoles);
 
   // Entity data (DAG + grants for selected user/role)
-  const [entity, setEntity] = useState<{ dag: DAGGraph | null; dagLoading: boolean; grants: PrivilegeGrant[]; grantsLoading: boolean }>({
-    dag: null, dagLoading: false, grants: [], grantsLoading: false,
-  });
+  const dagRes = useAsyncData(
+    () => getInheritanceDag(selected!.name, selected!.type),
+    [selected],
+    { enabled: !!selected },
+  );
+  const grantsRes = useAsyncData(
+    () => (selected!.type === "user"
+      ? getUserEffectivePrivileges(selected!.name)
+      : getRolePrivileges(selected!.name)),
+    [selected],
+    { enabled: !!selected },
+  );
 
   // Clicked DAG node detail panel
   const selectedNode = useDagStore((s) => s.selectedNode);
-  const [clicked, setClicked] = useState<{ node: DAGNode | null; grants: PrivilegeGrant[]; loading: boolean }>({
-    node: null, grants: [], loading: false,
-  });
+  const [clickedNode, setClickedNode] = useState<DAGNode | null>(null);
 
   // Watch for DAG node clicks
   useEffect(() => {
     if (!selectedNode || !selected) {
-      setClicked({ node: null, grants: [], loading: false });
+      setClickedNode(null);
       return;
     }
     const nodeType = selectedNode.type?.toLowerCase();
-    if (nodeType !== "user" && nodeType !== "role") {
-      setClicked({ node: null, grants: [], loading: false });
-      return;
-    }
-    setClicked({ node: selectedNode, grants: [], loading: true });
-    const fetcher = nodeType === "user"
-      ? getUserEffectivePrivileges(selectedNode.label)
-      : getRolePrivileges(selectedNode.label);
-    fetcher
-      .then((grants) => setClicked((prev) => ({ ...prev, grants, loading: false })))
-      .catch(() => setClicked((prev) => ({ ...prev, grants: [], loading: false })));
+    setClickedNode(nodeType === "user" || nodeType === "role" ? selectedNode : null);
   }, [selectedNode, selected]);
 
-  // Debounced search
-  useEffect(() => {
-    const trimmed = searchText.trim();
-    if (trimmed.length < 2) {
-      setSearch({ results: [], searching: false });
-      return;
-    }
-    setSearch((prev) => ({ ...prev, searching: true }));
-    const timer = setTimeout(() => {
-      searchUsersRoles(trimmed)
-        .then((results) => setSearch({ results, searching: false }))
-        .catch(() => setSearch({ results: [], searching: false }));
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchText]);
-
-  // Load DAG + grants when entity selected
-  useEffect(() => {
-    if (!selected) return;
-    const controller = new AbortController();
-    setEntity({ dag: null, dagLoading: true, grants: [], grantsLoading: true });
-
-    getInheritanceDag(selected.name, selected.type, controller.signal)
-      .then((dag) => setEntity((prev) => ({ ...prev, dag, dagLoading: false })))
-      .catch(() => setEntity((prev) => ({ ...prev, dagLoading: false })));
-
-    const grantFetcher = selected.type === "user"
-      ? getUserEffectivePrivileges(selected.name, controller.signal)
-      : getRolePrivileges(selected.name, controller.signal);
-    grantFetcher
-      .then((grants) => setEntity((prev) => ({ ...prev, grants, grantsLoading: false })))
-      .catch(() => setEntity((prev) => ({ ...prev, grantsLoading: false })));
-
-    return () => controller.abort();
-  }, [selected]);
+  // `selected` stays in the deps: re-selecting an entity refetches the open panel (as before)
+  const clickedGrants = useAsyncData(
+    () => (clickedNode!.type?.toLowerCase() === "user"
+      ? getUserEffectivePrivileges(clickedNode!.label)
+      : getRolePrivileges(clickedNode!.label)),
+    [clickedNode, selected],
+    { enabled: !!clickedNode },
+  );
 
   const handleSelect = useCallback((name: string, type: "user" | "role") => {
     setSelected({ name, type });
     setSearchText("");
-    setSearch({ results: [], searching: false });
+    resetSearch();
     setFilterText("");
-  }, []);
+  }, [resetSearch]);
 
   // Group grants by scope (shared utility)
-  const grouped = buildGrantDisplay(entity.grants, { filter: filterText });
+  const grouped = buildGrantDisplay(grantsRes.data ?? [], { filter: filterText });
 
   return (
     <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
@@ -123,20 +94,20 @@ export default function PermissionDetailTab() {
             />
             {searchText && (
               <button
-                onClick={() => { setSearchText(""); setSearch({ results: [], searching: false }); }}
+                onClick={() => { setSearchText(""); resetSearch(); }}
                 style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: C.text2, cursor: "pointer", fontSize: 16 }}
               >
                 &times;
               </button>
             )}
           </div>
-          {search.searching && <p style={{ fontSize: 11, color: C.text3, marginTop: 4 }}>Searching...</p>}
+          {searching && <p style={{ fontSize: 11, color: C.text3, marginTop: 4 }}>Searching...</p>}
         </div>
 
         {/* Search results dropdown */}
-        {search.results.length > 0 && (
+        {searchResults && searchResults.length > 0 && (
           <div style={{ maxHeight: 200, overflowY: "auto", borderBottom: `1px solid ${C.borderLight}` }}>
-            {search.results.map((r, i) => (
+            {searchResults.map((r, i) => (
               <button
                 key={`${r.type}-${r.name}-${i}`}
                 onClick={() => handleSelect(r.name, r.type as "user" | "role")}
@@ -194,7 +165,7 @@ export default function PermissionDetailTab() {
             <p style={{ padding: 16, fontSize: 13, color: C.text3, textAlign: "center" }}>
               Search and select a user or role to view permissions
             </p>
-          ) : entity.grantsLoading ? (
+          ) : grantsRes.loading ? (
             <p style={{ padding: 16, fontSize: 13, color: C.text2, fontStyle: "italic", textAlign: "center" }}>Loading privileges...</p>
           ) : (
             <div style={{ padding: "0 12px" }}>
@@ -210,7 +181,7 @@ export default function PermissionDetailTab() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: C.borderLight, fontSize: 14 }}>
             Select a user or role to view inheritance DAG
           </div>
-        ) : entity.dagLoading ? (
+        ) : dagRes.loading ? (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: C.text2, fontSize: 14 }}>
             Loading inheritance graph...
           </div>
@@ -220,32 +191,32 @@ export default function PermissionDetailTab() {
               <ExportPngBtn />
             </div>
             <ReactFlowProvider>
-              <DAGView data={entity.dag} direction="TB" loading={false} />
+              <DAGView data={dagRes.data} direction="TB" loading={false} />
             </ReactFlowProvider>
           </>
         )}
       </div>
 
       {/* Right: Clicked node detail panel */}
-      {clicked.node && (
+      {clickedNode && (
         <div style={{ width: 320, flexShrink: 0, borderLeft: `1px solid ${C.borderLight}`, display: "flex", flexDirection: "column", overflow: "hidden", background: C.card }}>
           {/* Header */}
           <div style={{ padding: 12, borderBottom: `1px solid ${C.borderLight}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <InlineIcon type={clicked.node!.type} size={18} />
+              <InlineIcon type={clickedNode.type} size={18} />
               <span style={{ fontSize: 14, fontWeight: 600, color: C.text1 }}>
-                <FormattedName name={clicked.node!.label} />
+                <FormattedName name={clickedNode.label} />
               </span>
               <span style={{
                 fontSize: 10, padding: "2px 6px", borderRadius: 4, fontWeight: 600,
-                background: ENTITY_BADGE[clicked.node!.type as "user" | "role"].bg,
-                color: ENTITY_BADGE[clicked.node!.type as "user" | "role"].fg,
+                background: ENTITY_BADGE[clickedNode.type as "user" | "role"].bg,
+                color: ENTITY_BADGE[clickedNode.type as "user" | "role"].fg,
               }}>
-                {clicked.node!.type.toUpperCase()}
+                {clickedNode.type.toUpperCase()}
               </span>
             </div>
             <button
-              onClick={() => setClicked({ node: null, grants: [], loading: false })}
+              onClick={() => setClickedNode(null)}
               style={{ background: "none", border: "none", color: C.text2, cursor: "pointer", fontSize: 18, lineHeight: 1 }}
             >
               &times;
@@ -254,11 +225,11 @@ export default function PermissionDetailTab() {
 
           {/* Grants */}
           <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
-            {clicked.loading ? (
+            {clickedGrants.loading ? (
               <p style={{ padding: 16, fontSize: 13, color: C.text2, fontStyle: "italic", textAlign: "center" }}>Loading privileges...</p>
             ) : (
               <div style={{ padding: "0 12px" }}>
-                <GrantTreeView groups={buildGrantDisplay(clicked.grants)} />
+                <GrantTreeView groups={buildGrantDisplay(clickedGrants.data ?? [])} />
               </div>
             )}
           </div>
@@ -271,10 +242,8 @@ export default function PermissionDetailTab() {
 /* ── Helpers ── */
 
 function FormattedName({ name }: { name: string }) {
-  const match = name.match(/^'?([^'@]+)'?@'?([^']*)'?$/);
-  if (match) {
-    const [, uname, host] = match;
-    const hostLabel = !host || host === "%" ? "ALL CIDR" : host.includes("/") ? host : host + "/32";
+  const { uname, hostLabel } = parseGrantee(name);
+  if (hostLabel) {
     return (
       <>
         {uname} <span style={{ fontSize: 10, color: C.text3, fontWeight: 400 }}>({hostLabel})</span>

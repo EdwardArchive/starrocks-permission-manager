@@ -4,6 +4,7 @@
  */
 
 import type { PrivilegeGrant } from "../types";
+import { SCOPE_ORDER, SCOPE_ICONS } from "./scopeConfig";
 
 // ── Types ──
 
@@ -20,16 +21,6 @@ export interface GrantDisplayGroup {
 }
 
 // ── Constants ──
-
-const SCOPE_ORDER = ["SYSTEM", "CATALOG", "DATABASE", "TABLE", "VIEW", "MATERIALIZED VIEW", "FUNCTION", "RESOURCE", "STORAGE VOLUME", "RESOURCE GROUP", "GLOBAL FUNCTION", "WAREHOUSE", "PIPE", "TASK", "USER"];
-
-const SCOPE_ICON_MAP: Record<string, string> = {
-  SYSTEM: "system", CATALOG: "catalog", DATABASE: "database",
-  TABLE: "table", VIEW: "view", "MATERIALIZED VIEW": "mv",
-  FUNCTION: "function", WAREHOUSE: "system", "RESOURCE GROUP": "system",
-  "STORAGE VOLUME": "system", RESOURCE: "system", "GLOBAL FUNCTION": "function",
-  PIPE: "system", TASK: "system",
-};
 
 const CHILD_TYPES = new Set(["TABLE", "VIEW", "MATERIALIZED VIEW", "FUNCTION"]);
 
@@ -124,7 +115,7 @@ export function buildGrantDisplay(
 
   return sorted.map((scope) => ({
     scope,
-    icon: SCOPE_ICON_MAP[scope] || "system",
+    icon: SCOPE_ICONS[scope] || "system",
     items: groups[scope],
   }));
 }
